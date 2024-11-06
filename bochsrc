@@ -1,0 +1,9 @@
+# Bochs配置文件
+megs: 32
+
+romimage: file=/usr/local/share/bochs/BIOS-bochs-legacy
+vgaromimage: file=/usr/local/share/bochs/VGABIOS-lgpl-latest
+boot: disk
+mouse: enabled=0
+ata0: enabled=1, ioaddr1=0x1f0, ioaddr2=0x3f0, irq=14
+ata0-master: type=disk, path="disk.img", cylinders=20, heads=16, spt=63
