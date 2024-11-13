@@ -9,19 +9,14 @@
 #include "init.h"
 #include "lib/kernel/krnlio.h"
 #include "kernel/krnldbg.h"
-#include "lib/shared/string.h"
-#include "structs/bitmap.h"
-#include "memory.h"
+#include "structs/list.h"
 
 int KrnlEntry(void);
 
+void KernelThread(void *args);
+
 int KrnlEntry(void) {
     InitKernel();
-
-    void *page = KrAllocKernelMemPage(3);
-    PrintStr("Page: 0x");
-    PrintHex((uint32_t)page);
-    PrintChar('\n');
 
     PrintStr("\n\n Welcome!\n\n");
 

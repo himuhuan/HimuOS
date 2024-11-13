@@ -12,7 +12,7 @@ CFLAGS = -Wall -Wmissing-prototypes -Wstrict-prototypes -D_KDBG -Werror -fno-sta
 LDFLAGS = -Ttext $(KRN_ENTRY_POINT) -m elf_i386 -e KrnlEntry -Map $(BUILD_DIR)/kernel.map
 OBJS = $(BUILD_DIR)/kernel.o $(BUILD_DIR)/clock_irq.o $(BUILD_DIR)/krnlio_asm.o $(BUILD_DIR)/interrupt.o $(BUILD_DIR)/krnlio.o \
        $(BUILD_DIR)/init.o $(BUILD_DIR)/kernel_asm.o $(BUILD_DIR)/krnldbg.o $(BUILD_DIR)/libc.o $(BUILD_DIR)/bitmap.o \
-       $(BUILD_DIR)/memory.o
+       $(BUILD_DIR)/memory.o $(BUILD_DIR)/sched.o $(BUILD_DIR)/list.o
 SHARED_HEADERS = lib/shared/*.h
 KERNEL_HEADERS = kernel/*.h
 
@@ -47,6 +47,12 @@ $(BUILD_DIR)/libc.o: lib/shared/libc/*.c $(SHARED_HEADERS)
 	$(CC) $(CFLAGS) lib/shared/libc/*.c -o $@
 
 $(BUILD_DIR)/memory.o: kernel/memory.c kernel/memory.h $(SHARED_HEADERS)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(BUILD_DIR)/sched.o: kernel/task/sched.c kernel/task/sched.h kernel/memory.h $(SHARED_HEADERS)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(BUILD_DIR)/list.o: kernel/structs/list.c kernel/structs/list.h kernel/krnltypes.h kernel/interrupt.h $(SHARED_HEADERS)
 	$(CC) $(CFLAGS) $< -o $@
 
 $(BUILD_DIR)/kernel.bin: $(OBJS) 

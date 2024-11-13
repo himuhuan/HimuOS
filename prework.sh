@@ -11,6 +11,5 @@
 nasm -I lib/asm/include/ -o build/mbr.bin boot/mbr.asm \
 && nasm -I lib/asm/include/ -o build/loader.bin boot/loader.asm \
 && dd if=build/mbr.bin of=disk.img bs=512 count=1 conv=notrunc \
-&& dd if=build/loader.bin of=disk.img bs=512 count=4 seek=2 conv=notrunc \
-&& dd if=build/kernel.bin of=disk.img bs=512 count=200 seek=9 conv=notrunc
+&& dd if=build/loader.bin of=disk.img bs=512 count=4 seek=2 conv=notrunc
 
