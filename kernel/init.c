@@ -2,6 +2,7 @@
 #include "interrupt.h"
 #include "lib/device/clock_irq.h"
 #include "lib/kernel/krnlio.h"
+#include "task/sched.h"
 #include "memory.h"
 
 void InitKernel(void) {
@@ -12,6 +13,7 @@ void InitKernel(void) {
 
     PrintStr("Initilizing HimuOS Kernel...\n");
     InitIdt();
-    SetClockIrq();
+    InitClockIrq();
+    InitThread();
     KrnlMemInit();
 }

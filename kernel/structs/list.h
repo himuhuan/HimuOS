@@ -14,7 +14,7 @@
 
 #define CONTAINER_OFFSET(type, field)      (size_t)(&((type *)0)->field)
 
-#define CONTAINER_OF(address, type, field) ((type *)(char *)(address)-CONTAINER_OFFSET(type, field))
+#define CONTAINER_OF(address, type, field) ((type *)((uint32_t)(address) - CONTAINER_OFFSET(type, field)))
 
 struct KR_LIST_ELEMENT {
     struct KR_LIST_ELEMENT *Prev;
