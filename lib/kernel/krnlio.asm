@@ -5,7 +5,7 @@
 ; Kernel I/O functions
 ; Copyright (C) 2024 HimuOS Project, all rights reserved.
 
-; All builtin functions has __himuos__ prefix to avoid conflicts with other functions
+; All builtin functions has  prefix to avoid conflicts with other functions
 
 %include "osbase32.inc"
 
@@ -19,8 +19,8 @@ section .text
 ; get current cursor position
 ; - return ax: cursor position
 ; ---------------------------------------------------------
-global __himuos__getcrpos
-__himuos__getcrpos:
+global getcrpos
+getcrpos:
     push edx
     mov dx, 0x03D4
     mov al, 0x0E
@@ -39,13 +39,13 @@ __himuos__getcrpos:
 ; Function: printc
 ; write a character in stack to the screen
 ; ---------------------------------------------------------
-global __himuos__printc
-__himuos__printc:
+global printc
+printc:
     pushad
     mov ax, SELECTOR_VIDEO
     mov gs, ax
 
-    call __himuos__getcrpos
+    call getcrpos
     mov bx, ax
     mov ecx, [esp + 36]
 
@@ -122,8 +122,8 @@ __himuos__printc:
 ; Function: clscr
 ; clear the screen and set the cursor to the top left corner
 ; ---------------------------------------------------------
-global __himuos__clscr
-__himuos__clscr:
+global clscr
+clscr:
     pushad
     mov ax, SELECTOR_VIDEO
     mov gs, ax
@@ -152,8 +152,8 @@ __himuos__clscr:
 ; Function: printstr
 ; print a string to the screen
 ; ---------------------------------------------------------
-global __himuos__printstr
-__himuos__printstr:
+global printstr
+printstr:
     push ebx
     push ecx
     mov ecx, 0
@@ -163,7 +163,7 @@ __himuos__printstr:
     cmp cl, 0
     jz .printstr_end
     push ecx
-    call __himuos__printc
+    call printc
     add esp, 4
     inc ebx
     jmp .printstr_loop
@@ -173,8 +173,8 @@ __himuos__printstr:
     ret
 ; Function: printintx
 ; print a integer to the screen, 16-bit
-global __himuos__printintx
-__himuos__printintx:
+global printintx
+printintx:
    pushad
    mov ebp, esp
    mov eax, [ebp+4*9]		       ; call的返回地址占4字节+pushad的8个4字节
@@ -224,7 +224,7 @@ __himuos__printintx:
    mov cl,'0'			       ; 输入的数字为全0时，则只打印0
 .put_each_num:
    push ecx			       ; 此时cl中为可打印的字符
-   call __himuos__printc
+   call printc
    add esp, 4
    inc edi			       ; 使edi指向下一个字符
    mov cl, [put_int_buffer+edi]	       ; 获取下一个字符到cl寄存器
@@ -232,3 +232,34 @@ __himuos__printintx:
    jl .put_each_num
    popad
    ret
+
+GLOBAL setcr
+setcr:
+    push ebx
+    push edx
+
+    ; 计算坐标对应的位置
+    movzx eax, byte [esp + 16]
+    mov edx, 80
+    mul edx
+    movzx ebx, byte [esp + 12]
+    add eax, ebx
+    mov ebx, eax
+    
+    mov dx, 0x03d4
+    mov al, 0x0e
+    out dx, al
+    mov dx, 0x03d5
+    mov al, bh
+    out dx, al
+
+    mov dx, 0x03d4
+    mov al, 0x0f
+    out dx, al
+    mov dx, 0x03d5
+    mov al, bl
+    out dx, al
+
+    mov eax, ebx
+    pop edx
+    pop ebx

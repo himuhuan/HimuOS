@@ -46,14 +46,21 @@ static void DefaultIntrHandler(int vectorNumber) {
     if (vectorNumber == 0x27 || vectorNumber == 0x2f)
         return;
 
-#ifndef __HIMUOS_RELEASE__
-    PrintStr("INTR (0x");
+    ClearScreen();
+    PrintStr("------------- !!UNEXPECTED INTERRUPT!! ----------------\n");
+    PrintStr("  INTR (");
     PrintAddr((void *)vectorNumber);
     PrintStr(") : ");
     if (IntrName[vectorNumber] != 0)
         PrintStr(IntrName[vectorNumber]);
-    PrintChar('\n');
-#endif // ^^ !__HIMUOS_RELEASE__ ^^
+    if (vectorNumber == 14) { // page fault
+        uint32_t pageFaultAddr;
+        asm("movl %%cr2, %0" : "=r"(pageFaultAddr));
+        PrintStr("\n  at: ");
+        PrintAddr((void *)pageFaultAddr);
+    }
+    PrintStr("\n-------------------------------------------------------\n");
+
     asm volatile("hlt");
 }
 
@@ -156,4 +163,14 @@ uint8_t EnableIntr(void) {
         asm volatile("sti");
     }
     return oldStatus;
+}
+
+void KrRegisterIntrHandler(uint8_t vectorNo, IntrHandler handler) {
+    PrintStr("-> Handler ");
+    PrintAddr(handler);
+    PrintStr(" installed for interrupt ");
+    PrintInt(vectorNo);
+    PrintChar('\n');
+
+    IntrHandlerTable[vectorNo] = handler;
 }

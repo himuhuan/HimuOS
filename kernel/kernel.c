@@ -9,22 +9,38 @@
 #include "init.h"
 #include "lib/kernel/krnlio.h"
 #include "kernel/krnldbg.h"
-#include "lib/shared/string.h"
-#include "structs/bitmap.h"
-#include "memory.h"
+#include "task/sched.h"
+#include "structs/list.h"
+#include "interrupt.h"
 
 int KrnlEntry(void);
+
+void ChildThreadA(void *);
+void ChildThreadB(void *);
 
 int KrnlEntry(void) {
     InitKernel();
 
-    void *page = KrAllocKernelMemPage(3);
-    PrintStr("Page: 0x");
-    PrintHex((uint32_t)page);
-    PrintChar('\n');
-
     PrintStr("\n\n Welcome!\n\n");
 
-    asm volatile("hlt");
+    (void)KrCreateThread("thread_a", 8, ChildThreadA, "arg A ");
+    (void)KrCreateThread("thread_b", 4, ChildThreadB, "arg B ");
+
+    EnableIntr();
+    while (1) {
+        PrintStr("MAIN ");
+    }
     return 0;
+}
+
+void ChildThreadA(void *arg) {
+    char *p = arg;
+    while (1)
+        PrintStr(p);
+}
+
+void ChildThreadB(void *arg) {
+    char *p = arg;
+    while (1)
+        PrintStr(p);
 }

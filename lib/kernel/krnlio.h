@@ -10,24 +10,26 @@
 
 #include "lib/shared/stdint.h"
 
-/*
- * All builtin functions has __himuos__ prefix to avoid conflicts with other
- * libraries
- */
-
-int  __himuos__getcrpos(void);
-void __himuos__printc(uint8_t c);
-void __himuos__clscr(void);
-void __himuos__printstr(const char *restrict str);
-void __himuos__printintx(void *addr);
+int  getcrpos(void);
+void printc(uint8_t c);
+void clscr(void);
+void printstr(const char *restrict str);
+void printintx(void *addr);
+int  setcr(uint8_t x, uint8_t y);
 
 void PrintInt(int32_t num);
+int  SetCursor(uint8_t /* < 25 */ rows, uint8_t /* < 80 */ cols);
+void PrintPrettyAddr(void *addr, uint8_t useUppercase);
 
-#define GetCursorPos()  __himuos__getcrpos()
-#define PrintChar(c)    __himuos__printc(c)
-#define ClearScreen()   __himuos__clscr()
-#define PrintStr(str)   __himuos__printstr(str)
-#define PrintAddr(addr) __himuos__printintx(addr)
-#define PrintHex(val)   __himuos__printintx((void *)(uint32_t)(val))
+#define GetCursorPos() getcrpos()
+#define PrintChar(c)   printc(c)
+#define ClearScreen()  clscr()
+#define PrintStr(str)  printstr(str)
+#ifdef __HIMUOS_RELEASE__
+#define PrintAddr(addr) printintx(addr)
+#else
+#define PrintAddr(addr) PrintPrettyAddr(addr, 1)
+#endif //! __HIMUOS_RELEASE__
+#define PrintHex(val) printintx((void *)(uint32_t)(val))
 
 #endif // ^^ __HIMUOS__LIB_KRNLIO_H ^^

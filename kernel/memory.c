@@ -48,11 +48,11 @@ static void MemPoolInit(uint32_t totalMem) {
 #if _KDBG
     PrintStr("Memory Summary\n");
     PrintStr("  Available/Total: "); PrintInt(freeMem); PrintChar('/'); PrintInt(totalMem); PrintStr(" BYTES\n");
-    PrintStr("  Kernel Pool: 0x"); PrintHex(gKernelPool.PhyAddrStart); PrintStr(" -> 0x"); 
-    PrintHex(gKernelPool.PhyAddrStart + gKernelPool.PoolSize);
+    PrintStr("  Kernel Pool: "); PrintAddr((void *) gKernelPool.PhyAddrStart); PrintStr(" -> "); 
+    PrintAddr((void *) (gKernelPool.PhyAddrStart + gKernelPool.PoolSize));
     PrintStr(" ("); PrintInt(gKernelPool.PoolSize); PrintStr(" bytes)\n");
-    PrintStr("  User Pool: 0x"); PrintHex(gUserPool.PhyAddrStart); PrintStr(" -> 0x"); 
-    PrintHex(gUserPool.PhyAddrStart + gUserPool.PoolSize);
+    PrintStr("  User Pool: "); PrintAddr((void *) gUserPool.PhyAddrStart); PrintStr(" -> "); 
+    PrintAddr((void *) (gUserPool.PhyAddrStart + gUserPool.PoolSize));
     PrintStr(" ("); PrintInt(gUserPool.PoolSize); PrintStr(" bytes)\n");
 #endif
     // clang-format on
