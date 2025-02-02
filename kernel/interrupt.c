@@ -138,7 +138,7 @@ uint8_t GetIntrStatus(void) {
 
     eflags = 0;
     asm volatile("pushfl; popl %0" : "=g"(eflags));
-    return eflags & EFLAGS_IF;
+    return (EFLAGS_IF & eflags) ? INTR_STATUS_ON : INTR_STATUS_OFF;
 }
 
 uint8_t SetIntrStatus(uint16_t status) { return (status & INTR_STATUS_ON) ? EnableIntr() : DisableIntr(); }
@@ -148,7 +148,7 @@ uint8_t DisableIntr(void) {
 
     oldStatus = GetIntrStatus();
     if (oldStatus == INTR_STATUS_ON) {
-        oldStatus = INTR_STATUS_OFF;
+        // PrintStr("DisableIntr\n");
         asm volatile("cli" : : : "memory");
     }
     return oldStatus;
@@ -159,7 +159,7 @@ uint8_t EnableIntr(void) {
 
     oldStatus = GetIntrStatus();
     if (oldStatus == INTR_STATUS_OFF) {
-        oldStatus = INTR_STATUS_ON;
+        // PrintStr("EnableIntr\n");
         asm volatile("sti");
     }
     return oldStatus;

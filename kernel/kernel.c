@@ -23,24 +23,32 @@ int KrnlEntry(void) {
 
     PrintStr("\n\n Welcome!\n\n");
 
-    (void)KrCreateThread("thread_a", 8, ChildThreadA, "arg A ");
-    (void)KrCreateThread("thread_b", 4, ChildThreadB, "arg B ");
+    (void)KrCreateThread("thread_a", 8, ChildThreadA, "ArgA ");
+    (void)KrCreateThread("thread_b", 4, ChildThreadB, "ArgB ");
 
     EnableIntr();
     while (1) {
+        DisableIntr();
         PrintStr("MAIN ");
+        EnableIntr();
     }
     return 0;
 }
 
 void ChildThreadA(void *arg) {
     char *p = arg;
-    while (1)
+    while (1) {
+        DisableIntr();
         PrintStr(p);
+        EnableIntr();
+    }
 }
 
 void ChildThreadB(void *arg) {
     char *p = arg;
-    while (1)
+    while (1) {
+        DisableIntr();
         PrintStr(p);
+        EnableIntr();
+    }
 }
