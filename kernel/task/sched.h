@@ -98,6 +98,10 @@ struct KR_TASK_STRUCT *KrGetRunningThreadPcb(void);
 
 void KrDefaultSchedule(void);
 
+void KrBlockThread(enum KR_THREAD_STATE state);
+
+void KrUnblockThread(struct KR_TASK_STRUCT *thread);
+
 void InitThread(void);
 
 #define PCB_CANARY_MAGIC 0x13140721
