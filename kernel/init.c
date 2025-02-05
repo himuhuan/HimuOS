@@ -2,6 +2,7 @@
 #include "interrupt.h"
 #include "lib/device/clock_irq.h"
 #include "lib/kernel/krnlio.h"
+#include "lib/device/console.h"
 #include "task/sched.h"
 #include "memory.h"
 
@@ -15,5 +16,6 @@ void InitKernel(void) {
     InitIdt();
     InitClockIrq();
     InitThread();
+    InitConsole();
     KrnlMemInit();
 }

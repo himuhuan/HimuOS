@@ -7,10 +7,8 @@
  */
 
 #include "init.h"
-#include "lib/kernel/krnlio.h"
-#include "kernel/krnldbg.h"
 #include "task/sync.h"
-#include "structs/list.h"
+#include "device/console.h"
 #include "interrupt.h"
 
 int KrnlEntry(void);
@@ -18,23 +16,15 @@ int KrnlEntry(void);
 void ChildThreadA(void *);
 void ChildThreadB(void *);
 
-struct KR_LOCK gLock;
-
 int KrnlEntry(void) {
     InitKernel();
-
-    PrintStr("\n\n Welcome!\n\n");
-
-    KrLockInit(&gLock);
 
     (void)KrCreateThread("thread_a", 8, ChildThreadA, "ArgA ");
     (void)KrCreateThread("thread_b", 4, ChildThreadB, "ArgB ");
 
     EnableIntr();
     while (1) {
-        KrLockAcquire(&gLock);
-        PrintStr("MAIN ");
-        KrLockRelease(&gLock);
+        ConsoleWriteStr("MAIN ");
     }
     return 0;
 }
@@ -42,17 +32,13 @@ int KrnlEntry(void) {
 void ChildThreadA(void *arg) {
     char *p = arg;
     while (1) {
-        KrLockAcquire(&gLock);
-        PrintStr(p);
-        KrLockRelease(&gLock);
+        ConsoleWriteStr(p);
     }
 }
 
 void ChildThreadB(void *arg) {
     char *p = arg;
     while (1) {
-        KrLockAcquire(&gLock);
-        PrintStr(p);
-        KrLockRelease(&gLock);
+        ConsoleWriteStr(p);
     }
 }
