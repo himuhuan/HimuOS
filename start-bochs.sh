@@ -1,2 +1,2 @@
 #! /bin/bash
-make rebuild && bochs -f ./bochsrc
+make all && bochs -f ./bochsrc
