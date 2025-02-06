@@ -13,32 +13,11 @@
 
 int KrnlEntry(void);
 
-void ChildThreadA(void *);
-void ChildThreadB(void *);
-
 int KrnlEntry(void) {
     InitKernel();
 
-    (void)KrCreateThread("thread_a", 8, ChildThreadA, "ArgA ");
-    (void)KrCreateThread("thread_b", 4, ChildThreadB, "ArgB ");
-
     EnableIntr();
-    while (1) {
-        ConsoleWriteStr("MAIN ");
-    }
+    while (1)
+        ;
     return 0;
-}
-
-void ChildThreadA(void *arg) {
-    char *p = arg;
-    while (1) {
-        ConsoleWriteStr(p);
-    }
-}
-
-void ChildThreadB(void *arg) {
-    char *p = arg;
-    while (1) {
-        ConsoleWriteStr(p);
-    }
 }
