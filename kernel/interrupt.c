@@ -74,7 +74,7 @@ static void PicInit(void) {
     outb(PIC_S_DATA, 0x02);
     outb(PIC_S_DATA, 0x01);
 
-    outb(PIC_M_DATA, 0xfd);
+    outb(PIC_M_DATA, 0xfc);
     outb(PIC_S_DATA, 0xff);
 }
 

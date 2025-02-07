@@ -7,6 +7,7 @@
  */
 #include "krnltypes.h"
 #include "keyboard.h"
+#include "iocbuf.h"
 #include "interrupt.h"
 #include "lib/kernel/krnlio.h"
 #include "lib/asm/i386asm.h"
@@ -40,6 +41,8 @@
 #define CTRL_R_MAKE     0xe01d
 #define CTRL_R_BREAK    0xe09d
 #define CAPS_LOCK_MAKE  0x3a
+
+struct IO_CIR_BUFFER gKeyboardBuffer;
 
 static BOOL kCtrlStatus, kShiftStatus, kAltStatus, kCapsLockStatus, kExtScancode;
 
@@ -156,7 +159,10 @@ static void IntrKeyboardHandler(void) {
         scancode &= 0x00ff;
         ch = kKeymap[scancode][shift];
         if (ch) {
-            PrintChar(ch);
+            if (!IcbFull(&gKeyboardBuffer)) {
+                // PrintChar(ch);
+                IcbPut(&gKeyboardBuffer, ch);
+            }
             return;
         }
 
@@ -188,6 +194,7 @@ static void IntrKeyboardHandler(void) {
 
 void InitKeyboard(void) {
     PrintStr("InitKeyboard START\n");
+    IcbInit(&gKeyboardBuffer);
     KrRegisterIntrHandler(0x21, IntrKeyboardHandler);
     PrintStr("InitKeyboard END\n");
 }
