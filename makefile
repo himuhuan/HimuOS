@@ -12,7 +12,8 @@ CFLAGS = -Wall -Wmissing-prototypes -Wstrict-prototypes -D_KDBG -Werror -fno-sta
 LDFLAGS = -Ttext $(KRN_ENTRY_POINT) -m elf_i386 -e KrnlEntry -Map $(BUILD_DIR)/kernel.map
 OBJS = $(BUILD_DIR)/kernel.o $(BUILD_DIR)/clock_irq.o $(BUILD_DIR)/krnlio_asm.o $(BUILD_DIR)/interrupt.o $(BUILD_DIR)/krnlio.o \
        $(BUILD_DIR)/init.o $(BUILD_DIR)/kernel_asm.o $(BUILD_DIR)/krnldbg.o $(BUILD_DIR)/libc.o $(BUILD_DIR)/bitmap.o \
-       $(BUILD_DIR)/memory.o $(BUILD_DIR)/sched_asm.o $(BUILD_DIR)/sched.o $(BUILD_DIR)/list.o
+       $(BUILD_DIR)/memory.o $(BUILD_DIR)/sched_asm.o $(BUILD_DIR)/sched.o $(BUILD_DIR)/sync.o $(BUILD_DIR)/list.o \
+       $(BUILD_DIR)/console.o $(BUILD_DIR)/keyboard.o $(BUILD_DIR)/iocbuf.o
 SHARED_HEADERS = lib/shared/*.h
 KERNEL_HEADERS = kernel/*.h
 
@@ -52,10 +53,22 @@ $(BUILD_DIR)/libc.o: lib/shared/libc/*.c $(SHARED_HEADERS)
 $(BUILD_DIR)/memory.o: kernel/memory.c kernel/memory.h $(SHARED_HEADERS)
 	$(CC) $(CFLAGS) $< -o $@
 
-$(BUILD_DIR)/sched.o: kernel/task/sched.c kernel/task/sched.h kernel/memory.h $(SHARED_HEADERS)
+$(BUILD_DIR)/sched.o: kernel/task/sched.c kernel/task/sched.h  kernel/memory.h $(SHARED_HEADERS)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(BUILD_DIR)/sync.o: kernel/task/sync.c kernel/task/sync.h kernel/task/sched.h  kernel/memory.h $(KERNEL_HEADERS) $(SHARED_HEADERS)
 	$(CC) $(CFLAGS) $< -o $@
 
 $(BUILD_DIR)/list.o: kernel/structs/list.c kernel/structs/list.h $(KERNEL_HEADERS) $(SHARED_HEADERS)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(BUILD_DIR)/console.o: lib/device/console.c lib/device/console.h $(KERNEL_HEADERS) $(SHARED_HEADERS)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(BUILD_DIR)/keyboard.o: lib/device/keyboard.c lib/device/keyboard.h lib/device/iocbuf.h $(KERNEL_HEADERS) $(SHARED_HEADERS)
+	$(CC) $(CFLAGS) $< -o $@
+
+$(BUILD_DIR)/iocbuf.o: lib/device/iocbuf.c lib/device/iocbuf.h $(KERNEL_HEADERS) $(SHARED_HEADERS)
 	$(CC) $(CFLAGS) $< -o $@
 
 $(BUILD_DIR)/kernel.bin: $(OBJS) 
@@ -74,7 +87,7 @@ clean:
 	cd $(BUILD_DIR); rm -f ./*
 
 build: $(BUILD_DIR)/kernel.bin
-
+	
 all: make_dir build hd
 
 rebuild: clean all

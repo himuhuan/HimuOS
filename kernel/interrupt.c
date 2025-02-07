@@ -18,7 +18,7 @@
 #define PIC_S_CTRL   0xa0
 #define PIC_S_DATA   0xa1
 
-#define IDT_DESC_CNT 33
+#define IDT_DESC_CNT 0x30
 
 #define EFLAGS_IF    0x00000200
 
@@ -73,7 +73,8 @@ static void PicInit(void) {
     outb(PIC_S_DATA, 0x28);
     outb(PIC_S_DATA, 0x02);
     outb(PIC_S_DATA, 0x01);
-    outb(PIC_M_DATA, 0xfe);
+
+    outb(PIC_M_DATA, 0xfc);
     outb(PIC_S_DATA, 0xff);
 }
 
@@ -138,7 +139,7 @@ uint8_t GetIntrStatus(void) {
 
     eflags = 0;
     asm volatile("pushfl; popl %0" : "=g"(eflags));
-    return eflags & EFLAGS_IF;
+    return (EFLAGS_IF & eflags) ? INTR_STATUS_ON : INTR_STATUS_OFF;
 }
 
 uint8_t SetIntrStatus(uint16_t status) { return (status & INTR_STATUS_ON) ? EnableIntr() : DisableIntr(); }
@@ -148,7 +149,7 @@ uint8_t DisableIntr(void) {
 
     oldStatus = GetIntrStatus();
     if (oldStatus == INTR_STATUS_ON) {
-        oldStatus = INTR_STATUS_OFF;
+        // PrintStr("DisableIntr\n");
         asm volatile("cli" : : : "memory");
     }
     return oldStatus;
@@ -159,7 +160,7 @@ uint8_t EnableIntr(void) {
 
     oldStatus = GetIntrStatus();
     if (oldStatus == INTR_STATUS_OFF) {
-        oldStatus = INTR_STATUS_ON;
+        // PrintStr("EnableIntr\n");
         asm volatile("sti");
     }
     return oldStatus;

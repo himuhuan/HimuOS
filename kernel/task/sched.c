@@ -110,3 +110,31 @@ void InitThread(void) {
     BuildKernelMainThread();
     PrintStr("InitThread DONE\n");
 }
+
+void KrBlockThread(enum KR_THREAD_STATE state) {
+    uint8_t                intr;
+    struct KR_TASK_STRUCT *pt;
+
+    KASSERT(state == KR_THREAD_STATE_BLOCKED || state == KR_THREAD_STATE_WAITING || state == KR_THREAD_STATE_HANGING);
+    intr      = DisableIntr();
+    pt        = KrGetRunningThreadPcb();
+    pt->State = state;
+    KrDefaultSchedule();
+    SetIntrStatus(intr);
+}
+
+void KrUnblockThread(struct KR_TASK_STRUCT *thread) {
+    uint8_t intr;
+
+    KASSERT(thread->State == KR_THREAD_STATE_BLOCKED || thread->State == KR_THREAD_STATE_HANGING ||
+            thread->State == KR_THREAD_STATE_WAITING);
+
+    intr = DisableIntr();
+    if (thread->State != KR_THREAD_STATE_READY) {
+        if (KrListHasElement(&gReadyThreadList, &thread->SchedTag))
+            KPANIC("KrUnblockThread: blocked thread in Ready List");
+        KrInsertListHeader(&gReadyThreadList, &thread->SchedTag);
+        thread->State = KR_THREAD_STATE_READY;
+    }
+    SetIntrStatus(intr);
+}

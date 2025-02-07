@@ -7,40 +7,47 @@
  */
 
 #include "init.h"
-#include "lib/kernel/krnlio.h"
-#include "kernel/krnldbg.h"
-#include "task/sched.h"
-#include "structs/list.h"
+#include "task/sync.h"
+#include "device/console.h"
+#include "device/keyboard.h"
 #include "interrupt.h"
 
-int KrnlEntry(void);
-
-void ChildThreadA(void *);
-void ChildThreadB(void *);
+int  KrnlEntry(void);
+void KrThreadA(void *);
+void KrThreadB(void *);
 
 int KrnlEntry(void) {
     InitKernel();
 
-    PrintStr("\n\n Welcome!\n\n");
-
-    (void)KrCreateThread("thread_a", 8, ChildThreadA, "arg A ");
-    (void)KrCreateThread("thread_b", 4, ChildThreadB, "arg B ");
+    KrCreateThread("ta", 31, KrThreadA, " A_");
+    KrCreateThread("tb", 31, KrThreadB, " B_");
 
     EnableIntr();
-    while (1) {
-        PrintStr("MAIN ");
-    }
+    while (1)
+        ;
     return 0;
 }
 
-void ChildThreadA(void *arg) {
-    char *p = arg;
-    while (1)
-        PrintStr(p);
+void KrThreadA(void *arg) {
+    while (1) {
+        uint8_t status = DisableIntr();
+        if (!IcbEmpty(&gKeyboardBuffer)) {
+            ConsoleWriteStr((const char *)arg);
+            char c = IcbGet(&gKeyboardBuffer);
+            ConsoleWriteChar(c);
+        }
+        SetIntrStatus(status);
+    }
 }
 
-void ChildThreadB(void *arg) {
-    char *p = arg;
-    while (1)
-        PrintStr(p);
+void KrThreadB(void *arg) {
+    while (1) {
+        uint8_t status = DisableIntr();
+        if (!IcbEmpty(&gKeyboardBuffer)) {
+            ConsoleWriteStr((const char *)arg);
+            char c = IcbGet(&gKeyboardBuffer);
+            ConsoleWriteChar(c);
+        }
+        SetIntrStatus(status);
+    }
 }
