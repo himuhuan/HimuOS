@@ -1,0 +1,3 @@
+If:
+  CompileFlags:
+    CompilationDatabase: compile_commands.json
