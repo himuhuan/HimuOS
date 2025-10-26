@@ -28,7 +28,7 @@ LD = ld
 CFLAGS = -Wall -Wextra -Wmissing-prototypes -Wstrict-prototypes -Werror -fno-stack-protector \
 	-nostdlib -fno-builtin -nostartfiles -nodefaultlibs -nostdinc -ffreestanding -fdiagnostics-color \
 	-c -m64 -g -mcmodel=large -Isrc -Isrc/include -Isrc/include/libc \
-	-DKRNL_VERSTR=\"$(KRNL_VERSTR)\"
+	-DKRNL_VERSTR=\"$(KRNL_VERSTR)\" -D__HO_DEBUG_BUILD__=1
 LDFLAGS = -T himuos.ld -nostdlib -static -e kmain -Map=build/kernel/bin/kernel.map
 # == Sources and Targets
 
@@ -44,15 +44,17 @@ OBJS_EFI     := $(patsubst src/%.c,build/efi/obj/%.o,$(SRCS_EFI_ALL))
 TARGET_EFI   := build/efi/bin/main.efi
 
 SRCS_KERNEL_ONLY := src/kernel/hoentry.c \
-	src/drivers/video/video_device.c \
+	src/drivers/video/video_driver.c \
 	src/drivers/video/efi/video_efi.c \
 	src/drivers/serial/serial.c \
 	src/lib/tui/bitmap_font.c \
-	src/lib/tui/text_render.c \
-	src/lib/tui/text_sink.c \
 	src/kernel/init.c \
 	src/kernel/hodbg.c \
 	src/kernel/console/console.c \
+	src/kernel/console/console_device.c \
+	src/kernel/console/sinks/gfx_console_sink.c \
+	src/kernel/console/sinks/serial_console_sink.c \
+	src/kernel/console/sinks/mux_console_sink.c \
 	src/assets/fonts/font8x16.c
 	
 SRCS_KERNEL_ALL  := $(SRCS_KERNEL_ONLY) $(SRCS_SHARED)

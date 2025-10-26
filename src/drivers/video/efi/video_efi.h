@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "drivers/video_device.h"
+#include "drivers/video_driver.h"
 
 // Get the vtable for UEFI video operations
 const VD_VTABLE *VdEfiGetVTable(void);

@@ -7,6 +7,8 @@
  * Copyright(c) 2024-2025 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
+#pragma once
+
 #include "_hobase.h"
 
 typedef struct

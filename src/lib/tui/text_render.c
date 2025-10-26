@@ -1,7 +1,7 @@
 #include "lib/tui/text_render.h"
 
 HO_STATUS
-TrInit(TEXT_RENDERER *renderer, VIDEO_DEVICE *device, BITMAP_FONT_INFO *font)
+TrInit(TEXT_RENDERER *renderer, VIDEO_DRIVER *device, BITMAP_FONT_INFO *font)
 {
     if (!renderer || !device || !font)
         return EC_ILLEGAL_ARGUMENT;
@@ -20,7 +20,7 @@ TrRenderChar(TEXT_RENDERER *renderer, TR_RENDER_CHAR_PARAMS *params)
     if (params->Char >= renderer->Font->GlyphCount)
         return EC_ILLEGAL_ARGUMENT; // Invalid character code
 
-    VIDEO_DEVICE *device = renderer->Device;
+    VIDEO_DRIVER *device = renderer->Device;
     uint16_t scale = (params->Scale == 0) ? 1 : params->Scale;
     VD_RENDER_RECT_PARAMS rect_params = {0};
     if (params->Char == ' ')

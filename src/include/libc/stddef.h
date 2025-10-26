@@ -20,6 +20,7 @@
 #define _SIZE_T_DEFINED
 #ifdef __x86_64__
 typedef unsigned long long size_t;
+typedef long long ssize_t;
 #else
 typedef unsigned long size_t;
 #endif

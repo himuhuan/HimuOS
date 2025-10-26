@@ -11,7 +11,6 @@
 #include <kernel/hodbg.h>
 #include <kernel/init.h>
 
-
 void kmain(STAGING_BLOCK *stagingBlock);
 
 void

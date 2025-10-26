@@ -29,6 +29,6 @@ SerialWriteStr(const char *s)
 {
     while (*s)
     {
-        SerialWriteByte(PORT_COM1, *s++);
+        SerialWriteByte(COM1_PORT, *s++);
     }
 }

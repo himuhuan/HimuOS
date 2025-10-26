@@ -1,17 +1,17 @@
-#include "drivers/video_device.h"
+#include "drivers/video_driver.h"
 #include "libc/string.h"
 #include <kernel/hodbg.h>
 #include "efi/video_efi.h"
 
 void HO_KERNEL_API
-VdInit(VIDEO_DEVICE *pd, BOOT_INFO_HEADER *info)
+VdInit(VIDEO_DRIVER *pd, BOOT_INFO_HEADER *info)
 {
     if (pd == NULL || info == NULL)
     {
         return;
     }
 
-    memset(pd, 0, sizeof(VIDEO_DEVICE));
+    memset(pd, 0, sizeof(VIDEO_DRIVER));
     pd->Type = info->VideoModeType;
     kprintf("Video mode type: %d\n", pd->Type);
     if (pd->Type != VIDEO_MODE_TYPE_UEFI)
@@ -27,38 +27,38 @@ VdInit(VIDEO_DEVICE *pd, BOOT_INFO_HEADER *info)
     pd->PixelsPerScanLine = info->PixelsPerScanLine;
     pd->FrameBuffer = (void *)info->FramebufferPhys;
     pd->FrameBufferSize = info->FramebufferSize;
-    pd->_Details = VdEfiGetVTable();
+    pd->Methods = VdEfiGetVTable();
 }
 
 HO_STATUS HO_KERNEL_API
-VdRenderPixel(VIDEO_DEVICE *device, uint32_t x, uint32_t y, COLOR32 color)
+VdRenderPixel(VIDEO_DRIVER *device, uint32_t x, uint32_t y, COLOR32 color)
 {
     if (device == NULL)
         return EC_ILLEGAL_ARGUMENT;
-    if (device->_Details->RenderPixel == NULL)
+    if (device->Methods->RenderPixel == NULL)
         return EC_NOT_SUPPORTED;
 
-    return device->_Details->RenderPixel(device, x, y, color);
+    return device->Methods->RenderPixel(device, x, y, color);
 }
 
 HO_STATUS HO_KERNEL_API
-VdRenderRect(VIDEO_DEVICE *device, VD_RENDER_RECT_PARAMS *params)
+VdRenderRect(VIDEO_DRIVER *device, VD_RENDER_RECT_PARAMS *params)
 {
     if (device == NULL || params == NULL)
         return EC_ILLEGAL_ARGUMENT;
-    if (device->_Details->RenderRect == NULL)
+    if (device->Methods->RenderRect == NULL)
         return EC_NOT_SUPPORTED;
 
-    return device->_Details->RenderRect(device, params);
+    return device->Methods->RenderRect(device, params);
 }
 
 HO_STATUS HO_KERNEL_API
-VdClearScreen(VIDEO_DEVICE *device, uint32_t color)
+VdClearScreen(VIDEO_DRIVER *device, uint32_t color)
 {
     if (device == NULL)
         return EC_ILLEGAL_ARGUMENT;
-    if (device->_Details->ClearScreen == NULL)
+    if (device->Methods->ClearScreen == NULL)
         return EC_NOT_SUPPORTED;
 
-    return device->_Details->ClearScreen(device, color);
+    return device->Methods->ClearScreen(device, color);
 }

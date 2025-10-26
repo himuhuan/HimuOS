@@ -1,7 +1,7 @@
 #include "video_efi.h"
 
 static uint32_t HO_NODISCARD
-EfiToPhysColor(VIDEO_DEVICE *self, COLOR32 color)
+EfiToPhysColor(VIDEO_DRIVER *self, COLOR32 color)
 {
     uint8_t r = GET_RED_PART(color);
     uint8_t g = GET_GREEN_PART(color);
@@ -21,7 +21,7 @@ EfiToPhysColor(VIDEO_DEVICE *self, COLOR32 color)
 }
 
 static HO_STATUS HO_NODISCARD
-EfiClearScreen(VIDEO_DEVICE *self, COLOR32 color)
+EfiClearScreen(VIDEO_DRIVER *self, COLOR32 color)
 {
     if (self == NULL || self->FrameBuffer == NULL)
     {
@@ -42,7 +42,7 @@ EfiClearScreen(VIDEO_DEVICE *self, COLOR32 color)
 }
 
 static HO_STATUS HO_NODISCARD
-EfiRenderPixel(VIDEO_DEVICE *self, uint32_t x, uint32_t y, COLOR32 color)
+EfiRenderPixel(VIDEO_DRIVER *self, uint32_t x, uint32_t y, COLOR32 color)
 {
     uint32_t hr = self->HorizontalResolution;
     if (x >= hr || y >= self->VerticalResolution)
@@ -58,7 +58,7 @@ EfiRenderPixel(VIDEO_DEVICE *self, uint32_t x, uint32_t y, COLOR32 color)
 }
 
 static HO_STATUS HO_NODISCARD
-EfiRenderRect(VIDEO_DEVICE *self, VD_RENDER_RECT_PARAMS *params)
+EfiRenderRect(VIDEO_DRIVER *self, VD_RENDER_RECT_PARAMS *params)
 {
     uint32_t x, y;
     HO_STATUS status;

@@ -1,13 +1,8 @@
 /**
  * HimuOperatingSystem
  *
- * File: video_device.h
+ * File: video_driver.h
  * Description:
- * This header defines the video mode structure for the device video subsystem.
- *
- * `VIDEO_DEVICE` provides a unified structure for different video environments, for example,
- * the kernel may be booted in UEFI or legacy mode.
- *
  * When the kernel is booted in UEFI mode, the `FrameBuffer` will point to the buffer
  * provided by the UEFI firmware. In legacy mode, it may point to a different buffer
  * depending on the video hardware and BIOS settings.
@@ -29,14 +24,14 @@ typedef struct
     BOOL Filled;
 } VD_RENDER_RECT_PARAMS;
 
-struct _VIDEO_DEVICE;
+struct _VIDEO_DRIVER;
 
 typedef struct
 {
-    uint32_t(HO_NODISCARD *ToPhysColor)(struct _VIDEO_DEVICE *self, COLOR32 color);
-    HO_STATUS(HO_NODISCARD *ClearScreen)(struct _VIDEO_DEVICE *self, COLOR32 color);
-    HO_STATUS(HO_NODISCARD *RenderPixel)(struct _VIDEO_DEVICE *self, uint32_t x, uint32_t y, COLOR32 color);
-    HO_STATUS(HO_NODISCARD *RenderRect)(struct _VIDEO_DEVICE *self, VD_RENDER_RECT_PARAMS *params);
+    uint32_t(HO_NODISCARD *ToPhysColor)(struct _VIDEO_DRIVER *self, COLOR32 color);
+    HO_STATUS(HO_NODISCARD *ClearScreen)(struct _VIDEO_DRIVER *self, COLOR32 color);
+    HO_STATUS(HO_NODISCARD *RenderPixel)(struct _VIDEO_DRIVER *self, uint32_t x, uint32_t y, COLOR32 color);
+    HO_STATUS(HO_NODISCARD *RenderRect)(struct _VIDEO_DRIVER *self, VD_RENDER_RECT_PARAMS *params);
 } VD_VTABLE;
 
 /**
@@ -46,7 +41,7 @@ typedef struct
  * within the operating system. It typically contains information required for
  * video output operations and device management.
  */
-typedef struct _VIDEO_DEVICE
+typedef struct _VIDEO_DRIVER
 {
     enum VIDEO_MODE_TYPE Type;     // Type of video mode (UEFI or Legacy)
     enum PIXEL_FORMAT Format;      // Pixel format (RGB or BGR)
@@ -55,8 +50,8 @@ typedef struct _VIDEO_DEVICE
     uint32_t PixelsPerScanLine;    // Number of pixels per scan line
     void *FrameBuffer;
     uint64_t FrameBufferSize;  // Size of the framebuffer in bytes
-    const VD_VTABLE *_Details; // !! Private, do not modify directly !!
-} VIDEO_DEVICE;
+    const VD_VTABLE *Methods;
+} VIDEO_DRIVER;
 
 /**
  * @brief Initialize the video device context.
@@ -67,7 +62,7 @@ typedef struct _VIDEO_DEVICE
  * @param pd Video device to initialize
  * @param info Boot information header
  */
-void HO_KERNEL_API VdInit(VIDEO_DEVICE *pd, BOOT_INFO_HEADER *info);
+void HO_KERNEL_API VdInit(VIDEO_DRIVER *pd, BOOT_INFO_HEADER *info);
 
 /**
  * @brief Renders a single pixel on the specified video device.
@@ -81,7 +76,7 @@ void HO_KERNEL_API VdInit(VIDEO_DEVICE *pd, BOOT_INFO_HEADER *info);
  * @param color The COLOR32 value to set for the pixel.
  * @return HO_STATUS indicating the success or failure of the operation.
  */
-HO_STATUS HO_KERNEL_API VdRenderPixel(VIDEO_DEVICE *device, uint32_t x, uint32_t y, COLOR32 color);
+HO_STATUS HO_KERNEL_API VdRenderPixel(VIDEO_DRIVER *device, uint32_t x, uint32_t y, COLOR32 color);
 
 /**
  * @brief Render a rectangle on the video device.
@@ -92,7 +87,7 @@ HO_STATUS HO_KERNEL_API VdRenderPixel(VIDEO_DEVICE *device, uint32_t x, uint32_t
  * @param params Pointer to the parameters defining the rectangle's properties (position, size, color, etc.).
  * @return HO_STATUS indicating success or failure of the operation.
  */
-HO_STATUS HO_KERNEL_API VdRenderRect(VIDEO_DEVICE *device, VD_RENDER_RECT_PARAMS *params);
+HO_STATUS HO_KERNEL_API VdRenderRect(VIDEO_DRIVER *device, VD_RENDER_RECT_PARAMS *params);
 
 /**
  * @brief Clear the entire screen of the video device with a specified color.
@@ -103,4 +98,4 @@ HO_STATUS HO_KERNEL_API VdRenderRect(VIDEO_DEVICE *device, VD_RENDER_RECT_PARAMS
  * @param color The color to fill the screen with, represented as a 32-bit unsigned integer.
  * @return HO_STATUS indicating success or failure of the operation.
  */
-HO_STATUS HO_KERNEL_API VdClearScreen(VIDEO_DEVICE *device, uint32_t color);
+HO_STATUS HO_KERNEL_API VdClearScreen(VIDEO_DRIVER *device, uint32_t color);

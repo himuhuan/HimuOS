@@ -1,114 +1,74 @@
 #include <kernel/console.h>
 #include <string.h>
-#include <hostdlib.h>
 #include <stdarg.h>
+#include <kernel/hodbg.h>
+#include <hostdlib.h>
+#include "console_device.h"
+#include "sinks/gfx_console_sink.h"
+#include "sinks/mux_console_sink.h"
+#include "sinks/serial_console_sink.h"
 
-#define MAX_FORMAT_BUFFER 21
+#define MAX_FORMAT_BUFFER 64
 
-static CONSOLE kKrnlConsole;
+//
+// Global Variables
+//
 
-HO_KERNEL_API void
-ConInit(void)
+static CONSOLE_DEVICE gConsoleDevice;
+static GFX_CONSOLE_SINK gGfxConsoleSink;
+#if __HO_DEBUG_BUILD__
+static SERIAL_CONSOLE_SINK gSerialConsoleSink;
+static MUX_CONSOLE_SINK gMuxConsoleSink;
+#endif
+static BOOL gConsoleInitialized = FALSE;
+
+HO_PUBLIC_API HO_STATUS
+ConsoleInit(VIDEO_DRIVER *driver, BITMAP_FONT_INFO *font)
 {
-    memset(&kKrnlConsole, 0, sizeof(kKrnlConsole));
+    if (gConsoleInitialized)
+        return EC_SUCCESS;
+#ifndef __HO_DEBUG_BUILD__
+    // In release builds, we only use GfxConSink
+    GfxConSinkInit(&gGfxConsoleSink, driver, font, 1);
+    ConDevInit(&gConsoleDevice, (CONSOLE_SINK *)&gGfxConsoleSink);
+#else
+    MuxConSinkInit(&gMuxConsoleSink);
+    GfxConSinkInit(&gGfxConsoleSink, driver, font, 1);
+    MuxConSinkAddSink(&gMuxConsoleSink, (CONSOLE_SINK *)&gGfxConsoleSink); // As primary sink
+    SerialConSinkInit(&gSerialConsoleSink, COM1_PORT);
+    MuxConSinkAddSink(&gMuxConsoleSink, (CONSOLE_SINK *)&gSerialConsoleSink);
+    ConDevInit(&gConsoleDevice, (CONSOLE_SINK *)&gMuxConsoleSink);
+#endif
+    gConsoleInitialized = TRUE;
+    return EC_SUCCESS;
 }
 
-HO_KERNEL_API void
-ConAddSink(CONSOLE_SINK *sink)
+HO_PUBLIC_API CONSOLE_DEVICE *
+ConsoleGetGlobalDevice(void)
 {
-    if (kKrnlConsole.SinkCnt >= MAX_CONSOLE_SINKS)
-        return;
-    kKrnlConsole.Sinks[kKrnlConsole.SinkCnt] = sink;
-    kKrnlConsole.SinkCnt++;
+    return &gConsoleDevice;
 }
 
-HO_KERNEL_API MAYBE_UNUSED void
-ConRemoveSink(const char *name)
+HO_PUBLIC_API int
+ConsoleWriteChar(char c)
 {
-    for (uint8_t i = 0; i < kKrnlConsole.SinkCnt; i++)
-    {
-        if (strcmp(kKrnlConsole.Sinks[i]->Name, name) == 0)
-        {
-            // Shift remaining sinks left
-            for (uint8_t j = i; j < kKrnlConsole.SinkCnt - 1; j++)
-            {
-                kKrnlConsole.Sinks[j] = kKrnlConsole.Sinks[j + 1];
-            }
-            kKrnlConsole.SinkCnt--;
-            return;
-        }
-    }
+    if (!gConsoleInitialized)
+        return -1;
+
+    return ConDevPutChar(&gConsoleDevice, c);
 }
 
-/**
- * ConPutChar - Put a character to all console sinks.
- * @return The character written as an unsigned char cast to an int or EOF on error.
- */
-HO_KERNEL_API int
-ConPutChar(int c)
+HO_PUBLIC_API uint64_t
+ConsoleWrite(const char *str)
 {
-    int result = c;
-    for (uint8_t i = 0; i < kKrnlConsole.SinkCnt; i++)
-    {
-        if (kKrnlConsole.Sinks[i]->PutChar)
-        {
-            int res = kKrnlConsole.Sinks[i]->PutChar(kKrnlConsole.Sinks[i], c);
-            if (res == EOF)
-                result = EOF; // If any sink fails, return EOF
-        }
-    }
-    return result;
+    if (!gConsoleInitialized)
+        return 0;
+
+    return ConDevPutStr(&gConsoleDevice, str);
 }
 
-/**
- * @brief Outputs a null-terminated string to the console.
- *
- * This function writes the provided string to the system console.
- *
- * @param s Pointer to a null-terminated string to be displayed.
- * @return The number of characters written as a 64-bit unsigned integer.
- */
-HO_KERNEL_API uint64_t
-ConPutStr(const char *s)
-{
-    uint64_t count = 0;
-    while (*s)
-    {
-        if (ConPutChar(*s) == EOF)
-            break; // Stop on error
-        s++;
-        count++;
-    }
-    return count;
-}
-
-/**
- * @brief Writes up to 'nc' characters from the string 's' to the console.
- *
- * This function outputs at most 'nc' characters from the null-terminated string 's'
- * to the console. If the length of 's' is less than 'nc', only the available characters
- * are written.
- *
- * @param s Pointer to the null-terminated string to be written.
- * @param nc Maximum number of characters to write from the string.
- * @return The number of characters actually written to the console.
- */
-HO_KERNEL_API uint64_t
-ConPutStrN(const char *s, uint64_t nc)
-{
-    uint64_t count = 0;
-    while (*s && count < nc)
-    {
-        if (ConPutChar(*s) == EOF)
-            break; // Stop on error
-        s++;
-        count++;
-    }
-    return count;
-}
-
-HO_KERNEL_API uint64_t
-ConFormatPrint(const char *fmt, ...)
+HO_PUBLIC_API uint64_t
+ConsoleWriteFmt(const char *fmt, ...)
 {
     VA_LIST args;
     VA_START(args, fmt);
@@ -120,7 +80,7 @@ ConFormatPrint(const char *fmt, ...)
     {
         if (*p != '%')
         {
-            (void)ConPutChar(*p);
+            (void)ConsoleWriteChar(*p);
             written++;
             continue;
         }
@@ -130,63 +90,90 @@ ConFormatPrint(const char *fmt, ...)
         {
         case 'c': {
             char c = (char)VA_ARG(args, int);
-            (void)ConPutChar(c);
+            (void)ConsoleWriteChar(c);
             written++;
             break;
         }
         case 's': {
             const char *s = VA_ARG(args, const char *);
-            written += ConPutStr(s);
+            if (s == NULL)
+                s = "(null)";
+            written += ConsoleWrite(s);
             break;
         }
         case 'd':
         case 'i': {
             int val = VA_ARG(args, int);
             (void)Int32ToString(val, buf, 10, FALSE);
-            written += ConPutStr(buf);
+            written += ConsoleWrite(buf);
+            break;
+        }
+        case 'l': {
+            int64_t val = VA_ARG(args, int64_t);
+            (void)Int64ToString(val, buf, 10, FALSE);
+            written += ConsoleWrite(buf);
             break;
         }
         case 'u': {
-            unsigned int val = VA_ARG(args, unsigned int);
-            (void)UInt32ToString(val, buf, 10, FALSE);
-            written += ConPutStr(buf);
+            if (*(p + 1) == 'l')
+            {
+                ++p;
+                uint64_t val = VA_ARG(args, uint64_t);
+                (void)UInt64ToString(val, buf, 10, FALSE);
+                written += ConsoleWrite(buf);
+            }
+            else
+            {
+                unsigned int val = VA_ARG(args, unsigned int);
+                (void)UInt32ToString(val, buf, 10, FALSE);
+                written += ConsoleWrite(buf);
+            }
             break;
         }
         case 'x':
         case 'X': {
-            unsigned int val = VA_ARG(args, unsigned int);
-            (void)UInt32ToString(val, buf, 16, FALSE);
-            written += ConPutStr(buf);
+            uint64_t val = VA_ARG(args, uint64_t);
+            (void)UInt64ToString(val, buf, 16, FALSE);
+            written += ConsoleWrite(buf);
             break;
         }
         case 'p': {
             uint64_t val = (uint64_t)VA_ARG(args, void *);
-            written += ConPutStr("0x");
+            written += ConsoleWrite("0X");
             (void)UInt64ToString(val, buf, 16, TRUE);
-            written += ConPutStr(buf);
+            written += ConsoleWrite(buf);
+            break;
+        }
+        case '%': {
+            (void)ConsoleWriteChar('%');
+            written++;
+            break;
+        }
+        // HimuOS kernel specific placeholders
+        case 'k': {
+            if (*(p + 1) == 'e') // error codes
+            {
+                ++p;
+                HO_STATUS val = VA_ARG(args, HO_STATUS);
+                const char *msg = KrGetStatusMessage(val);
+                written += ConsoleWrite(msg);
+            }
+            else if (*(p + 1) == 's') // error codes status (FAIL or SUCCESS)
+            {
+                ++p;
+                HO_STATUS val = VA_ARG(args, HO_STATUS);
+                const char *msg = HO_LIKELY(!val) ? "OK" : "FAILED";
+                written += ConsoleWrite(msg);
+            }
             break;
         }
         default:
-            (void)ConPutChar('%');
-            (void)ConPutChar(*p);
-            written++;
+            (void)ConsoleWriteChar('%');
+            (void)ConsoleWriteChar(*p);
+            written += 2;
             break;
         }
     }
     VA_END(args);
     return written;
 }
-
-HO_KERNEL_API HO_NODISCARD CONSOLE_SINK *
-ConGetSinkByName(const char *name)
-{
-    for (uint8_t i = 0; i < kKrnlConsole.SinkCnt; i++)
-    {
-        if (strcmp(kKrnlConsole.Sinks[i]->Name, name) == 0)
-        {
-            return kKrnlConsole.Sinks[i];
-        }
-    }
-    return NULL;
-}
-

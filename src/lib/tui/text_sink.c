@@ -6,7 +6,7 @@ HO_KERNEL_API void
 TrSinkInit(const char *name, TEXT_RENDER_SINK *sink, TEXT_RENDERER *renderer)
 {
     memset(sink, 0, sizeof(TEXT_RENDER_SINK));
-    sink->Base.HorizontalResolution = renderer->Device->HorizontalResolution;
+    //sink->Base.HorizontalResolution = renderer->Device->HorizontalResolution;
     strcpy(sink->Base.Name, name);
     sink->Base.PutChar = TrSinkPutChar;
     sink->Base.Cls = TrSinkClearScreen;
@@ -26,7 +26,7 @@ TrSinkPutChar(CONSOLE_SINK *sink, int c)
     const uint16_t kScale = 1;     // TODO: Make this configurable
     const uint8_t kCharPerTab = 8; // TODO: Make this configurable
     const uint32_t kCharWidthScaled = charWidth * kScale;
-    const uint32_t kMaxScreenWidth = this->Base.HorizontalResolution;
+    const uint32_t kMaxScreenWidth = this->Renderer->Device->HorizontalResolution;
     const uint32_t kMaxScreenHeight = this->Renderer->Device->VerticalResolution;
 
     memset(&param, 0, sizeof(TR_RENDER_CHAR_PARAMS));
@@ -120,6 +120,7 @@ TrSinkSetAlign(TEXT_RENDER_SINK *sink, uint32_t len, TR_PUTS_ALIGNMENT align)
     const uint8_t kScale = 1; // TODO: Make this configurable
     const uint32_t kCharWidthScaled = charWidth * kScale;
     uint32_t totalStrWidth = len * kCharWidthScaled;
+    uint32_t hr = this->Renderer->Device->HorizontalResolution;
 
     // Calculate starting X position based on alignment
     switch (align)
@@ -128,14 +129,14 @@ TrSinkSetAlign(TEXT_RENDER_SINK *sink, uint32_t len, TR_PUTS_ALIGNMENT align)
         // No change needed
         break;
     case TR_PUTS_ALIGN_CENTER:
-        if (totalStrWidth < this->Base.HorizontalResolution)
-            this->CursorX = (this->Base.HorizontalResolution - totalStrWidth) / 2;
+        if (totalStrWidth < hr)
+            this->CursorX = (hr - totalStrWidth) / 2;
         else
             this->CursorX = 0; // If string is wider than screen, start at 0
         break;
     case TR_PUTS_ALIGN_RIGHT:
-        if (totalStrWidth < this->Base.HorizontalResolution)
-            this->CursorX = this->Base.HorizontalResolution - totalStrWidth;
+        if (totalStrWidth < hr)
+            this->CursorX = hr - totalStrWidth;
         else
             this->CursorX = 0;
         break;

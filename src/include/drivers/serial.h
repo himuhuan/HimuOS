@@ -13,7 +13,7 @@
 
 #include "_hobase.h"
 
-#define PORT_COM1                     0x3F8
+#define COM1_PORT                     0x3F8
 
 #define SERIAL_DATA_PORT(base)        (base)
 #define SERIAL_INTR_ENABLE_PORT(base) (base + 1)
