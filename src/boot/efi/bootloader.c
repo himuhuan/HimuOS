@@ -24,6 +24,7 @@ typedef struct
 
 typedef struct
 {
+    BOOL NotPresent; // Not present = 1 means this entry is placed but not mapped, especially for guard pages
     UINT64 TableBasePhys;
     HOB_BALLOC *BumpAllocator;
     UINT64 AddrPhys;
@@ -45,6 +46,7 @@ static EFI_STATUS CreateKrnlMapping(EFI_PHYSICAL_ADDRESS pml4BasePhys,
 static EFI_STATUS MapBootPage(MAP_REQUEST *request);
 static UINT64 HeaderPackedPages(UINT64 memoryMapSize);
 static UINT64 PageTablePages(REQUIRED_PAGES_INFO *pagesInfo, UINT64 gopBufferSize);
+static UINT64 KrnlStackPages();
 static void CalcRequiredPages(ELF64_LOAD_INFO *loadInfo,
                               UINT64 mapSize,
                               UINT64 gopBufferSize,
@@ -152,7 +154,7 @@ handle_error:
     {
         return status;
     }
-    
+
     LoadCR3(block->PageTablePhys);
     (void)SetupGdt((void *)block->GdtPhys, block->GdtSize);
     JumpToKernel(block);
@@ -322,7 +324,6 @@ CreateKrnlMapping(EFI_PHYSICAL_ADDRESS pml4BasePhys, UINT64 pageTableBlockSize, 
     /* NOTE & TODO: During the boot staging phase, all pages (except kernel code pages) are mapped as uncached.
        This facilitates debugging and prevents extremely erratic behavior on some machines.
        In the staging phase, HimuOS will remap the page tables during the mm initialization stage. */
-
     HOB_BALLOC alloc;
     memset(&alloc, 0, sizeof(HOB_BALLOC));
 
@@ -430,6 +431,38 @@ CreateKrnlMapping(EFI_PHYSICAL_ADDRESS pml4BasePhys, UINT64 pageTableBlockSize, 
         }
     }
 
+    // The guard page of IST1 stack between normal stack and IST1 stack: not present
+    request.NotPresent = TRUE;
+    startPhysAddr = (UINT64)0; // Map a dummy physical address
+    PRINT_ADDR_MAP("Mapping IST1 stack guard page (not present): ", startPhysAddr,
+                   KRNL_STACK_VA + staging->KrnlStackSize, PAGE_4KB);
+    request.AddrPhys = startPhysAddr;
+    request.AddrVirt = KRNL_STACK_VA + staging->KrnlStackSize;
+    status = MapBootPage(&request);
+    if (EFI_ERROR(status))
+    {
+        PRINT_HEX_WITH_MESSAGE("Failed to map IST1 stack guard page at ", startPhysAddr);
+        return status;
+    }
+
+    // Map IST1 stack
+    request.NotPresent = FALSE;
+    request.Flags = PTE_WRITABLE | PTE_CACHE_DISABLE;
+    startPhysAddr = staging->KrnlIST1StackPhys;
+    endPhysAddr = startPhysAddr + staging->KrnlStackSize;
+    PRINT_ADDR_MAP("Mapping IST1 stack: ", startPhysAddr, KRNL_IST1_STACK_VA, endPhysAddr - startPhysAddr);
+    for (UINT64 currentPhysAddr = startPhysAddr; currentPhysAddr < endPhysAddr; currentPhysAddr += PAGE_4KB)
+    {
+        request.AddrPhys = currentPhysAddr;
+        request.AddrVirt = KRNL_IST1_STACK_VA + (currentPhysAddr - startPhysAddr);
+        status = MapBootPage(&request);
+        if (EFI_ERROR(status))
+        {
+            PRINT_HEX_WITH_MESSAGE("Failed to map IST1 stack at ", currentPhysAddr);
+            return status;
+        }
+    }
+
     // Map MMIO (GOP framebuffer)
     request.Flags = PTE_WRITABLE | PTE_CACHE_DISABLE | PTE_NO_EXECUTE;
     startPhysAddr = staging->FramebufferPhys;
@@ -465,6 +498,7 @@ MapBootPage(MAP_REQUEST *request)
     HOB_BALLOC *allocator = request->BumpAllocator;
     PAGE_TABLE_ENTRY *pml4 = (PAGE_TABLE_ENTRY *)request->TableBasePhys;
     UINT64 flags = request->Flags;
+    UINT64 isPresent = (HO_LIKELY(!request->NotPresent)) ? PTE_PRESENT : 0;
 
     UINT64 pml4Index = PML4_INDEX(alignedAddrVirt);
     if (!(pml4[pml4Index] & PTE_PRESENT))
@@ -487,7 +521,7 @@ MapBootPage(MAP_REQUEST *request)
             PRINT_HEX_WITH_MESSAGE("Virtual address already mapped: ", alignedAddrVirt);
             return EFI_INVALID_PARAMETER;
         }
-        pdpt[pdptIndex] = alignedAddrPhys | flags | PTE_PRESENT;
+        pdpt[pdptIndex] = alignedAddrPhys | flags | isPresent;
         return EFI_SUCCESS;
     }
 
@@ -511,7 +545,7 @@ MapBootPage(MAP_REQUEST *request)
             PRINT_HEX_WITH_MESSAGE("Virtual address already mapped: ", alignedAddrVirt);
             return EFI_INVALID_PARAMETER;
         }
-        pd[pdIndex] = alignedAddrPhys | flags | PTE_PRESENT;
+        pd[pdIndex] = alignedAddrPhys | flags | isPresent;
         return EFI_SUCCESS;
     }
 
@@ -536,7 +570,7 @@ MapBootPage(MAP_REQUEST *request)
         return EFI_INVALID_PARAMETER;
     }
 
-    pt[ptIndex] = alignedAddrPhys | flags | PTE_PRESENT;
+    pt[ptIndex] = alignedAddrPhys | flags | isPresent;
     return EFI_SUCCESS;
 }
 
@@ -575,6 +609,12 @@ PageTablePages(REQUIRED_PAGES_INFO *pagesInfo, UINT64 gopBufferSize)
     return totalPages + itselfPages + 1; // 1 for safety margin
 }
 
+static UINT64
+KrnlStackPages()
+{
+    return KRNL_STACK_PAGES + KRNL_STACK_PAGES /* ISA1 Stack */;
+}
+
 static void
 CalcRequiredPages(ELF64_LOAD_INFO *loadInfo, uint64_t mapSize, uint64_t gopBufferSize, REQUIRED_PAGES_INFO *result)
 {
@@ -583,8 +623,7 @@ CalcRequiredPages(ELF64_LOAD_INFO *loadInfo, uint64_t mapSize, uint64_t gopBuffe
     result->KernelSpanPages = loadInfo->VirtSpanPages;
     result->HeaderPages = HeaderPackedPages(mapSize);
     result->PageTablePages = PageTablePages(result, gopBufferSize);
-
-    result->TotalPages = result->KernelSpanPages + result->HeaderPages + result->PageTablePages + KRNL_STACK_PAGES;
+    result->TotalPages = result->KernelSpanPages + result->HeaderPages + result->PageTablePages + KrnlStackPages();
 }
 
 static STAGING_BLOCK *
@@ -624,12 +663,17 @@ GetStagingBlock(REQUIRED_PAGES_INFO *pagesInfo, UINT64 totalReclaimable)
     block->PageTablePhys = block->MemoryMapPhys + block->MemoryMapSize;
     block->KrnlEntryPhys = block->PageTablePhys + block->PageTableSize;
     block->KrnlStackPhys = block->KrnlEntryPhys + block->KrnlDataSize + block->KrnlCodeSize;
+    block->KrnlIST1StackPhys =
+        block->KrnlStackPhys + block->KrnlStackSize /* + PAGE_4KB; */; // Guard page is not allocated
 
     block->GdtVirt = block->BaseVirt + block->InfoSize;
     block->MemoryMapVirt = block->GdtVirt + block->GdtSize;
     block->PageTableVirt = block->MemoryMapVirt + block->MemoryMapSize;
     block->KrnlEntryVirt = KRNL_ENTRY_VA;
-    block->KrnlStackVirt = KRNL_STACK_VA;
+    block->KrnlStackVirt = KRNL_STACK_VA; // KRNL_STACK_VA ~ KRNL_STACK_VA + KRNL_STACK_SIZE(RSP)
+    // The guard page of IST1 stack: unmapped, KRNL_STACK_VA + KRNL_STACK_SIZE ~ KRNL_ISA1_STACK_VA
+    block->KrnlIST1StackVirt =
+        KRNL_IST1_STACK_VA; // KRNL_IST1_STACK_VA ~ KRNL_IST1_STACK_VA + KRNL_STACK_SIZE(RSP of IST1)
 
     return block;
 }

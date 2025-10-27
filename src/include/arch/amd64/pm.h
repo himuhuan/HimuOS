@@ -92,48 +92,50 @@ typedef struct
 // Each entry is 8 bytes (64 bits)
 typedef uint64_t PAGE_TABLE_ENTRY;
 
-#define PAGE_4KB          0x1000ULL
-#define PAGE_2MB          0x200000ULL
-#define PAGE_1GB          0x40000000ULL
-#define PAGE_SHIFT        12
-#define ENTRIES_PER_TABLE 512
+#define PAGE_4KB           0x1000ULL
+#define PAGE_2MB           0x200000ULL
+#define PAGE_1GB           0x40000000ULL
+#define PAGE_SHIFT         12
+#define ENTRIES_PER_TABLE  512
 
-#define PTE_PRESENT       (1ULL << 0)  // Page present
-#define PTE_WRITABLE      (1ULL << 1)  // Read/write
-#define PTE_USER          (1ULL << 2)  // User/supervisor
-#define PTE_WRITETHROUGH  (1ULL << 3)  // Write-through caching
-#define PTE_CACHE_DISABLE (1ULL << 4)  // Cache disabled
-#define PTE_ACCESSED      (1ULL << 5)  // Accessed
-#define PTE_DIRTY         (1ULL << 6)  // Dirty (for PDE only in some levels)
-#define PTE_PAGE_SIZE     (1ULL << 7)  // Page size (1 for huge pages)
-#define PTE_GLOBAL        (1ULL << 8)  // Global page
-#define PTE_NO_EXECUTE    (1ULL << 63) // No execute (NXE)
+#define PTE_PRESENT        (1ULL << 0)  // Page present
+#define PTE_WRITABLE       (1ULL << 1)  // Read/write
+#define PTE_USER           (1ULL << 2)  // User/supervisor
+#define PTE_WRITETHROUGH   (1ULL << 3)  // Write-through caching
+#define PTE_CACHE_DISABLE  (1ULL << 4)  // Cache disabled
+#define PTE_ACCESSED       (1ULL << 5)  // Accessed
+#define PTE_DIRTY          (1ULL << 6)  // Dirty (for PDE only in some levels)
+#define PTE_PAGE_SIZE      (1ULL << 7)  // Page size (1 for huge pages)
+#define PTE_GLOBAL         (1ULL << 8)  // Global page
+#define PTE_NO_EXECUTE     (1ULL << 63) // No execute (NXE)
 
-#define PML4_SHIFT        39
-#define PDPT_SHIFT        30
-#define PD_SHIFT          21
-#define PT_SHIFT          12
+#define PML4_SHIFT         39
+#define PDPT_SHIFT         30
+#define PD_SHIFT           21
+#define PT_SHIFT           12
 
-#define PAGE_MASK         (~(PAGE_4KB - 1))
-#define ADDR_MASK_48BIT   0x0000FFFFFFFFFFFFULL // 48-bit address mask
+#define PAGE_MASK          (~(PAGE_4KB - 1))
+#define ADDR_MASK_48BIT    0x0000FFFFFFFFFFFFULL // 48-bit address mask
 
-#define PML4_INDEX(addr)  (((addr) >> PML4_SHIFT) & (ENTRIES_PER_TABLE - 1))
-#define PDPT_INDEX(addr)  (((addr) >> PDPT_SHIFT) & (ENTRIES_PER_TABLE - 1))
-#define PD_INDEX(addr)    (((addr) >> PD_SHIFT) & (ENTRIES_PER_TABLE - 1))
-#define PT_INDEX(addr)    (((addr) >> PT_SHIFT) & (ENTRIES_PER_TABLE - 1))
+#define PML4_INDEX(addr)   (((addr) >> PML4_SHIFT) & (ENTRIES_PER_TABLE - 1))
+#define PDPT_INDEX(addr)   (((addr) >> PDPT_SHIFT) & (ENTRIES_PER_TABLE - 1))
+#define PD_INDEX(addr)     (((addr) >> PD_SHIFT) & (ENTRIES_PER_TABLE - 1))
+#define PT_INDEX(addr)     (((addr) >> PT_SHIFT) & (ENTRIES_PER_TABLE - 1))
 
-#define PML4_ENTRY_MAPSIZ 0x0000800000000000ULL // Each PML4 entry maps 512GB
-#define PDPT_ENTRY_MAPSIZ 0x0000004000000000ULL // Each PDPT entry maps 1GB
-#define PD_ENTRY_MAPSIZ   0x00000000200000ULL   // Each PD entry maps 2MB
-#define PT_ENTRY_MAPSIZ   0x00000000001000ULL   // Each PT entry maps 4KB
-#define PT_TABLE_MAPSIZ   PD_ENTRY_MAPSIZ       // Each PT table maps 2MB
-#define PD_TABLE_MAPSIZ   PDPT_ENTRY_MAPSIZ     // Each PD table maps 1GB
-#define PDPT_TABLE_MAPSIZ PML4_ENTRY_MAPSIZ     // Each PDPT table maps 512GB
+#define PML4_ENTRY_MAPSIZ  0x0000800000000000ULL // Each PML4 entry maps 512GB
+#define PDPT_ENTRY_MAPSIZ  0x0000004000000000ULL // Each PDPT entry maps 1GB
+#define PD_ENTRY_MAPSIZ    0x00000000200000ULL   // Each PD entry maps 2MB
+#define PT_ENTRY_MAPSIZ    0x00000000001000ULL   // Each PT entry maps 4KB
+#define PT_TABLE_MAPSIZ    PD_ENTRY_MAPSIZ       // Each PT table maps 2MB
+#define PD_TABLE_MAPSIZ    PDPT_ENTRY_MAPSIZ     // Each PD table maps 1GB
+#define PDPT_TABLE_MAPSIZ  PML4_ENTRY_MAPSIZ     // Each PDPT table maps 512GB
 
-#define KRNL_BASE_VA      0xFFFF800000000000ULL // Kernel base virtual address
-#define KRNL_ENTRY_VA     0xFFFF804000000000ULL // Kernel entry virtual address (1GB offset from base)
-#define KRNL_STACK_VA     0xFFFF808000000000ULL // Kernel stack BOTTOM virtual address (2GB offset from base)
-#define MMIO_BASE_VA      0xFFFFC00000000000ULL // MM
+#define KRNL_BASE_VA       0xFFFF800000000000ULL // Kernel base virtual address
+#define KRNL_ENTRY_VA      0xFFFF804000000000ULL // Kernel entry virtual address (1GB offset from base)
+#define KRNL_STACK_VA      0xFFFF808000000000ULL // Kernel stack BOTTOM virtual address (2GB offset from base)
+/* NOTE: In HimuOS, every stack always includes extra one guard page (no physical memory allocated) to catch stack overflows. */
+#define KRNL_IST1_STACK_VA (KRNL_STACK_VA + KRNL_STACK_SIZE + PAGE_4KB) // Kernel IST1 stack BOTTOM virtual address
+#define MMIO_BASE_VA       0xFFFFC00000000000ULL                        // MM
 
 /**
  * Calculate the number of pages needed to store a given number of entries.

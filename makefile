@@ -104,9 +104,8 @@ run: copy
 		-bios /usr/share/OVMF/OVMF_CODE.fd \
 		-net none \
 		-drive file=fat:rw:esp,index=0,format=vvfat \
-		-serial stdio \
-
-
+		-serial stdio
+		
 debug: copy
 	@echo "Starting VM with EFI and GDB server..."
 	@qemu-system-x86_64 \
