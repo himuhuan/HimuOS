@@ -58,6 +58,7 @@ enum
     EFI_INVALID_PARAMETER = 2, /* A parameter was incorrect. */
     EFI_UNSUPPORTED = 3,       /* The operation is not supported. */
     EFI_BUFFER_TOO_SMALL = 5,  /* The buffer was not large enough to hold the requested data. */
+    EFI_DEVICE_ERROR = 7,      /* The device reported an error. */
     EFI_OUT_OF_RESOURCES = 10, /* A resource has run out. */
     EFI_NOT_FOUND = 14         /* The item was not found. */
 };
@@ -159,7 +160,7 @@ struct EFI_BOOT_SERVICES
     STRUCT_RESERVED(12, 16);
 
     // 32-bit CRC Services
-    STRUCT_RESERVED(13, 8);
+    EFI_STATUS (*CalculateCrc32)(IN void *Data, IN UINTN DataSize, OUT UINT32 *Crc32);
     // Miscellaneous Services
     STRUCT_RESERVED(14, 24);
 };

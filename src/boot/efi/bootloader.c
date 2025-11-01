@@ -219,6 +219,8 @@ ReadKernelImage(IN const CHAR16 *path, OUT void **outImage, OUT UINT64 *outSize)
 {
     EFI_STATUS status;
     EFI_FILE_PROTOCOL *rootDir = NULL;
+    EFI_FILE_PROTOCOL *kernelFile = NULL;
+
     status = g_FSP->OpenVolume(g_FSP, &rootDir);
     if (EFI_ERROR(status))
     {
@@ -226,11 +228,11 @@ ReadKernelImage(IN const CHAR16 *path, OUT void **outImage, OUT UINT64 *outSize)
         return status;
     }
 
-    EFI_FILE_PROTOCOL *kernelFile = NULL;
-    status = rootDir->Open(rootDir, &kernelFile, (CHAR16 *)path, EFI_FILE_MODE_READ, 0);
+    status = rootDir->Open(rootDir, &kernelFile, (CHAR16 *)path, EFI_FILE_MODE_READ, EFI_FILE_READ_ONLY);
     if (EFI_ERROR(status))
     {
         PRINT_HEX_WITH_MESSAGE("Failed to open kernel file: ", status);
+        rootDir->Close(rootDir);
         return status;
     }
 
@@ -239,6 +241,8 @@ ReadKernelImage(IN const CHAR16 *path, OUT void **outImage, OUT UINT64 *outSize)
     if (EFI_ERROR(status))
     {
         PRINT_HEX_WITH_MESSAGE("Failed to get kernel file size: ", status);
+        kernelFile->Close(kernelFile);
+        rootDir->Close(rootDir);
         return status;
     }
 
@@ -248,18 +252,31 @@ ReadKernelImage(IN const CHAR16 *path, OUT void **outImage, OUT UINT64 *outSize)
     if (EFI_ERROR(status))
     {
         PRINT_HEX_WITH_MESSAGE("Failed to allocate memory for kernel file: ", status);
+        kernelFile->Close(kernelFile);
+        rootDir->Close(rootDir);
         return status;
     }
 
-    (void)kernelFile->SetPosition(kernelFile, 0);
     UINTN readSize = kernelFileSize;
     status = kernelFile->Read(kernelFile, &readSize, (void *)bufferPhys);
+
     if (EFI_ERROR(status) || readSize != kernelFileSize)
     {
         PRINT_HEX_WITH_MESSAGE("Failed to read kernel file: ", status);
+        kernelFile->Close(kernelFile);
+        rootDir->Close(rootDir);
         (void)g_ST->BootServices->FreePages(bufferPhys, HO_ALIGN_UP(kernelFileSize, PAGE_4KB) >> 12);
-        return status;
+        return EFI_DEVICE_ERROR;
     }
+
+    UINT32 crc32 = 0;
+    status = g_ST->BootServices->CalculateCrc32((void *)bufferPhys, kernelFileSize, &crc32);
+    ConsoleWriteStr(L"Kernel image CRC32: ");
+    ConsoleWriteHex(crc32);
+    ConsoleWriteStr(L"\r\n");
+
+    kernelFile->Close(kernelFile);
+    rootDir->Close(rootDir);
 
     *outImage = (void *)bufferPhys;
     *outSize = kernelFileSize;
@@ -302,6 +319,10 @@ FillMmioInfo(STAGING_BLOCK *block)
 static EFI_STATUS
 CreateKrnlMapping(EFI_PHYSICAL_ADDRESS pml4BasePhys, UINT64 pageTableBlockSize, STAGING_BLOCK *staging)
 {
+    /* NOTE & TODO: During the boot staging phase, all pages (except kernel code pages) are mapped as uncached.
+       This facilitates debugging and prevents extremely erratic behavior on some machines.
+       In the staging phase, HimuOS will remap the page tables during the mm initialization stage. */
+
     HOB_BALLOC alloc;
     memset(&alloc, 0, sizeof(HOB_BALLOC));
 
