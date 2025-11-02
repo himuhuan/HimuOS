@@ -78,7 +78,7 @@ enum _HIMUOS_ERROR_CODE
     EC_NOT_ENOUGH_MEMORY, // Not enough memory
     EC_UNREACHABLE,       // Should never reach here
     EC_NOT_SUPPORTED,     // Operation not supported
-    EC_OUT_OF_RESOURCE    // Out of resource
+    EC_OUT_OF_RESOURCE,   // Out of resource
 };
 
 typedef int HO_STATUS;

@@ -114,11 +114,27 @@ GfxConSinkScroll(void *self, uint16_t count, COLOR32 fill)
     return EC_SUCCESS;
 }
 
+static HO_STATUS 
+GfxConSinkClear(void *self, COLOR32 fillColor)
+{
+    GFX_CONSOLE_SINK *sink = (GFX_CONSOLE_SINK *)self;
+    VD_RENDER_RECT_PARAMS rect_params = {0};
+    rect_params.X = 0;
+    rect_params.Y = 0;
+    rect_params.Width = sink->Driver->HorizontalResolution;
+    rect_params.Height = sink->Driver->VerticalResolution;
+    rect_params.Color = fillColor;
+    rect_params.Filled = 1;
+    VdRenderRect(sink->Driver, &rect_params);
+    return EC_SUCCESS;
+}
+
 void GfxConSinkInit(GFX_CONSOLE_SINK *sink, VIDEO_DRIVER *driver, BITMAP_FONT_INFO *font, uint8_t scale)
 {
     sink->Base.GetInfo = GfxConSinkGetInfo;
     sink->Base.PutChar = GfxConSinkPutChar;
     sink->Base.Scroll = GfxConSinkScroll;
+    sink->Base.Clear = GfxConSinkClear;
     sink->Driver = driver;
     sink->Font = font;
     sink->Scale = scale;

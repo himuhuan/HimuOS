@@ -42,6 +42,24 @@ static HO_STATUS MuxConSinkScroll(void *self, uint16_t count, COLOR32 fillColor)
     return status;
 }
 
+static HO_STATUS MuxConSinkClear(void *self, COLOR32 fillColor)
+{
+    MUX_CONSOLE_SINK *sink = (MUX_CONSOLE_SINK *)self;
+    if (!sink)
+        return EC_ILLEGAL_ARGUMENT;
+
+    HO_STATUS status = EC_SUCCESS;
+    for (size_t i = 0; i < sink->SinkCount; ++i)
+    {
+        if (sink->Sinks[i]->Clear == NULL)
+            continue; // skip if Clear is not implemented
+        HO_STATUS st = sink->Sinks[i]->Clear(sink->Sinks[i], fillColor);
+        if (st != EC_SUCCESS)
+            status = st; // propagate error if any
+    }
+    return status;
+}
+
 HO_KERNEL_API HO_STATUS
 MuxConSinkInit(MUX_CONSOLE_SINK *sink)
 {
@@ -49,6 +67,7 @@ MuxConSinkInit(MUX_CONSOLE_SINK *sink)
     sink->Base.GetInfo = MuxConSinkGetInfo;
     sink->Base.PutChar = MuxConSinkPutChar;
     sink->Base.Scroll = MuxConSinkScroll;
+    sink->Base.Clear = MuxConSinkClear;
     return EC_SUCCESS;
 }
 

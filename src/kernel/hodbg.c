@@ -1,6 +1,8 @@
 #include <kernel/hodbg.h>
+#include <kernel/console.h>
 
-const char *KrGetStatusMessage(HO_STATUS status)
+const char *
+KrGetStatusMessage(HO_STATUS status)
 {
     // clang-format off
     static const char * kStatusMessages[] = 
@@ -18,4 +20,17 @@ const char *KrGetStatusMessage(HO_STATUS status)
     if (index >= sizeof(kStatusMessages) / sizeof(kStatusMessages[0]))
         return "Unknown error code";
     return kStatusMessages[index];
+}
+
+HO_PUBLIC_API HO_NORETURN void
+KernelHalt(int64_t ec, void *dump)
+{
+    if (ec < 0)
+    {
+        kprintf("A CPU exception has occurred! Vector: %lld\n", -ec);
+        (void)dump; // Currently not used, can be extended to show more info
+    }
+
+    for (;;)
+        __asm__ volatile("hlt");
 }

@@ -24,4 +24,5 @@ typedef struct CONSOLE_SINK
     HO_STATUS (*GetInfo)(void *self, CONSOLE_SINK_INFO *info);
     HO_STATUS (*PutChar)(void *self, uint16_t x, uint16_t y, char c, COLOR32 fg, COLOR32 bg);
     HO_STATUS (*Scroll)(void *self, uint16_t count, COLOR32 fillColor);
+    HO_STATUS (*Clear)(void *self, COLOR32 fillColor);
 } CONSOLE_SINK;

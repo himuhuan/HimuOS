@@ -17,7 +17,6 @@ void
 kmain(STAGING_BLOCK *stagingBlock)
 {
     InitKernel(stagingBlock);
-    kprintf("Hello, HimuOS Kernel World!\n");
     while (1)
         ;
 }

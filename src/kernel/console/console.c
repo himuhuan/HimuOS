@@ -177,3 +177,11 @@ ConsoleWriteFmt(const char *fmt, ...)
     VA_END(args);
     return written;
 }
+
+HO_PUBLIC_API void ConsoleClearScreen(COLOR32 color)
+{
+    if (!gConsoleInitialized)
+        return;
+
+    ConDevClearScreen(&gConsoleDevice, color);
+}
