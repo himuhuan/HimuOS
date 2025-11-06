@@ -668,12 +668,15 @@ JumpToKernel(STAGING_BLOCK *block)
     HO_VIRTUAL_ADDRESS blockVirt = block->BaseVirt;
     HO_VIRTUAL_ADDRESS entryVirt = block->KrnlEntryVirt;
 
-    __asm__ __volatile__("mov %[rsp], %%rsp\n\t" // Set stack pointer
-                         "mov %[arg], %%rdi\n\t" // First argument in rdi
-                         :
-                         : [rsp] "r"(stackTopVirt), [arg] "r"(blockVirt));
-
-    __asm__ __volatile__("jmp *%[entry]\n\t" // Jump to kernel entry point
-                         :
-                         : [entry] "r"(entryVirt));
+    __asm__ __volatile__(
+        "mov %[rsp], %%rsp\n\t"
+        "pushq $0\n\t"
+        "mov %[arg], %%rdi\n\t"
+        "jmp *%[entry]\n\t"
+        : /* No output operands */
+        : [rsp] "r"(stackTopVirt), 
+          [arg] "r"(blockVirt), 
+          [entry] "r"(entryVirt)
+        : "rdi"
+    );
 }
