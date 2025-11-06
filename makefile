@@ -25,6 +25,7 @@ KRNL_VERSTR := "$(KRNL_VER_MAJOR).$(KRNL_VER_MINOR).$(KRNL_VER_PATCH) $(KRNL_BUI
 KRNL_ENTRY_POINT = 0xFFFF800000000000
 CC = gcc
 LD = ld
+ASFLAGS = -f elf64 -g -F dwarf
 CFLAGS = -Wall -Wextra -Wmissing-prototypes -Wstrict-prototypes -Werror -fno-stack-protector \
 	-nostdlib -fno-builtin -nostartfiles -nodefaultlibs -nostdinc -ffreestanding -fdiagnostics-color \
 	-c -m64 -g -mcmodel=large -Isrc -Isrc/include -Isrc/include/libc \
@@ -44,6 +45,9 @@ OBJS_EFI     := $(patsubst src/%.c,build/efi/obj/%.o,$(SRCS_EFI_ALL))
 TARGET_EFI   := build/efi/bin/main.efi
 
 SRCS_KERNEL_ONLY := src/kernel/hoentry.c \
+	src/arch/amd64/idt.c \
+	src/arch/amd64/cpu.c \
+	src/arch/amd64/pm.c \
 	src/drivers/video/video_driver.c \
 	src/drivers/video/efi/video_efi.c \
 	src/drivers/serial/serial.c \
@@ -56,9 +60,15 @@ SRCS_KERNEL_ONLY := src/kernel/hoentry.c \
 	src/kernel/console/sinks/serial_console_sink.c \
 	src/kernel/console/sinks/mux_console_sink.c \
 	src/assets/fonts/font8x16.c
-	
-SRCS_KERNEL_ALL  := $(SRCS_KERNEL_ONLY) $(SRCS_SHARED)
-OBJS_KERNEL     := $(patsubst src/%.c,build/kernel/obj/%.o,$(SRCS_KERNEL_ALL))
+
+SRCS_KERNEL_ASM := src/arch/amd64/intr_stub.asm
+
+SRCS_KERNEL_ALL  := $(SRCS_KERNEL_ONLY) $(SRCS_SHARED) $(SRCS_KERNEL_ASM)
+
+OBJS_KERNEL := \
+  $(patsubst src/%.c,build/kernel/obj/%.o,$(filter %.c,$(SRCS_KERNEL_ALL))) \
+  $(patsubst src/%.asm,build/kernel/obj/%.o,$(filter %.asm,$(SRCS_KERNEL_ALL)))
+
 TARGET_KERNEL   := build/kernel/bin/kernel.bin
 
 .PHONY: all clean run efi install clean_code vmware_img kernel debug iso run_iso
@@ -91,7 +101,12 @@ build/kernel/obj/%.o: src/%.c
 	@echo "CC $<"
 	@$(CC) $(CFLAGS) -o $@ $<
 
-copy: efi kernel
+build/kernel/obj/%.o: src/%.asm
+	@mkdir -p $(dir $@)
+	@echo "ASM $<"
+	@nasm $(ASFLAGS) -o $@ $<
+
+copy: all
 	@mkdir -p esp/EFI/BOOT
 	@cp $(TARGET_EFI) esp/EFI/BOOT/BOOTX64.efi
 	@cp $(TARGET_KERNEL) esp/kernel.bin

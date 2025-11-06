@@ -142,15 +142,15 @@ UInt64ToString(uint64_t value, char *str, int base, BOOL prefix)
     if (value == 0)
     {
         *currentPosition++ = '0';
-        *currentPosition = '\0';
-        return 1;
     }
-
-    while (value != 0)
+    else
     {
-        uint64_t remainder = value % base;
-        *currentPosition++ = DIGITS_STR[remainder];
-        value = value / base;
+        while (value != 0)
+        {
+            uint64_t remainder = value % base;
+            *currentPosition++ = DIGITS_STR[remainder];
+            value = value / base;
+        }
     }
     *currentPosition = '\0';
 

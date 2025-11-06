@@ -17,79 +17,33 @@
 - 分配: Bootloader 负责找到并分配这块内存。其物理基地址不固定，但必须是页对齐的。 内核启动后，通过传递的`STAGING_BLOCK`
   结构体获知其确切位置和大小。
 
-### 内部结构
-
-```c
-/**
- * STAGING_BLOCK
- *
- * The "Staging Block" is a temporary and contiguous area in memory used
- * during the very early stages of the kernel's boot process. It acts as an intermediate workspace
- * where the initial kernel code runs to set up the final virtual memory map.
- *
- * Staging Block starts with the `STAGING_BLOCK` structure, more details see also `doc`.
- *
- * The bootloader creates the page tables that establish the "Lower 4GB Identity Mapping" and map
- * this staging block to a higher-half address. The kernel then switches to this higher-half
- * address space and continues its initialization from there.
- *
- * All offsets in this structure are relative to the start of the staging block.
- */
-typedef struct
-{
-    uint64_t Magic;               // 'HOS!' (0x214F5348)
-    HO_PHYSICAL_ADDRESS BasePhys; // Physical base address of the staging block
-    HO_VIRTUAL_ADDRESS BaseVirt;  // Virtual base address of the staging block
-    uint64_t Size;                // Total size of the staging block
-    uint64_t TotalReclaimableMem; // Total size of reclaimable memory
-
-    // GOP
-    HO_VIRTUAL_ADDRESS FramebufferBase;
-    uint64_t FramebufferSize;
-    uint64_t HorizontalResolution;
-    uint64_t VerticalResolution;
-
-    uint64_t HeaderSize;    // Size of header `STAGING_BLOCK`
-    uint64_t MemoryMapSize; // Size of the memory map
-    uint64_t PageTableSize; // Size of the page tables
-    uint64_t KrnlMemSize;   // Size of the kernel ELF loaded segments
-    uint64_t KrnlVirtSize;  // Size of the kernel virtual address space occupied by the kernel ELF loaded segments
-    uint64_t KrnlStackSize; // Size of the kernel stack, always `KRNL_STACK_SIZE`
-
-    HO_PHYSICAL_ADDRESS MemoryMapPhys; // Physical address of the memory map
-    HO_PHYSICAL_ADDRESS KrnlEntryPhys; // Physical address of the kernel loaded segments
-    HO_PHYSICAL_ADDRESS KrnlStackPhys; // Physical address of the kernel stack
-    HO_PHYSICAL_ADDRESS PageTablePhys; // Physical address of the page tables
-    
-    HO_VIRTUAL_ADDRESS MemoryMapVirt; // Virtual address of the memory map
-    HO_VIRTUAL_ADDRESS PageTableVirt; // Virtual address of the page tables
-    HO_VIRTUAL_ADDRESS KrnlEntryVirt; // Virtual address of the entry of kernel
-    HO_VIRTUAL_ADDRESS KrnlStackVirt; // Virtual address of the kernel stack
-} STAGING_BLOCK;
-```
-
 如图所示，`Staging Block`的布局如下：
 
-![himuos_kernel.drawio.png](resources/himuos_kernel.drawio.png#pic_center|)
+
 
 ### 内核启动时的内存布局对照表
 
-| 物理分布 (Staging Block) | 大小 / 特性           | 对应虚拟地址 (Virtual Space)               | 说明                                |
-| :------------------: | ----------------- | ------------------------------------ | --------------------------------- |
-|      Properties      | 若干字节（结构体）         | `BaseVirt (0xFFFF800000000000)`      | 启动参数、命令行、内核属性等                    |
-|   UEFI Memory Map    | 依赖固件提供大小          | `MemoryMapVirt`                      | 从 UEFI 传入的内存布局                    |
-|      Page Table      | 页对齐 (4 KiB 单元)    | `PageTableVirt`                      | 启动时建立的分页结构                        |
-|        Kernel        | ELF 段大小（对齐）       | `KrnlEntryVirt (0xFFFF804000000000)` | 内核映像（.text, .rodata, .data, .bss） |
-|     Kernel Stack     | 固定 24 KiB         | `KrnlStackVirt(0xFFFF808000000000)`  | 启动内核栈，RSP 指向此处栈顶                  |
-|       （高地址）RSP       | 指向 Kernel Stack 顶 | `KrnlStackVirt + KrnlStackSize - 1`  | 栈顶指针                              |
-|     *(未在物理区体现)*      | -                 | `0xFFFFC00000000000`                 | MMIO 映射区，设备寄存器、PCI BAR 等          |
-|      低 4GB 物理内存      | 0 ~ 4GB           | `0x00000000 ~ 0xFFFFFFFF`            | Identity-map，启动过渡和兼容性使用           |
+根据`CreateKrnlMapping` 函数，Bootloader 在将控制权交给内核前，创建了如下的虚拟内存映射。这个映射是内核运行的第一个虚拟地址空间。
 
- Properties 特指 `STAGING_BLOCK` 结构体本身可见的所有字段，包含内核启动所需的所有参数和信息，以及其它区域的物理和虚拟地址。
+| 物理分布 (Staging Block) | 大小 / 特性       | 对应虚拟地址 (Virtual Space)                       | 说明                                | 权限          |
+| :------------------: | ------------- | -------------------------------------------- | --------------------------------- | :---------- |
+|      低 4GB 物理内存      | 0 ~ 4GB       | `0x00000000 ~ 0xFFFFFFFF`                    | Identity-map，启动过渡和兼容性使用           | R-W-X       |
+|      Boot Info       | 若干字节（结构体）     | `BaseVirt (0xFFFF800000000000)`              | 启动参数、命令行、内核属性等                    | R-W         |
+|   UEFI Memory Map    | 依赖固件提供大小      | `MemoryMapVirt`                              | 从 UEFI 传入的内存布局                    | R-W         |
+|      Page Table      | 页对齐 (4 KB 单元) | `PageTableVirt`                              | 启动时建立的分页结构                        | R-W         |
+|        Kernel        | ELF 段大小（对齐）   | `KrnlEntryVirt (0xFFFF804000000000)`         | 内核映像（.text, .rodata, .data, .bss） | R-W-X       |
+|     Kernel Stack     | 16 KB         | `KrnlStackVirt(0xFFFF808000000000)`          | 启动内核栈，RSP 指向此处栈顶                  | R-W         |
+|      IST1 堆栈保护页      | 4KB           | `KRNL_STACK_VA + KRNL_STACK_SIZE`            | 紧随主堆栈之后，用于防止堆栈溢出到 IST1 堆栈         | Not Present |
+|       IST1 堆栈        | 16 KB         | `KRNL_STACK_VA + KRNL_STACK_SIZE + PAGE_4KB` | 用于处理 Double Fault 等严重异常的特殊堆栈      | R-W         |
+|    GOP 帧缓冲 (MMIO)    | -             | `FramebufferVirt(0xFFFFC00000000000)`        | MMIO 映射区，设备寄存器、PCI BAR 等          | R-W         |
 
-特别地，Properties、UEFI Memory Map 和 Page Table 三部分共同构成了 `Boot Info` 区域。它们会被映射到同一块虚拟地址空间中。
+1.  Properties 特指 `STAGING_BLOCK` 结构体本身可见的所有字段，包含内核启动所需的所有参数和信息，以及其它区域的物理和虚拟地址。
+2. 特别地，Properties、UEFI Memory Map 和 Page Table 三部分共同构成了 `Boot Info` 区域。它们会被映射到同一块虚拟地址空间中。
+3. Kernel、 Kernel Stack 和 Low 4GB Physical Memory 三部分则分别映射到各自的虚拟地址空间中。
+4. RSP 将在被引导至内核时指向 Kernel Stack 顶 (`KrnlStackVirt + KrnlStackSize - 1`)
 
-Kernel、 Kernel Stack 和 Low 4GB Physical Memory 三部分则分别映射到各自的虚拟地址空间中。
+>[!Caution]
+> HBL 禁用了所有页的缓存。旨在避免在内核内存管理器完全初始化前，因复杂的缓存一致性问题导致系统不稳定。内核在初始化其内存管理子系统后，会根据需要重新建立页表，并精细地控制各个内存区域的缓存策略（如设置为 Write-Back）以获得最佳性能。
 
 ## HimuOS 内核镜像的 ELF 文件格式要求
 
