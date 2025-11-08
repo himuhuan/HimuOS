@@ -60,27 +60,28 @@ typedef struct
     uint64_t VerticalResolution;
     uint64_t PixelsPerScanLine;
 
-    uint64_t InfoSize;    // Size of header `STAGING_BLOCK`
-    uint64_t GdtSize;       // Size of GDT
-    uint64_t MemoryMapSize; // Size of the memory map
-    uint64_t PageTableSize; // Size of the page tables
-    uint64_t KrnlCodeSize;  // Size of the kernel physical memory occupied by the kernel ELF code segments
-    uint64_t KrnlDataSize;  // Size of the kernel physical memory occupied by the kernel ELF data segments (BSS)
-    uint64_t KrnlVirtSize;  // Size of the kernel virtual address space occupied by the kernel ELF loaded segments
-    uint64_t KrnlStackSize; // Size of the kernel stack and IST#1 stack (excluding guard pages), always `KRNL_STACK_SIZE`
+    uint64_t InfoSize;          // Size of header `STAGING_BLOCK`
+    uint64_t CoreLocalDataSize; // Size of core local data
+    uint64_t MemoryMapSize;     // Size of the memory map
+    uint64_t PageTableSize;     // Size of the page tables
+    uint64_t KrnlCodeSize;      // Size of the kernel physical memory occupied by the kernel ELF code segments
+    uint64_t KrnlDataSize;      // Size of the kernel physical memory occupied by the kernel ELF data segments (BSS)
+    uint64_t KrnlVirtSize;      // Size of the kernel virtual address space occupied by the kernel ELF loaded segments
+    // Size of the kernel stack and IST#1 stack (excluding guard pages), always `KRNL_STACK_SIZE`
+    uint64_t KrnlStackSize;
 
-    HO_PHYSICAL_ADDRESS GdtPhys;       // Physical address of the GDT
-    HO_PHYSICAL_ADDRESS MemoryMapPhys; // Physical address of the memory map
-    HO_PHYSICAL_ADDRESS KrnlEntryPhys; // Physical address of the kernel loaded segments
-    HO_PHYSICAL_ADDRESS KrnlStackPhys; // Physical address of the kernel stack
+    HO_PHYSICAL_ADDRESS CoreLocalDataPhys; // Physical address of the core local data
+    HO_PHYSICAL_ADDRESS MemoryMapPhys;     // Physical address of the memory map
+    HO_PHYSICAL_ADDRESS KrnlEntryPhys;     // Physical address of the kernel loaded segments
+    HO_PHYSICAL_ADDRESS KrnlStackPhys;     // Physical address of the kernel stack
     HO_PHYSICAL_ADDRESS KrnlIST1StackPhys; // Physical address of the IST#1 stack
-    HO_PHYSICAL_ADDRESS PageTablePhys; // Physical address of the page tables
+    HO_PHYSICAL_ADDRESS PageTablePhys;     // Physical address of the page tables
 
-    HO_VIRTUAL_ADDRESS GdtVirt;       // Virtual address of the GDT
-    HO_VIRTUAL_ADDRESS MemoryMapVirt; // Virtual address of the memory map
-    HO_VIRTUAL_ADDRESS PageTableVirt; // Virtual address of the page tables
-    HO_VIRTUAL_ADDRESS KrnlEntryVirt; // Virtual address of the entry of kernel
-    HO_VIRTUAL_ADDRESS KrnlStackVirt; // Virtual address of the kernel stack
+    HO_VIRTUAL_ADDRESS CoreLocalDataVirt; // Virtual address of the core local data
+    HO_VIRTUAL_ADDRESS MemoryMapVirt;     // Virtual address of the memory map
+    HO_VIRTUAL_ADDRESS PageTableVirt;     // Virtual address of the page tables
+    HO_VIRTUAL_ADDRESS KrnlEntryVirt;     // Virtual address of the entry of kernel
+    HO_VIRTUAL_ADDRESS KrnlStackVirt;     // Virtual address of the kernel stack
     HO_VIRTUAL_ADDRESS KrnlIST1StackVirt; // Virtual address of the IST#1 stack
 } STAGING_BLOCK;
 
@@ -89,8 +90,9 @@ typedef STAGING_BLOCK BOOT_INFO_HEADER;
 #define STAGING_HEADER_SIZE sizeof(STAGING_BLOCK)
 #define STAGING_BLOCK_MAGIC 0x214F5348 // 'HOS!'
 
-#define MIN_MEMMAP_PAGES    3      // 12KB for memory map at least
+#define MIN_MEMMAP_PAGES    3 // 12KB for memory map at least
 
-/* NOTE: In HimuOS, every stack always includes extra one guard page (no physical memory allocated) to catch stack overflows. */
+/* NOTE: In HimuOS, every stack always includes extra one guard page (no physical memory allocated) to catch stack
+ * overflows. */
 #define KRNL_STACK_PAGES    4      // 16KB Kernel Stack (excluding guard page)
 #define KRNL_STACK_SIZE     0x4000 // 16KB Kernel Stack

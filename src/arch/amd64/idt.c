@@ -85,8 +85,9 @@ IdtGetExceptionMessage(uint8_t vectorNumber)
 HO_PUBLIC_API HO_STATUS
 IdtInit(void)
 {
+    // All expections uses IST1.
     for (int i = 0; i < 32; i++)
-        IdtSetEntry(i, (uint64_t)gIsrStubTable[i], GDT_KRNL_CODE_SEL, IDT_TRAP_GATE, 0);
+        IdtSetEntry(i, (uint64_t)gIsrStubTable[i], GDT_KRNL_CODE_SEL, IDT_TRAP_GATE, 1);
 
     kIdtPtr.Limit = sizeof(kIntruptDescriptorTable) - 1;
     kIdtPtr.Base = (uint64_t)&kIntruptDescriptorTable;

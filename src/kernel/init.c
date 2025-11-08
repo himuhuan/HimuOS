@@ -3,6 +3,7 @@
 #include <drivers/serial.h>
 #include <kernel/hodbg.h>
 #include <arch/amd64/idt.h>
+#include <arch/amd64/pm.h>
 #include "assets/fonts/font8x16.h"
 
 //
@@ -11,7 +12,9 @@
 
 VIDEO_DRIVER gVideoDevice;
 BITMAP_FONT_INFO gSystemFont;
+
 static void InitBitmapFont(void);
+static void InitCpuState(STAGING_BLOCK *block);
 
 #define DO_INIT_PROCESS(status, routine, ...)                                                                          \
     do                                                                                                                 \
@@ -24,9 +27,11 @@ static void InitBitmapFont(void);
             kprintf(ANSI_FG_RED "FAILED: %ks\n" ANSI_RESET, status);                                                   \
     } while (FALSE)
 
+
 void
 InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
 {
+    InitCpuState(block);
     InitBitmapFont();
     VdInit(&gVideoDevice, block);
     VdClearScreen(&gVideoDevice, COLOR_BLACK);
@@ -46,8 +51,6 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
     kprintf("Copyright(c) 2024-2025 Himu, ONLY FOR EDUCATIONAL PURPOSES.\n\n");
     kprintf("Staging Block: \t\t\t%p\n", block->BaseVirt);
     kprintf("Total Usable Memory: \t\t%i bytes\n", block->TotalReclaimableMem);
-
-    HO_KASSERT(1 == 2, EC_UNREACHABLE);
 }
 
 static void
@@ -59,4 +62,12 @@ InitBitmapFont(void)
     gSystemFont.RawGlyphs = (const uint8_t *)gFont8x16Data;
     gSystemFont.RowStride = 1u;
     gSystemFont.GlyphStride = 16u;
+}
+
+static void InitCpuState(STAGING_BLOCK *block)
+{
+    CPU_CORE_LOCAL_DATA *data = (CPU_CORE_LOCAL_DATA *)block->CoreLocalDataVirt;
+    data->Tss.RSP0 = block->KrnlStackVirt + block->KrnlStackSize;
+    data->Tss.IST1 = block->KrnlIST1StackVirt + block->KrnlStackSize;
+    data->Tss.IOMapBase = sizeof(TSS64); // No IO permission bitmap
 }

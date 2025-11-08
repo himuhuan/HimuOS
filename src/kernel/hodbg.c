@@ -1,6 +1,7 @@
 #include <kernel/hodbg.h>
 #include <kernel/console.h>
 #include <arch/amd64/pm.h>
+#include <arch/amd64/idt.h>
 
 #define MAX_STACK_TRACE_DEPTH 20
 

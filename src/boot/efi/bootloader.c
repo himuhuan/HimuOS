@@ -147,7 +147,14 @@ handle_error:
     status = LoadMemoryMap(block->MemoryMapPhys, block->MemoryMapSize, &memoryMapKey);
     if (status != EFI_SUCCESS)
     {
+        PRINT_HEX_WITH_MESSAGE("Failed to load memory map: ", status);
         return status;
+    }
+    CPU_CORE_LOCAL_DATA *core = InitCpuCoreLocalData((void *)block->CoreLocalDataPhys, block->CoreLocalDataSize);
+    if (core == NULL)
+    {
+        ConsoleWriteStr(L"Failed to initialize CPU core local data\r\n");
+        return EFI_OUT_OF_RESOURCES;
     }
     status = g_ST->BootServices->ExitBootServices(gImageHandle, memoryMapKey);
     if (status != EFI_SUCCESS)
@@ -156,7 +163,7 @@ handle_error:
     }
 
     LoadCR3(block->PageTablePhys);
-    (void)SetupGdt((void *)block->GdtPhys, block->GdtSize);
+    LoadGdtAndTss(core);
     JumpToKernel(block);
 
     // Should never reach here
@@ -175,7 +182,7 @@ PrintBootInfo(STAGING_BLOCK *block)
     PRINT_SIZ_WITH_MESSAGE("Staging Block Size: ", block->Size);
     PRINT_HEX_WITH_MESSAGE("Kernel Entry Point: ", block->KrnlEntryVirt);
     PRINT_ADDR_RANGE_WITH_MESSAGE("Staging Block", block->BasePhys, block->Size);
-    PRINT_ADDR_RANGE_WITH_MESSAGE("- Header", block->BasePhys, block->InfoSize + block->MemoryMapSize + block->GdtSize);
+    PRINT_ADDR_RANGE_WITH_MESSAGE("- Header", block->BasePhys, block->InfoSize + block->MemoryMapSize + block->CoreLocalDataSize);
     PRINT_ADDR_RANGE_WITH_MESSAGE("- Page Tables", block->PageTablePhys, block->PageTableSize);
     PRINT_ADDR_RANGE_WITH_MESSAGE("- Kernel Image", block->KrnlEntryPhys, block->KrnlDataSize + block->KrnlCodeSize);
     PRINT_ADDR_RANGE_WITH_MESSAGE("- Kernel Stack", block->KrnlStackPhys, block->KrnlStackSize);
@@ -577,7 +584,7 @@ MapBootPage(MAP_REQUEST *request)
 static UINT64
 HeaderPackedPages(UINT64 memoryMapSize)
 {
-    UINT64 pages = HO_ALIGN_UP(memoryMapSize + sizeof(STAGING_BLOCK) + sizeof(GLOBAL_DESCRIPTOR_TABLE), PAGE_4KB) >> 12;
+    UINT64 pages = HO_ALIGN_UP(memoryMapSize + sizeof(STAGING_BLOCK) + sizeof(CPU_CORE_LOCAL_DATA), PAGE_4KB) >> 12;
     return pages + 2; // Anyway, reserve 2 extra pages for safety
 }
 
@@ -650,24 +657,24 @@ GetStagingBlock(REQUIRED_PAGES_INFO *pagesInfo, UINT64 totalReclaimable)
     FillMmioInfo(block);
 
     block->InfoSize = sizeof(STAGING_BLOCK);
-    block->GdtSize = sizeof(GLOBAL_DESCRIPTOR_TABLE);
-    block->MemoryMapSize = (pagesInfo->HeaderPages << 12) - sizeof(STAGING_BLOCK) - sizeof(GLOBAL_DESCRIPTOR_TABLE);
+    block->CoreLocalDataSize = sizeof(CPU_CORE_LOCAL_DATA);
+    block->MemoryMapSize = (pagesInfo->HeaderPages << 12) - sizeof(STAGING_BLOCK) - sizeof(CPU_CORE_LOCAL_DATA);
     block->PageTableSize = pagesInfo->PageTablePages << 12;
     block->KrnlCodeSize = pagesInfo->KernelCodePages << 12;
     block->KrnlDataSize = pagesInfo->KernelDataPages << 12;
     block->KrnlVirtSize = pagesInfo->KernelSpanPages << 12;
     block->KrnlStackSize = KRNL_STACK_SIZE;
 
-    block->GdtPhys = basePhys + block->InfoSize;
-    block->MemoryMapPhys = block->GdtPhys + block->GdtSize;
+    block->CoreLocalDataPhys = basePhys + block->InfoSize;
+    block->MemoryMapPhys = block->CoreLocalDataPhys + block->CoreLocalDataSize;
     block->PageTablePhys = block->MemoryMapPhys + block->MemoryMapSize;
     block->KrnlEntryPhys = block->PageTablePhys + block->PageTableSize;
     block->KrnlStackPhys = block->KrnlEntryPhys + block->KrnlDataSize + block->KrnlCodeSize;
     block->KrnlIST1StackPhys =
         block->KrnlStackPhys + block->KrnlStackSize /* + PAGE_4KB; */; // Guard page is not allocated
 
-    block->GdtVirt = block->BaseVirt + block->InfoSize;
-    block->MemoryMapVirt = block->GdtVirt + block->GdtSize;
+    block->CoreLocalDataVirt = block->BaseVirt + block->InfoSize;
+    block->MemoryMapVirt = block->CoreLocalDataVirt + block->CoreLocalDataSize;
     block->PageTableVirt = block->MemoryMapVirt + block->MemoryMapSize;
     block->KrnlEntryVirt = KRNL_ENTRY_VA;
     block->KrnlStackVirt = KRNL_STACK_VA; // KRNL_STACK_VA ~ KRNL_STACK_VA + KRNL_STACK_SIZE(RSP)
@@ -712,15 +719,11 @@ JumpToKernel(STAGING_BLOCK *block)
     HO_VIRTUAL_ADDRESS blockVirt = block->BaseVirt;
     HO_VIRTUAL_ADDRESS entryVirt = block->KrnlEntryVirt;
 
-    __asm__ __volatile__(
-        "mov %[rsp], %%rsp\n\t"
-        "pushq $0\n\t"
-        "mov %[arg], %%rdi\n\t"
-        "jmp *%[entry]\n\t"
-        : /* No output operands */
-        : [rsp] "r"(stackTopVirt), 
-          [arg] "r"(blockVirt), 
-          [entry] "r"(entryVirt)
-        : "rdi"
-    );
+    __asm__ __volatile__("mov %[rsp], %%rsp\n\t"
+                         "pushq $0\n\t"
+                         "mov %[arg], %%rdi\n\t"
+                         "jmp *%[entry]\n\t"
+                         : /* No output operands */
+                         : [rsp] "r"(stackTopVirt), [arg] "r"(blockVirt), [entry] "r"(entryVirt)
+                         : "rdi");
 }
