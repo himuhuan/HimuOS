@@ -2,6 +2,8 @@
 #include <kernel/console.h>
 #include <drivers/serial.h>
 #include <kernel/hodbg.h>
+#include <arch/amd64/idt.h>
+#include <arch/amd64/pm.h>
 #include "assets/fonts/font8x16.h"
 
 //
@@ -10,15 +12,40 @@
 
 VIDEO_DRIVER gVideoDevice;
 BITMAP_FONT_INFO gSystemFont;
+
 static void InitBitmapFont(void);
+static void InitCpuState(STAGING_BLOCK *block);
+
+#define DO_INIT_PROCESS(status, routine, ...)                                                                          \
+    do                                                                                                                 \
+    {                                                                                                                  \
+        kprintf("[INIT] %s... ", #routine);                                                                            \
+        status = routine(##__VA_ARGS__);                                                                               \
+        if (!status)                                                                                                   \
+            kprintf(ANSI_FG_GREEN "OK\n" ANSI_RESET);                                                                  \
+        else                                                                                                           \
+            kprintf(ANSI_FG_RED "FAILED: %ks\n" ANSI_RESET, status);                                                   \
+    } while (FALSE)
+
 
 void
 InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
 {
+    InitCpuState(block);
     InitBitmapFont();
     VdInit(&gVideoDevice, block);
     VdClearScreen(&gVideoDevice, COLOR_BLACK);
     ConsoleInit(&gVideoDevice, &gSystemFont);
+
+    HO_STATUS initStatus;
+    DO_INIT_PROCESS(initStatus, IdtInit);
+
+    if (initStatus != EC_SUCCESS)
+    {
+        kprintf("FATAL: HimuOS initialzation failed!\n");
+        while (1)
+            ;
+    }
 
     kprintf("Himu Operating System VERSION %s\n", KRNL_VERSTR);
     kprintf("Copyright(c) 2024-2025 Himu, ONLY FOR EDUCATIONAL PURPOSES.\n\n");
@@ -35,4 +62,12 @@ InitBitmapFont(void)
     gSystemFont.RawGlyphs = (const uint8_t *)gFont8x16Data;
     gSystemFont.RowStride = 1u;
     gSystemFont.GlyphStride = 16u;
+}
+
+static void InitCpuState(STAGING_BLOCK *block)
+{
+    CPU_CORE_LOCAL_DATA *data = (CPU_CORE_LOCAL_DATA *)block->CoreLocalDataVirt;
+    data->Tss.RSP0 = block->KrnlStackVirt + block->KrnlStackSize;
+    data->Tss.IST1 = block->KrnlIST1StackVirt + block->KrnlStackSize;
+    data->Tss.IOMapBase = sizeof(TSS64); // No IO permission bitmap
 }

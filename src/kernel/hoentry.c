@@ -17,6 +17,8 @@ void
 kmain(STAGING_BLOCK *stagingBlock)
 {
     InitKernel(stagingBlock);
+    kprintf(ANSI_FG_GREEN "HimuOS Kernel Initialized Successfully!\n" ANSI_RESET);
     while (1)
         ;
 }
+
