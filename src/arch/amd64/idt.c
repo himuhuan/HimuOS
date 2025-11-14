@@ -4,7 +4,7 @@
 
 #define IDT_TRAP_GATE 0x8F
 
-static IDT_ENTRY kIntruptDescriptorTable[256];
+static IDT_ENTRY kInterruptDescriptorTable[256];
 static IDT_PTR kIdtPtr;
 extern void *gIsrStubTable[];
 
@@ -17,7 +17,7 @@ LoadIdt(IDT_PTR *pIdtPtr)
 void
 IdtSetEntry(int vn, uint64_t isrAddr, uint16_t selector, uint8_t attributes, uint8_t ist)
 {
-    IDT_ENTRY *entry = &kIntruptDescriptorTable[vn];
+    IDT_ENTRY *entry = &kInterruptDescriptorTable[vn];
     entry->OffsetLow = (uint16_t)(isrAddr & 0xFFFF);
     entry->Selector = selector;
     entry->Ist = ist & 0x7;
@@ -85,12 +85,12 @@ IdtGetExceptionMessage(uint8_t vectorNumber)
 HO_PUBLIC_API HO_STATUS
 IdtInit(void)
 {
-    // All expections uses IST1.
+    // All exceptions uses IST1.
     for (int i = 0; i < 32; i++)
         IdtSetEntry(i, (uint64_t)gIsrStubTable[i], GDT_KRNL_CODE_SEL, IDT_TRAP_GATE, 1);
 
-    kIdtPtr.Limit = sizeof(kIntruptDescriptorTable) - 1;
-    kIdtPtr.Base = (uint64_t)&kIntruptDescriptorTable;
+    kIdtPtr.Limit = sizeof(kInterruptDescriptorTable) - 1;
+    kIdtPtr.Base = (uint64_t)&kInterruptDescriptorTable;
 
     LoadIdt(&kIdtPtr);
     return EC_SUCCESS;

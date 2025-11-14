@@ -45,6 +45,7 @@ OBJS_EFI     := $(patsubst src/%.c,build/efi/obj/%.o,$(SRCS_EFI_ALL))
 TARGET_EFI   := build/efi/bin/main.efi
 
 SRCS_KERNEL_ONLY := src/kernel/hoentry.c \
+	src/arch/arch.c \
 	src/arch/amd64/idt.c \
 	src/arch/amd64/cpu.c \
 	src/arch/amd64/pm.c \
@@ -114,10 +115,12 @@ copy: all
 
 run: copy
 	@echo "Starting VM with EFI..."
-	@qemu-system-x86_64 \
+	@sudo qemu-system-x86_64 \
 		-m 512M \
 		-bios /usr/share/OVMF/OVMF_CODE.fd \
 		-net none \
+		-cpu host \
+		-enable-kvm \
 		-drive file=fat:rw:esp,index=0,format=vvfat \
 		-serial stdio
 		

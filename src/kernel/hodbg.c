@@ -1,7 +1,8 @@
 #include <kernel/hodbg.h>
 #include <kernel/console.h>
 #include <arch/amd64/pm.h>
-#include <arch/amd64/idt.h>
+#include <arch/amd64/idt.h> // TODO: remove dependency on x86 arch
+#include <arch/arch.h>
 
 #define MAX_STACK_TRACE_DEPTH 20
 
@@ -87,7 +88,7 @@ ShowKernelPanicInfo(HO_STATUS code, HO_PANIC_CONTEXT *ctx)
     kprintf("!!! STOP: KERNEL PANIC: %s (%p) !!!\n\n", msg, code);
     kprintf("This error is typically caused by:\n");
     kprintf(" * The kernel heap being exhausted (memory leak or fragmentation).\n");
-    kprintf(" * An assertrion was failed.\n\n");
+    kprintf(" * An assertion was failed.\n\n");
     kprintf("Restarting the machine may temporarily solve this issue. If this error persists,this indicates a critical "
             "software bug that requires debugging.\n\n");
     kprintf("NOTE: HimuOS has not attempted to modify any disk data. The kernel is now halted.\n\n");
@@ -122,6 +123,5 @@ KernelHalt(int64_t ec, void *dump)
         ShowKernelPanicInfo(ec, dump);
     }
 
-    for (;;)
-        __asm__ volatile("hlt");
+    Halt();
 }
