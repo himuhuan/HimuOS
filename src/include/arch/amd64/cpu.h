@@ -9,8 +9,8 @@
 #pragma once
 
 #include "_hobase.h"
+#include <arch/arch.h>
 
-/**
- * Halt the CPU indefinitely.
- */
-HO_NORETURN void HO_KERNEL_API Halt(void);
+HO_NORETURN HO_KERNEL_API void x64_Halt(void);
+
+HO_KERNEL_API void x64_GetBasicCpuInfo(ARCH_BASIC_CPU_INFO *info);
