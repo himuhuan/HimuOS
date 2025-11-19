@@ -95,12 +95,12 @@ ShowKernelPanicInfo(HO_STATUS code, HO_PANIC_CONTEXT *ctx)
     kprintf("** STOP INFORMATION **\n");
     if (ctx)
     {
-        kprintf("Message:\t%s\n", ctx->Message ? ctx->Message : "(null)");
-        kprintf("File:\t\t%s\n", ctx->FileName ? ctx->FileName : "(unknown)");
-        kprintf("Function:\t%s\n", ctx->FunctionName ? ctx->FunctionName : "(unknown)");
-        kprintf("Line:\t\t%ul\n", ctx->LineNumber);
-        kprintf("RIP:\t\t%p\n", ctx->InstructionPointer);
-        kprintf("RBP:\t\t%p\n", ctx->BasePointer);
+        kprintf("Message:     %s\n", ctx->Message ? ctx->Message : "(null)");
+        kprintf("File:        %s\n", ctx->FileName ? ctx->FileName : "(unknown)");
+        kprintf("Function:    %s\n", ctx->FunctionName ? ctx->FunctionName : "(unknown)");
+        kprintf("Line:        %lu\n", ctx->LineNumber);
+        kprintf("RIP:         %p\n", ctx->InstructionPointer);
+        kprintf("RBP:         %p\n", ctx->BasePointer);
         PrintStacktrace((uint64_t)ctx->BasePointer);
     }
     else

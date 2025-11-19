@@ -86,6 +86,33 @@ ConsoleWriteFmt(const char *fmt, ...)
         }
 
         ++p; // Skip '%'
+
+        if (*p == '%')
+        {
+            (void)ConsoleWriteChar(*p);
+            written++;
+            ++p;
+            continue;
+        }
+
+        // Parse padding
+        char pc = 0;
+
+        if (*p == '0')
+        {
+            pc = '0';
+            ++p;
+        }
+
+        uint32_t width = 0;
+        while (*p >= '0' && *p <= '9')
+        {
+            width = width * 10 + (*p - '0');
+            p++;
+        }
+        if (width > 0 && !pc)
+            pc = ' ';
+
         switch (*p)
         {
         case 'c': {
@@ -98,36 +125,60 @@ ConsoleWriteFmt(const char *fmt, ...)
             const char *s = VA_ARG(args, const char *);
             if (s == NULL)
                 s = "(null)";
+            if (width)
+            {
+                size_t len = strlen(s);
+                if (len < width)
+                {
+                    for (uint32_t i = 0; i < width - len; ++i)
+                    {
+                        (void)ConsoleWriteChar(pc);
+                        written++;
+                    }
+                }
+            }
             written += ConsoleWrite(s);
             break;
         }
         case 'd':
         case 'i': {
-            int val = VA_ARG(args, int);
-            (void)Int64ToString(val, buf, FALSE);
+            int64_t val = VA_ARG(args, int);
+            (void) Int64ToStringEx(val, buf, width, pc);
             written += ConsoleWrite(buf);
             break;
         }
         case 'l': {
-            int64_t val = VA_ARG(args, int64_t);
-            (void)Int64ToString(val, buf, FALSE);
-            written += ConsoleWrite(buf);
-            break;
-        }
-        case 'u': {
-            if (*(p + 1) == 'l')
+            if (*(p + 1) == 'd' || *(p + 1) == 'i') // long decimal
             {
                 ++p;
-                uint64_t val = VA_ARG(args, uint64_t);
-                (void)UInt64ToString(val, buf, 10, FALSE);
+                int64_t val = VA_ARG(args, long);
+                (void)Int64ToStringEx(val, buf, width, pc);
+                written += ConsoleWrite(buf);
+            }
+            else if (*(p + 1) == 'u') // long unsigned
+            {
+                ++p;
+                uint64_t val = VA_ARG(args, unsigned long);
+                (void)UInt64ToStringEx(val, buf, 10, width, pc);
+                written += ConsoleWrite(buf);
+            }
+            else if (*(p + 1) == 'x' || *(p + 1) == 'X') // long hex
+            {
+                ++p;
+                uint64_t val = VA_ARG(args, unsigned long);
+                (void)UInt64ToStringEx(val, buf, 16, width, pc);
                 written += ConsoleWrite(buf);
             }
             else
             {
-                uint64_t val = VA_ARG(args, unsigned int);
-                (void)UInt64ToString(val, buf, 10, FALSE);
-                written += ConsoleWrite(buf);
+                HO_KPANIC(EC_ILLEGAL_ARGUMENT, "Unsupported format in kernel printf");
             }
+            break;
+        }
+        case 'u': {
+            uint64_t val = VA_ARG(args, unsigned int);
+            (void)UInt64ToString(val, buf, 10, FALSE);
+            written += ConsoleWrite(buf);
             break;
         }
         case 'x':
@@ -142,11 +193,6 @@ ConsoleWriteFmt(const char *fmt, ...)
             written += ConsoleWrite("0X");
             (void)UInt64ToString(val, buf, 16, TRUE);
             written += ConsoleWrite(buf);
-            break;
-        }
-        case '%': {
-            (void)ConsoleWriteChar('%');
-            written++;
             break;
         }
         // HimuOS kernel specific placeholders
@@ -165,12 +211,15 @@ ConsoleWriteFmt(const char *fmt, ...)
                 const char *msg = HO_LIKELY(!val) ? "OK" : "FAILED";
                 written += ConsoleWrite(msg);
             }
+            else
+            {
+                HO_KPANIC(EC_ILLEGAL_ARGUMENT, "Unsupported format in kernel printf");
+            }
             break;
         }
         default:
-            (void)ConsoleWriteChar('%');
-            (void)ConsoleWriteChar(*p);
-            written += 2;
+            // Break change: invalid format specifier will trigger KERNEL PANIC!
+            HO_KPANIC(EC_ILLEGAL_ARGUMENT, "Unsupported format in kernel printf");
             break;
         }
     }
