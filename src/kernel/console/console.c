@@ -104,13 +104,13 @@ ConsoleWriteFmt(const char *fmt, ...)
         case 'd':
         case 'i': {
             int val = VA_ARG(args, int);
-            (void)Int32ToString(val, buf, 10, FALSE);
+            (void)Int64ToString(val, buf, FALSE);
             written += ConsoleWrite(buf);
             break;
         }
         case 'l': {
             int64_t val = VA_ARG(args, int64_t);
-            (void)Int64ToString(val, buf, 10, FALSE);
+            (void)Int64ToString(val, buf, FALSE);
             written += ConsoleWrite(buf);
             break;
         }
@@ -124,8 +124,8 @@ ConsoleWriteFmt(const char *fmt, ...)
             }
             else
             {
-                unsigned int val = VA_ARG(args, unsigned int);
-                (void)UInt32ToString(val, buf, 10, FALSE);
+                uint64_t val = VA_ARG(args, unsigned int);
+                (void)UInt64ToString(val, buf, 10, FALSE);
                 written += ConsoleWrite(buf);
             }
             break;
