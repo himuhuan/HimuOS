@@ -13,13 +13,15 @@
 #include "shell.h"
 #include "bootloader.h"
 
+#define BOOTLOADER_VERSTR L"1.2.0"
+
 void
 efi_main(void *ImageHandle, struct EFI_SYSTEM_TABLE *SystemTable)
 {
     SystemTable->ConsoleOutput->ClearScreen(SystemTable->ConsoleOutput);
     EfiInitialize(ImageHandle, SystemTable);
-    ConsoleWriteStr(L"Himu Operating System UEFI Boot Manager, Version 1.1.3\r\n");
-    PRINT_HEX_WITH_MESSAGE(">>> UEFI loader started at ", (UINT64)efi_main);
-    PRINT_HEX_WITH_MESSAGE(">>> StagingKernel at ", (UINT64)StagingKernel);
+    ConsoleFormatWrite(L"Himu Operating System UEFI Boot Manager, Version %s\r\n", BOOTLOADER_VERSTR);
+    ConsoleFormatWrite(L">>> UEFI loader started at %p\r\n", (UINT64)efi_main);
+    Shell(L"HimuOS~BL# ");
     StagingKernel(TEXT("kernel.bin"));
 }

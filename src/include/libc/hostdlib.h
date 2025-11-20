@@ -20,6 +20,12 @@ HO_PUBLIC_API uint64_t UInt64ToStringEx(uint64_t value, char *str, int base, int
 
 HO_PUBLIC_API uint64_t Int64ToStringEx(int64_t val, char *buf, int32_t padding, char padChar);
 
+HO_PUBLIC_API uint8_t CountDecDigit(uint64_t n);
+
+HO_PUBLIC_API int FindMostSignificantBit(uint64_t num);
+
+HO_PUBLIC_API BOOL IsValidBase(int base);
+
 /**
  * FormatString: Formats a string into the provided buffer supporting various format specifiers (including some
  * kernel-extended ones).

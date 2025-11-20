@@ -5,26 +5,25 @@
 #include "arch/amd64/pm.h"
 
 // typedefs
-
 typedef struct
 {
-    HO_PHYSICAL_ADDRESS StagingBlockPhys; // Physical address for staging block
-    UINT64 TotalReclaimableMem;           // Total memory that can be reclaimed after loading
+    HO_PHYSICAL_ADDRESS StagingBlockPhys;
+    UINT64 TotalReclaimableMem;
 } SCAN_MEMMAP_RESULT;
 
 typedef struct
 {
-    UINT64 HeaderPages;     // Pages used for packed memory map and staging block
-    UINT64 KernelCodePages; // Pages used for kernel executable segments in physical memory
-    UINT64 KernelDataPages; // Pages used for kernel data segments (including BSS) in physical memory
-    UINT64 KernelSpanPages; // Pages spanned by the kernel in virtual memory
-    UINT64 PageTablePages;  // Pages used for page tables
-    UINT64 TotalPages;      // Total pages required
+    UINT64 HeaderPages;
+    UINT64 KernelCodePages;
+    UINT64 KernelDataPages;
+    UINT64 KernelSpanPages;
+    UINT64 PageTablePages;
+    UINT64 TotalPages;
 } REQUIRED_PAGES_INFO;
 
 typedef struct
 {
-    BOOL NotPresent; // Not present = 1 means this entry is placed but not mapped, especially for guard pages
+    BOOL NotPresent;
     UINT64 TableBasePhys;
     HOB_BALLOC *BumpAllocator;
     UINT64 AddrPhys;
@@ -40,17 +39,12 @@ static EFI_STATUS GetFileSize(EFI_FILE_PROTOCOL *file, UINT64 *outSize);
 static EFI_STATUS ReadKernelImage(IN const CHAR16 *path, OUT void **outImage, OUT UINT64 *outSize);
 static UINT64 GetReclaimableMemorySize(MM_INITIAL_MAP *runtimeMap);
 static void FillMmioInfo(STAGING_BLOCK *block);
-static EFI_STATUS CreateKrnlMapping(EFI_PHYSICAL_ADDRESS pml4BasePhys,
-                                    UINT64 pageTableBlockSize,
-                                    STAGING_BLOCK *staging);
+static EFI_STATUS CreateKrnlMapping(EFI_PHYSICAL_ADDRESS pml4BasePhys, UINT64 pageTableBlockSize, STAGING_BLOCK *staging);
 static EFI_STATUS MapBootPage(MAP_REQUEST *request);
 static UINT64 HeaderPackedPages(UINT64 memoryMapSize);
 static UINT64 PageTablePages(REQUIRED_PAGES_INFO *pagesInfo, UINT64 gopBufferSize);
 static UINT64 KrnlStackPages();
-static void CalcRequiredPages(ELF64_LOAD_INFO *loadInfo,
-                              UINT64 mapSize,
-                              UINT64 gopBufferSize,
-                              REQUIRED_PAGES_INFO *result);
+static void CalcRequiredPages(ELF64_LOAD_INFO *loadInfo, UINT64 mapSize, UINT64 gopBufferSize, REQUIRED_PAGES_INFO *result);
 static STAGING_BLOCK *GetStagingBlock(REQUIRED_PAGES_INFO *pagesInfo, UINT64 totalReclaimable);
 static BOOL LoadKernel(void *image, UINT64 imageSize, STAGING_BLOCK *staging);
 static EFI_STATUS LoadMemoryMap(HO_PHYSICAL_ADDRESS mapBasePhys, UINT64 maxSize, OUT UINTN *memoryMap);
@@ -61,9 +55,7 @@ static void JumpToKernel(STAGING_BLOCK *block);
 HO_KERNEL_API EFI_STATUS
 StagingKernel(const CHAR16 *path)
 {
-    ConsoleWriteStr(L"Loading kernel from: ");
-    ConsoleWriteStr(path);
-    ConsoleWriteStr(L"\r\n");
+    ConsoleFormatWrite(L"Loading kernel from: %s\r\n", path);
 
     EFI_STATUS status = EFI_SUCCESS;
     void *image = NULL;
@@ -74,16 +66,16 @@ StagingKernel(const CHAR16 *path)
     status = ReadKernelImage(path, &image, &imageSize);
     if (EFI_ERROR(status))
     {
-        PRINT_HEX_WITH_MESSAGE("Failed to read kernel image: ", status);
+        ConsoleFormatWrite(L"Failed to read kernel image: %k (0x%x)\r\n", status, status);
         goto handle_error;
     }
-    PRINT_SIZ_WITH_MESSAGE("Kernel image size: ", imageSize);
+    ConsoleFormatWrite(L"Kernel image size: %u byte\r\n", imageSize);
 
     memoryMap = GetLoaderRuntimeMemoryMap();
     if (memoryMap == NULL)
     {
         status = EFI_OUT_OF_RESOURCES;
-        PRINT_HEX_WITH_MESSAGE("Failed to get memory map: ", status);
+        ConsoleFormatWrite(L"Failed to get memory map: %k (0x%x)\r\n", status, status);
         goto handle_error;
     }
 
@@ -91,36 +83,43 @@ StagingKernel(const CHAR16 *path)
     memset(&elfInfo, 0, sizeof(ELF64_LOAD_INFO));
     if (!Elf64GetLoadInfo(image, imageSize, &elfInfo))
     {
-        ConsoleWriteStr(L"Invalid ELF64 kernel image\r\n");
+        ConsoleFormatWrite(L"Invalid ELF64 kernel image\r\n");
         status = EFI_LOAD_ERROR;
         goto handle_error;
     }
 
-    PrintFormatAddressRange(L"Kernel virtual address range", elfInfo.MinAddrVirt, elfInfo.VirtSpanPages << 12);
+    ConsoleFormatWrite(L"Kernel virtual address range: 0x%x -> 0x%x (%u byte)\r\n", 
+                       elfInfo.MinAddrVirt, 
+                       elfInfo.MinAddrVirt + (elfInfo.VirtSpanPages << 12),
+                       elfInfo.VirtSpanPages << 12);
+
     if (elfInfo.MinAddrVirt != elfInfo.EntryVirt || elfInfo.MinAddrVirt != KRNL_ENTRY_VA)
     {
-        ConsoleWriteStr(L"FATAL: Non-standard kernel base address or entry point\r\n");
+        ConsoleFormatWrite(L"FATAL: Non-standard kernel base address or entry point\r\n");
         status = EFI_UNSUPPORTED;
         goto handle_error;
     }
 
     REQUIRED_PAGES_INFO pagesInfo;
     memset(&pagesInfo, 0, sizeof(REQUIRED_PAGES_INFO));
-    ConsoleWriteStr(L"Calculating memory requirements...\r\n");
+    ConsoleFormatWrite(L"Calculating memory requirements...\r\n");
+    
     CalcRequiredPages(&elfInfo, memoryMap->Size, g_GOP->Mode->FrameBufferSize, &pagesInfo);
     UINT64 totalPages = pagesInfo.TotalPages;
-    PRINT_SIZ_WITH_MESSAGE("Total memory required for staging block: ", totalPages << 12);
+    
+    ConsoleFormatWrite(L"Total memory required for staging block: %u byte\r\n", totalPages << 12);
 
     UINT64 totalReclaimable = GetReclaimableMemorySize(memoryMap);
-    PRINT_SIZ_WITH_MESSAGE("Total reclaimable memory: ", totalReclaimable);
+    ConsoleFormatWrite(L"Total reclaimable memory: %u byte\r\n", totalReclaimable);
 
     block = GetStagingBlock(&pagesInfo, totalReclaimable);
-    PRINT_HEX_WITH_MESSAGE("Staging block initialized at: ", (HO_PHYSICAL_ADDRESS)block);
+    ConsoleFormatWrite(L"Staging block initialized at: %p\r\n", block);
+    
     PrintBootInfo(block);
 
     if (LoadKernel(image, imageSize, block) == FALSE)
     {
-        ConsoleWriteStr(L"Failed to load kernel image\r\n");
+        ConsoleFormatWrite(L"Failed to load kernel image\r\n");
         status = EFI_LOAD_ERROR;
         goto handle_error;
     }
@@ -133,29 +132,33 @@ handle_error:
     if (status != EFI_SUCCESS)
         return status;
 
-    PrintFormatAddressRange(L"Copying memory map to ", block->MemoryMapPhys, block->MemoryMapSize);
+    ConsoleFormatWrite(L"Copying memory map to 0x%x (Size: %u byte)\r\n", block->MemoryMapPhys, block->MemoryMapSize);
+    
     status = CreateKrnlMapping(block->PageTablePhys, block->PageTableSize, block);
     if (EFI_ERROR(status))
     {
-        PRINT_HEX_WITH_MESSAGE("Failed to create kernel page tables: ", status);
+        ConsoleFormatWrite(L"Failed to create kernel page tables: %k (0x%x)\r\n", status, status);
         return status;
     }
 
-    PRINT_HEX_WITH_MESSAGE("Activating new page tables at ", block->PageTablePhys);
-    ConsoleWriteStr(L"!!Attention!! UEFI Boot Services will be terminated!\r\n");
+    ConsoleFormatWrite(L"Activating new page tables at 0x%x\r\n", block->PageTablePhys);
+    ConsoleFormatWrite(L"!!Attention!! UEFI Boot Services will be terminated!\r\n");
+    
     UINTN memoryMapKey;
     status = LoadMemoryMap(block->MemoryMapPhys, block->MemoryMapSize, &memoryMapKey);
     if (status != EFI_SUCCESS)
     {
-        PRINT_HEX_WITH_MESSAGE("Failed to load memory map: ", status);
+        ConsoleFormatWrite(L"Failed to load memory map: %k (0x%x)\r\n", status, status);
         return status;
     }
+    
     CPU_CORE_LOCAL_DATA *core = InitCpuCoreLocalData((void *)block->CoreLocalDataPhys, block->CoreLocalDataSize);
     if (core == NULL)
     {
-        ConsoleWriteStr(L"Failed to initialize CPU core local data\r\n");
+        ConsoleFormatWrite(L"Failed to initialize CPU core local data\r\n");
         return EFI_OUT_OF_RESOURCES;
     }
+    
     status = g_ST->BootServices->ExitBootServices(gImageHandle, memoryMapKey);
     if (status != EFI_SUCCESS)
     {
@@ -166,7 +169,6 @@ handle_error:
     LoadGdtAndTss(core);
     JumpToKernel(block);
 
-    // Should never reach here
     return EFI_SUCCESS;
 }
 
@@ -175,23 +177,25 @@ handle_error:
 static void
 PrintBootInfo(STAGING_BLOCK *block)
 {
-    ConsoleWriteStr(L"\r\nCopyright (c) 2025 HimuOS, starting HimuOS...\r\n");
-    PRINT_HEX_WITH_MESSAGE("Staging Block Address: ", (HO_PHYSICAL_ADDRESS)block);
+    ConsoleFormatWrite(L"\r\nCopyright (c) 2025 HimuOS, starting HimuOS...\r\n");
+    ConsoleFormatWrite(L"Staging Block Address: %p\r\n", block);
+    ConsoleFormatWrite(L"Total Reclaimable Memory: %u byte\r\n", block->TotalReclaimableMem);
+    ConsoleFormatWrite(L"Staging Block Size: %u byte\r\n", block->Size);
+    ConsoleFormatWrite(L"Kernel Entry Point: 0x%x\r\n", block->KrnlEntryVirt);
 
-    PRINT_SIZ_WITH_MESSAGE("Total Reclaimable Memory: ", block->TotalReclaimableMem);
-    PRINT_SIZ_WITH_MESSAGE("Staging Block Size: ", block->Size);
-    PRINT_HEX_WITH_MESSAGE("Kernel Entry Point: ", block->KrnlEntryVirt);
-    PRINT_ADDR_RANGE_WITH_MESSAGE("Staging Block", block->BasePhys, block->Size);
-    PRINT_ADDR_RANGE_WITH_MESSAGE("- Header", block->BasePhys, block->InfoSize + block->MemoryMapSize + block->CoreLocalDataSize);
-    PRINT_ADDR_RANGE_WITH_MESSAGE("- Page Tables", block->PageTablePhys, block->PageTableSize);
-    PRINT_ADDR_RANGE_WITH_MESSAGE("- Kernel Image", block->KrnlEntryPhys, block->KrnlDataSize + block->KrnlCodeSize);
-    PRINT_ADDR_RANGE_WITH_MESSAGE("- Kernel Stack", block->KrnlStackPhys, block->KrnlStackSize);
-    PRINT_ADDR_RANGE_WITH_MESSAGE("Frame Buffer", block->FramebufferPhys, block->FramebufferSize);
-    ConsoleWriteStr(L"Resolution: ");
-    ConsoleWriteUInt64(block->HorizontalResolution);
-    ConsoleWriteStr(L"x");
-    ConsoleWriteUInt64(block->VerticalResolution);
-    ConsoleWriteStr(L"\r\n\r\n");
+    #define LOG_MAP(name, phys, size) \
+        ConsoleFormatWrite(L"%s 0x%x -> 0x%x (%u byte)\r\n", name, (UINT64)phys, (UINT64)phys + size, size)
+
+    LOG_MAP(L"Staging Block:    ", block->BasePhys, block->Size);
+    LOG_MAP(L"- Header:         ", block->BasePhys, block->InfoSize + block->MemoryMapSize + block->CoreLocalDataSize);
+    LOG_MAP(L"- Page Tables:    ", block->PageTablePhys, block->PageTableSize);
+    LOG_MAP(L"- Kernel Image:   ", block->KrnlEntryPhys, block->KrnlDataSize + block->KrnlCodeSize);
+    LOG_MAP(L"- Kernel Stack:   ", block->KrnlStackPhys, block->KrnlStackSize);
+    LOG_MAP(L"Frame Buffer:     ", block->FramebufferPhys, block->FramebufferSize);
+
+    #undef LOG_MAP
+
+    ConsoleFormatWrite(L"Resolution: %ux%u\r\n\r\n", block->HorizontalResolution, block->VerticalResolution);
 }
 
 static EFI_STATUS
@@ -233,14 +237,14 @@ ReadKernelImage(IN const CHAR16 *path, OUT void **outImage, OUT UINT64 *outSize)
     status = g_FSP->OpenVolume(g_FSP, &rootDir);
     if (EFI_ERROR(status))
     {
-        PRINT_HEX_WITH_MESSAGE("Failed to open root volume: ", status);
+        ConsoleFormatWrite(L"Failed to open root volume: %k (0x%x)\r\n", status, status);
         return status;
     }
 
     status = rootDir->Open(rootDir, &kernelFile, (CHAR16 *)path, EFI_FILE_MODE_READ, EFI_FILE_READ_ONLY);
     if (EFI_ERROR(status))
     {
-        PRINT_HEX_WITH_MESSAGE("Failed to open kernel file: ", status);
+        ConsoleFormatWrite(L"Failed to open kernel file: %k (0x%x)\r\n", status, status);
         rootDir->Close(rootDir);
         return status;
     }
@@ -249,7 +253,7 @@ ReadKernelImage(IN const CHAR16 *path, OUT void **outImage, OUT UINT64 *outSize)
     status = GetFileSize(kernelFile, &kernelFileSize);
     if (EFI_ERROR(status))
     {
-        PRINT_HEX_WITH_MESSAGE("Failed to get kernel file size: ", status);
+        ConsoleFormatWrite(L"Failed to get kernel file size: %k (0x%x)\r\n", status, status);
         kernelFile->Close(kernelFile);
         rootDir->Close(rootDir);
         return status;
@@ -260,7 +264,7 @@ ReadKernelImage(IN const CHAR16 *path, OUT void **outImage, OUT UINT64 *outSize)
                                                HO_ALIGN_UP(kernelFileSize, PAGE_4KB) >> 12, &bufferPhys);
     if (EFI_ERROR(status))
     {
-        PRINT_HEX_WITH_MESSAGE("Failed to allocate memory for kernel file: ", status);
+        ConsoleFormatWrite(L"Failed to allocate memory for kernel file: %k (0x%x)\r\n", status, status);
         kernelFile->Close(kernelFile);
         rootDir->Close(rootDir);
         return status;
@@ -271,7 +275,7 @@ ReadKernelImage(IN const CHAR16 *path, OUT void **outImage, OUT UINT64 *outSize)
 
     if (EFI_ERROR(status) || readSize != kernelFileSize)
     {
-        PRINT_HEX_WITH_MESSAGE("Failed to read kernel file: ", status);
+        ConsoleFormatWrite(L"Failed to read kernel file: %k (0x%x)\r\n", status, status);
         kernelFile->Close(kernelFile);
         rootDir->Close(rootDir);
         (void)g_ST->BootServices->FreePages(bufferPhys, HO_ALIGN_UP(kernelFileSize, PAGE_4KB) >> 12);
@@ -280,9 +284,7 @@ ReadKernelImage(IN const CHAR16 *path, OUT void **outImage, OUT UINT64 *outSize)
 
     UINT32 crc32 = 0;
     status = g_ST->BootServices->CalculateCrc32((void *)bufferPhys, kernelFileSize, &crc32);
-    ConsoleWriteStr(L"Kernel image CRC32: ");
-    ConsoleWriteHex(crc32);
-    ConsoleWriteStr(L"\r\n");
+    ConsoleFormatWrite(L"Kernel image CRC32: 0x%x\r\n", crc32);
 
     kernelFile->Close(kernelFile);
     rootDir->Close(rootDir);
@@ -328,23 +330,20 @@ FillMmioInfo(STAGING_BLOCK *block)
 static EFI_STATUS
 CreateKrnlMapping(EFI_PHYSICAL_ADDRESS pml4BasePhys, UINT64 pageTableBlockSize, STAGING_BLOCK *staging)
 {
-    /* NOTE & TODO: During the boot staging phase, all pages (except kernel code pages) are mapped as uncached.
-       This facilitates debugging and prevents extremely erratic behavior on some machines.
-       In the staging phase, HimuOS will remap the page tables during the mm initialization stage. */
     HOB_BALLOC alloc;
     memset(&alloc, 0, sizeof(HOB_BALLOC));
 
     EFI_STATUS status = HobAllocCreate(pml4BasePhys, &alloc, pageTableBlockSize >> 12);
     if (EFI_ERROR(status))
     {
-        PRINT_HEX_WITH_MESSAGE("Failed to create page table allocator: ", status);
+        ConsoleFormatWrite(L"Failed to create page table allocator: %k (0x%x)\r\n", status, status);
         return status;
     }
 
     UINT64 pml4Phys = (UINT64)HobAlloc(&alloc, PAGE_4KB, PAGE_4KB);
     if (pml4Phys == 0)
     {
-        PRINT_HEX_WITH_MESSAGE("Failed to allocate PML4: ", EFI_OUT_OF_RESOURCES);
+        ConsoleFormatWrite(L"Failed to allocate PML4: %k\r\n", EFI_OUT_OF_RESOURCES);
         return EFI_OUT_OF_RESOURCES;
     }
 
@@ -363,17 +362,22 @@ CreateKrnlMapping(EFI_PHYSICAL_ADDRESS pml4BasePhys, UINT64 pageTableBlockSize, 
         status = MapBootPage(&request);
         if (EFI_ERROR(status))
         {
-            PRINT_HEX_WITH_MESSAGE("Failed to map lower 4GB at ", currentPhysAddr);
+            ConsoleFormatWrite(L"Failed to map lower 4GB at 0x%x\r\n", currentPhysAddr);
             return status;
         }
     }
 
-    // Map boot info (Staging Block, Memory Map, etc.)
+    // Helper macro for consistent mapping log
+    #define LOG_MAPPING(msg, start, virt, size) \
+        ConsoleFormatWrite(L"%s 0x%x -> 0x%x (%u byte)\r\n", msg, start, virt, size)
+
+    // Map boot info
     request.PageSize = PAGE_4KB;
     request.Flags = PTE_WRITABLE | PTE_CACHE_DISABLE;
     UINT64 startPhysAddr = staging->BasePhys;
     UINT64 endPhysAddr = staging->KrnlEntryPhys;
-    PRINT_ADDR_MAP("Mapping boot info: ", startPhysAddr, KRNL_BASE_VA, endPhysAddr - startPhysAddr);
+    LOG_MAPPING(L"Mapping BOOT_INFO:", startPhysAddr, KRNL_BASE_VA, endPhysAddr - startPhysAddr);
+    
     for (UINT64 currentPhysAddr = startPhysAddr; currentPhysAddr < endPhysAddr; currentPhysAddr += PAGE_4KB)
     {
         request.AddrPhys = currentPhysAddr;
@@ -381,7 +385,7 @@ CreateKrnlMapping(EFI_PHYSICAL_ADDRESS pml4BasePhys, UINT64 pageTableBlockSize, 
         status = MapBootPage(&request);
         if (EFI_ERROR(status))
         {
-            PRINT_HEX_WITH_MESSAGE("Failed to map boot info at ", currentPhysAddr);
+            ConsoleFormatWrite(L"Failed to map boot info at 0x%x\r\n", currentPhysAddr);
             return status;
         }
     }
@@ -390,7 +394,8 @@ CreateKrnlMapping(EFI_PHYSICAL_ADDRESS pml4BasePhys, UINT64 pageTableBlockSize, 
     request.Flags = 0; // Executable
     startPhysAddr = staging->KrnlEntryPhys;
     endPhysAddr = startPhysAddr + staging->KrnlCodeSize;
-    PRINT_ADDR_MAP("Mapping kernel code segment: ", startPhysAddr, KRNL_ENTRY_VA, endPhysAddr - startPhysAddr);
+    LOG_MAPPING(L"Mapping KRNL_CODE:", startPhysAddr, KRNL_ENTRY_VA, endPhysAddr - startPhysAddr);
+    
     for (UINT64 currentPhysAddr = startPhysAddr; currentPhysAddr < endPhysAddr; currentPhysAddr += PAGE_4KB)
     {
         request.AddrPhys = currentPhysAddr;
@@ -398,7 +403,7 @@ CreateKrnlMapping(EFI_PHYSICAL_ADDRESS pml4BasePhys, UINT64 pageTableBlockSize, 
         status = MapBootPage(&request);
         if (EFI_ERROR(status))
         {
-            PRINT_HEX_WITH_MESSAGE("Failed to map kernel image at ", currentPhysAddr);
+            ConsoleFormatWrite(L"Failed to map kernel image at 0x%x\r\n", currentPhysAddr);
             return status;
         }
     }
@@ -407,8 +412,8 @@ CreateKrnlMapping(EFI_PHYSICAL_ADDRESS pml4BasePhys, UINT64 pageTableBlockSize, 
     request.Flags = PTE_WRITABLE | PTE_CACHE_DISABLE;
     startPhysAddr = staging->KrnlEntryPhys + staging->KrnlCodeSize;
     endPhysAddr = startPhysAddr + staging->KrnlDataSize;
-    PRINT_ADDR_MAP("Mapping kernel data segment: ", startPhysAddr, KRNL_ENTRY_VA + staging->KrnlCodeSize,
-                   endPhysAddr - startPhysAddr);
+    LOG_MAPPING(L"Mapping KRNL_DATA:", startPhysAddr, KRNL_ENTRY_VA + staging->KrnlCodeSize, endPhysAddr - startPhysAddr);
+    
     for (UINT64 currentPhysAddr = startPhysAddr; currentPhysAddr < endPhysAddr; currentPhysAddr += PAGE_4KB)
     {
         request.AddrPhys = currentPhysAddr;
@@ -416,7 +421,7 @@ CreateKrnlMapping(EFI_PHYSICAL_ADDRESS pml4BasePhys, UINT64 pageTableBlockSize, 
         status = MapBootPage(&request);
         if (EFI_ERROR(status))
         {
-            PRINT_HEX_WITH_MESSAGE("Failed to map kernel image at ", currentPhysAddr);
+            ConsoleFormatWrite(L"Failed to map kernel data at 0x%x\r\n", currentPhysAddr);
             return status;
         }
     }
@@ -425,7 +430,8 @@ CreateKrnlMapping(EFI_PHYSICAL_ADDRESS pml4BasePhys, UINT64 pageTableBlockSize, 
     request.Flags = PTE_WRITABLE | PTE_CACHE_DISABLE;
     startPhysAddr = staging->KrnlStackPhys;
     endPhysAddr = startPhysAddr + staging->KrnlStackSize;
-    PRINT_ADDR_MAP("Mapping kernel stack: ", startPhysAddr, KRNL_STACK_VA, endPhysAddr - startPhysAddr);
+    LOG_MAPPING(L"Mapping KRNL_STAK:", startPhysAddr, KRNL_STACK_VA, endPhysAddr - startPhysAddr);
+
     for (UINT64 currentPhysAddr = startPhysAddr; currentPhysAddr < endPhysAddr; currentPhysAddr += PAGE_4KB)
     {
         request.AddrPhys = currentPhysAddr;
@@ -433,22 +439,22 @@ CreateKrnlMapping(EFI_PHYSICAL_ADDRESS pml4BasePhys, UINT64 pageTableBlockSize, 
         status = MapBootPage(&request);
         if (EFI_ERROR(status))
         {
-            PRINT_HEX_WITH_MESSAGE("Failed to map kernel stack at ", currentPhysAddr);
+            ConsoleFormatWrite(L"Failed to map kernel stack at 0x%x\r\n", currentPhysAddr);
             return status;
         }
     }
 
-    // The guard page of IST1 stack between normal stack and IST1 stack: not present
+    // Guard page
     request.NotPresent = TRUE;
-    startPhysAddr = (UINT64)0; // Map a dummy physical address
-    PRINT_ADDR_MAP("Mapping IST1 stack guard page (not present): ", startPhysAddr,
-                   KRNL_STACK_VA + staging->KrnlStackSize, PAGE_4KB);
+    startPhysAddr = (UINT64)0;
+    LOG_MAPPING(L"Mapping IST1_GDPG:", startPhysAddr, KRNL_STACK_VA + staging->KrnlStackSize, PAGE_4KB);
+    
     request.AddrPhys = startPhysAddr;
     request.AddrVirt = KRNL_STACK_VA + staging->KrnlStackSize;
     status = MapBootPage(&request);
     if (EFI_ERROR(status))
     {
-        PRINT_HEX_WITH_MESSAGE("Failed to map IST1 stack guard page at ", startPhysAddr);
+        ConsoleFormatWrite(L"Failed to map IST1 stack guard page\r\n");
         return status;
     }
 
@@ -457,7 +463,8 @@ CreateKrnlMapping(EFI_PHYSICAL_ADDRESS pml4BasePhys, UINT64 pageTableBlockSize, 
     request.Flags = PTE_WRITABLE | PTE_CACHE_DISABLE;
     startPhysAddr = staging->KrnlIST1StackPhys;
     endPhysAddr = startPhysAddr + staging->KrnlStackSize;
-    PRINT_ADDR_MAP("Mapping IST1 stack: ", startPhysAddr, KRNL_IST1_STACK_VA, endPhysAddr - startPhysAddr);
+    LOG_MAPPING(L"Mapping IST1_STAK:", startPhysAddr, KRNL_IST1_STACK_VA, endPhysAddr - startPhysAddr);
+    
     for (UINT64 currentPhysAddr = startPhysAddr; currentPhysAddr < endPhysAddr; currentPhysAddr += PAGE_4KB)
     {
         request.AddrPhys = currentPhysAddr;
@@ -465,17 +472,17 @@ CreateKrnlMapping(EFI_PHYSICAL_ADDRESS pml4BasePhys, UINT64 pageTableBlockSize, 
         status = MapBootPage(&request);
         if (EFI_ERROR(status))
         {
-            PRINT_HEX_WITH_MESSAGE("Failed to map IST1 stack at ", currentPhysAddr);
+            ConsoleFormatWrite(L"Failed to map IST1 stack at 0x%x\r\n", currentPhysAddr);
             return status;
         }
     }
 
-    // Map MMIO (GOP framebuffer)
+    // Map MMIO
     request.Flags = PTE_WRITABLE | PTE_CACHE_DISABLE | PTE_NO_EXECUTE;
     startPhysAddr = staging->FramebufferPhys;
     endPhysAddr = startPhysAddr + staging->FramebufferSize;
-    PRINT_ADDR_MAP("Mapping MMIO (GOP framebuffer): ", startPhysAddr, staging->FramebufferVirt,
-                   endPhysAddr - startPhysAddr);
+    LOG_MAPPING(L"Mapping MMIO_GOPB:", startPhysAddr, staging->FramebufferVirt, endPhysAddr - startPhysAddr);
+
     for (UINT64 currentPhysAddr = startPhysAddr; currentPhysAddr < endPhysAddr; currentPhysAddr += PAGE_4KB)
     {
         request.AddrPhys = currentPhysAddr;
@@ -483,11 +490,12 @@ CreateKrnlMapping(EFI_PHYSICAL_ADDRESS pml4BasePhys, UINT64 pageTableBlockSize, 
         status = MapBootPage(&request);
         if (EFI_ERROR(status))
         {
-            PRINT_HEX_WITH_MESSAGE("Failed to map MMIO at ", currentPhysAddr);
+            ConsoleFormatWrite(L"Failed to map MMIO at 0x%x\r\n", currentPhysAddr);
             return status;
         }
     }
 
+    #undef LOG_MAPPING
     return EFI_SUCCESS;
 }
 
@@ -496,7 +504,7 @@ MapBootPage(MAP_REQUEST *request)
 {
     if (request->PageSize != PAGE_4KB && request->PageSize != PAGE_2MB && request->PageSize != PAGE_1GB)
     {
-        PRINT_HEX_WITH_MESSAGE("Unsupported page size: ", request->PageSize);
+        ConsoleFormatWrite(L"Unsupported page size: %u\r\n", request->PageSize);
         return EFI_INVALID_PARAMETER;
     }
 
@@ -513,7 +521,7 @@ MapBootPage(MAP_REQUEST *request)
         UINT64 pdptPhys = (UINT64)HobAlloc(allocator, PAGE_4KB, PAGE_4KB);
         if (pdptPhys == 0)
         {
-            PRINT_HEX_WITH_MESSAGE("Failed to allocate PDPT: ", EFI_OUT_OF_RESOURCES);
+            ConsoleFormatWrite(L"Failed to allocate PDPT: %k\r\n", EFI_OUT_OF_RESOURCES);
             return EFI_OUT_OF_RESOURCES;
         }
         pml4[pml4Index] = pdptPhys | PTE_PRESENT | PTE_WRITABLE;
@@ -525,7 +533,7 @@ MapBootPage(MAP_REQUEST *request)
     {
         if (pdpt[pdptIndex] & PTE_PRESENT)
         {
-            PRINT_HEX_WITH_MESSAGE("Virtual address already mapped: ", alignedAddrVirt);
+            ConsoleFormatWrite(L"Virtual address already mapped: 0x%x\r\n", alignedAddrVirt);
             return EFI_INVALID_PARAMETER;
         }
         pdpt[pdptIndex] = alignedAddrPhys | flags | isPresent;
@@ -537,7 +545,7 @@ MapBootPage(MAP_REQUEST *request)
         UINT64 pdPhys = (UINT64)HobAlloc(allocator, PAGE_4KB, PAGE_4KB);
         if (pdPhys == 0)
         {
-            PRINT_HEX_WITH_MESSAGE("Failed to allocate PD: ", EFI_OUT_OF_RESOURCES);
+            ConsoleFormatWrite(L"Failed to allocate PD: %k\r\n", EFI_OUT_OF_RESOURCES);
             return EFI_OUT_OF_RESOURCES;
         }
         pdpt[pdptIndex] = pdPhys | PTE_PRESENT | PTE_WRITABLE;
@@ -549,7 +557,7 @@ MapBootPage(MAP_REQUEST *request)
     {
         if (pd[pdIndex] & PTE_PRESENT)
         {
-            PRINT_HEX_WITH_MESSAGE("Virtual address already mapped: ", alignedAddrVirt);
+            ConsoleFormatWrite(L"Virtual address already mapped: 0x%x\r\n", alignedAddrVirt);
             return EFI_INVALID_PARAMETER;
         }
         pd[pdIndex] = alignedAddrPhys | flags | isPresent;
@@ -561,9 +569,9 @@ MapBootPage(MAP_REQUEST *request)
         UINT64 ptPhys = (UINT64)HobAlloc(allocator, PAGE_4KB, PAGE_4KB);
         if (ptPhys == 0)
         {
-            PRINT_HEX_WITH_MESSAGE("Failed to allocate PT: ", EFI_OUT_OF_RESOURCES);
-            PRINT_HEX_WITH_MESSAGE("Virtual address to map: ", alignedAddrVirt);
-            PRINT_HEX_WITH_MESSAGE("Allocator state: ", allocator->Base + allocator->Offset);
+            ConsoleFormatWrite(L"Failed to allocate PT: %k\r\n", EFI_OUT_OF_RESOURCES);
+            ConsoleFormatWrite(L"Virtual address to map: 0x%x\r\n", alignedAddrVirt);
+            ConsoleFormatWrite(L"Allocator state: 0x%x\r\n", allocator->Base + allocator->Offset);
             return EFI_OUT_OF_RESOURCES;
         }
         pd[pdIndex] = ptPhys | PTE_PRESENT | PTE_WRITABLE;
@@ -573,7 +581,7 @@ MapBootPage(MAP_REQUEST *request)
     UINT64 ptIndex = PT_INDEX(alignedAddrVirt);
     if (pt[ptIndex] & PTE_PRESENT)
     {
-        PRINT_HEX_WITH_MESSAGE("Virtual address already mapped: ", alignedAddrVirt);
+        ConsoleFormatWrite(L"Virtual address already mapped: 0x%x\r\n", alignedAddrVirt);
         return EFI_INVALID_PARAMETER;
     }
 
@@ -585,23 +593,15 @@ static UINT64
 HeaderPackedPages(UINT64 memoryMapSize)
 {
     UINT64 pages = HO_ALIGN_UP(memoryMapSize + sizeof(STAGING_BLOCK) + sizeof(CPU_CORE_LOCAL_DATA), PAGE_4KB) >> 12;
-    return pages + 2; // Anyway, reserve 2 extra pages for safety
+    return pages + 2; 
 }
 
 static UINT64
 PageTablePages(REQUIRED_PAGES_INFO *pagesInfo, UINT64 gopBufferSize)
 {
     UINT64 pml4Pages = 1;
-    UINT64 pdptPages = 1   // for Lower 4GB Identity Map (PML4[0])
-                       + 1 // for Higher-Half Kernel area (PML4[256] for 0xFFFF80...)
-                       + 1 // for MMIO area (PML4[511] for 0xFFFFC0...)
-        ;
-    UINT64 pdPages = 4   // for Lower 4GB Identity Map (each PDPT entry maps 1GB, so 4 PDPT entries needed)
-                     + 1 // Boot info (staging block, memory map, page tables)
-                     + 1 // Kernel code & data segments
-                     + 1 // Kernel stack
-                     + 1 // MMIO area, GOP
-        ;
+    UINT64 pdptPages = 1 + 1 + 1;
+    UINT64 pdPages = 4 + 1 + 1 + 1 + 1;
 
     UINT64 ptPages = 0;
     ptPages += CalcPagesToStoreEntries(pagesInfo->HeaderPages, sizeof(PAGE_TABLE_ENTRY), PAGE_4KB);
@@ -613,13 +613,13 @@ PageTablePages(REQUIRED_PAGES_INFO *pagesInfo, UINT64 gopBufferSize)
     UINT64 totalPages = pml4Pages + pdptPages + pdPages + ptPages;
     UINT64 itselfPages = CalcPagesToStoreEntries(totalPages, sizeof(PAGE_TABLE_ENTRY), PAGE_4KB);
 
-    return totalPages + itselfPages + 1; // 1 for safety margin
+    return totalPages + itselfPages + 1; 
 }
 
 static UINT64
 KrnlStackPages()
 {
-    return KRNL_STACK_PAGES + KRNL_STACK_PAGES /* ISA1 Stack */;
+    return KRNL_STACK_PAGES + KRNL_STACK_PAGES;
 }
 
 static void
@@ -642,7 +642,7 @@ GetStagingBlock(REQUIRED_PAGES_INFO *pagesInfo, UINT64 totalReclaimable)
         g_ST->BootServices->AllocatePages(AllocateAnyPages, EfiLoaderData, pagesInfo->TotalPages, &basePhys);
     if (EFI_ERROR(status))
     {
-        PRINT_HEX_WITH_MESSAGE("Failed to allocate pages for staging block: ", status);
+        ConsoleFormatWrite(L"Failed to allocate pages for staging block: %k (0x%x)\r\n", status, status);
         return NULL;
     }
 
@@ -670,17 +670,14 @@ GetStagingBlock(REQUIRED_PAGES_INFO *pagesInfo, UINT64 totalReclaimable)
     block->PageTablePhys = block->MemoryMapPhys + block->MemoryMapSize;
     block->KrnlEntryPhys = block->PageTablePhys + block->PageTableSize;
     block->KrnlStackPhys = block->KrnlEntryPhys + block->KrnlDataSize + block->KrnlCodeSize;
-    block->KrnlIST1StackPhys =
-        block->KrnlStackPhys + block->KrnlStackSize /* + PAGE_4KB; */; // Guard page is not allocated
+    block->KrnlIST1StackPhys = block->KrnlStackPhys + block->KrnlStackSize;
 
     block->CoreLocalDataVirt = block->BaseVirt + block->InfoSize;
     block->MemoryMapVirt = block->CoreLocalDataVirt + block->CoreLocalDataSize;
     block->PageTableVirt = block->MemoryMapVirt + block->MemoryMapSize;
     block->KrnlEntryVirt = KRNL_ENTRY_VA;
-    block->KrnlStackVirt = KRNL_STACK_VA; // KRNL_STACK_VA ~ KRNL_STACK_VA + KRNL_STACK_SIZE(RSP)
-    // The guard page of IST1 stack: unmapped, KRNL_STACK_VA + KRNL_STACK_SIZE ~ KRNL_ISA1_STACK_VA
-    block->KrnlIST1StackVirt =
-        KRNL_IST1_STACK_VA; // KRNL_IST1_STACK_VA ~ KRNL_IST1_STACK_VA + KRNL_STACK_SIZE(RSP of IST1)
+    block->KrnlStackVirt = KRNL_STACK_VA;
+    block->KrnlIST1StackVirt = KRNL_IST1_STACK_VA;
 
     return block;
 }
@@ -697,7 +694,7 @@ LoadKernel(void *image, UINT64 imageSize, STAGING_BLOCK *staging)
     params.Base = (void *)staging->KrnlEntryPhys;
     params.BaseSize = staging->KrnlCodeSize + staging->KrnlDataSize;
 
-    PrintFormatAddressRange(L"Loading kernel to", (UINT64)params.Base, params.BaseSize);
+    ConsoleFormatWrite(L"Loading kernel to 0x%x (Size: %u byte)\r\n", (UINT64)params.Base, params.BaseSize);
     return Elf64LoadToBuffer(&params);
 }
 

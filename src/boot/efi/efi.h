@@ -331,7 +331,7 @@ extern EFI_HANDLE gImageHandle;
 void EfiInitialize(EFI_HANDLE imageHandle, struct EFI_SYSTEM_TABLE *SystemTable);
 
 // HO_NODISCARD HO_KERNEL_API int ScanMemoryMap(IN_OUT MM_INITIAL_MAP *map, uint64_t stagingReserved);
-
+int CopyString(CHAR16 *dest, const CHAR16 *src);
 HO_NODISCARD HO_KERNEL_API int ListDir(IN CHAR16 *dir,
                                        OUT FILE_INFO *files,
                                        IN uint64_t maxFiles,

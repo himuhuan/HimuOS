@@ -140,13 +140,15 @@ typedef uint64_t PAGE_TABLE_ENTRY;
 #define PD_TABLE_MAPSIZ    PDPT_ENTRY_MAPSIZ     // Each PD table maps 1GB
 #define PDPT_TABLE_MAPSIZ  PML4_ENTRY_MAPSIZ     // Each PDPT table maps 512GB
 
+/* NOTE: In HimuOS, every stack always includes extra one guard page 
+   (no physical memory allocated) to catch stack overflows. */
+
 #define KRNL_BASE_VA       0xFFFF800000000000ULL // Kernel base virtual address
-#define KRNL_ENTRY_VA      0xFFFF804000000000ULL // Kernel entry virtual address (1GB offset from base)
-#define KRNL_STACK_VA      0xFFFF808000000000ULL // Kernel stack BOTTOM virtual address (2GB offset from base)
-/* NOTE: In HimuOS, every stack always includes extra one guard page (no physical memory allocated) to catch stack
- * overflows. */
+#define KRNL_ENTRY_VA      0xFFFF804000000000ULL // Kernel entry virtual address
+#define KRNL_STACK_VA      0xFFFF808000000000ULL // Kernel stack BOTTOM virtual address
 #define KRNL_IST1_STACK_VA (KRNL_STACK_VA + KRNL_STACK_SIZE + PAGE_4KB) // Kernel IST1 stack BOTTOM virtual address
-#define MMIO_BASE_VA       0xFFFFC00000000000ULL                        // MM
+#define HHDM_BASE_VA       0xFFFF900000000000ULL // HHDM (Higher Half Direct Mapping) base virtual address
+#define MMIO_BASE_VA       0xFFFFC00000000000ULL // MM
 
 /**
  * Calculate the number of pages needed to store a given number of entries.

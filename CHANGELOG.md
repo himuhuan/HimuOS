@@ -29,3 +29,17 @@ CHANGES:
    - 优先处理 `%%` 转义，优化解析流程。
    - 将整数打印逻辑迁移至 `hostdlib` 的 `Int64ToStringEx` 和 `UInt64ToStringEx` 接口。
 4. **更新调用代码**：修改了 `kprintf` 调用以适应新的格式化逻辑。
+
+## BRANCH [refactor/efi-bootloader-logs]
+
+### [2025-11-19] refactor(bootloader): modernize console output and remove legacy macros
+
+BREAKING CHANGE:
+
+1. 移除了 `bootloader.h` 中定义的旧版打印宏：`PRINT_SIZ_WITH_MESSAGE、PRINT_ADDR_RANGE_WITH_MESSAGE、PRINT_ADDR_MAP` 和 `PRINT_HEX_WITH_MESSAGE`。
+2. 移除了 `shell.c` 中的手动格式化辅助函数：`UInt64ToHexStr 和 PadHexLL`
+
+CHANGES:
+1. 实现格式化填充：ConsoleFormatWrite 
+2. 替换所有旧版宏调用为 ConsoleFormatWrite
+3. 统一了协议定位（Protocol Locate）和文件系统操作的错误日志风格
