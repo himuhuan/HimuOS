@@ -7,9 +7,6 @@
 
 static void WriteIntDecimal(uint64_t num, char *buf, uint8_t digitSize);
 static void WriteIntTwoBase(uint64_t num, char *buf, uint8_t digitSize, int base);
-static uint8_t CountDecDigit(uint64_t n);
-static int FindMostSignificantBit(uint64_t num);
-static BOOL IsValidBase(int base);
 
 HO_PUBLIC_API void
 ReverseString(char *begin, char *end)
@@ -109,39 +106,7 @@ Int64ToStringEx(int64_t val, char *buf, int32_t padding, char padChar)
     return digits;
 }
 
-//
-// static functions
-//
-
-static void
-WriteIntDecimal(uint64_t num, char *buf, uint8_t digitSize)
-{
-    char *end = buf + digitSize;
-    if (num == 0)
-    {
-        *(--end) = '0';
-        return;
-    }
-    while (num > 0)
-    {
-        *(--end) = DIGITS_STR[num % 10];
-        num /= 10;
-    }
-}
-
-static void
-WriteIntTwoBase(uint64_t num, char *buf, uint8_t digitSize, int base)
-{
-    int step = FindMostSignificantBit(base);
-    do
-    {
-        uint8_t digit = (uint8_t)(num & (base - 1));
-        buf[--digitSize] = DIGITS_STR[digit];
-        num >>= step;
-    } while (num != 0);
-}
-
-static uint8_t
+uint8_t
 CountDecDigit(uint64_t n)
 {
     if (n < 10)
@@ -185,7 +150,7 @@ CountDecDigit(uint64_t n)
     return 20;
 }
 
-static int
+int
 FindMostSignificantBit(uint64_t num)
 {
     if (!num)
@@ -193,10 +158,42 @@ FindMostSignificantBit(uint64_t num)
     return 63 - __builtin_clzll(num);
 }
 
-static BOOL
+BOOL
 IsValidBase(int base)
 {
     if (base == 2 || base == 4 || base == 8 || base == 10 || base == 16 || base == 32)
         return TRUE;
     return FALSE;
+}
+
+//
+// static functions
+//
+
+static void
+WriteIntDecimal(uint64_t num, char *buf, uint8_t digitSize)
+{
+    char *end = buf + digitSize;
+    if (num == 0)
+    {
+        *(--end) = '0';
+        return;
+    }
+    while (num > 0)
+    {
+        *(--end) = DIGITS_STR[num % 10];
+        num /= 10;
+    }
+}
+
+static void
+WriteIntTwoBase(uint64_t num, char *buf, uint8_t digitSize, int base)
+{
+    int step = FindMostSignificantBit(base);
+    do
+    {
+        uint8_t digit = (uint8_t)(num & (base - 1));
+        buf[--digitSize] = DIGITS_STR[digit];
+        num >>= step;
+    } while (num != 0);
 }

@@ -26,7 +26,7 @@ Shell(IN const CHAR16 *Prompt)
         g_ST->BootServices->AllocatePool(EfiBootServicesData, sizeof(CHAR16) * MAX_LINE, (void **)&inputLineBuf);
     if (EFI_ERROR(st))
     {
-        PRINT_HEX_WITH_MESSAGE("Allocate input buffer failed: ", st);
+        ConsoleFormatWrite(L"Allocate input buffer failed: %k (0x%x)\r\n", st, st);
         return;
     }
 
@@ -34,24 +34,23 @@ Shell(IN const CHAR16 *Prompt)
     st = g_ST->BootServices->AllocatePool(EfiBootServicesData, MAX_ARGBUF_SIZ, (void **)&parseBuf);
     if (EFI_ERROR(st))
     {
-        PRINT_HEX_WITH_MESSAGE("Allocate parse buffer failed: ", st);
+        ConsoleFormatWrite(L"Allocate parse buffer failed: %k (0x%x)\r\n", st, st);
         return;
     }
 
     while (TRUE)
     {
-        ConsoleWriteStr(Prompt);
+        ConsoleFormatWrite(L"%s", Prompt);
         if (ConsoleReadline(inputLineBuf, MAX_LINE) <= 0)
             continue;
 
         BOOL found = FALSE;
         for (int i = 0; g_command_table[i].CommandName != NULL; i++)
         {
-
             int argc = ParseCommandLine(inputLineBuf, parseBuf, MAX_ARGBUF_SIZ);
             if (argc < 0)
             {
-                ConsoleWriteStr(TEXT("Error: command line too long\r\n"));
+                ConsoleFormatWrite(L"Error: command line too long\r\n");
                 found = TRUE; // Prevent "command not found" message
                 break;
             }
@@ -59,12 +58,6 @@ Shell(IN const CHAR16 *Prompt)
             COMMAND_STRING *command = FindCommandString(argc, parseBuf, MAX_ARGBUF_SIZ, 0);
             if (!wstrcmp(command->String, g_command_table[i].CommandName))
             {
-                if (EFI_ERROR(st))
-                {
-                    PRINT_HEX_WITH_MESSAGE("Allocate parse buffer failed: ", st);
-                    break;
-                }
-
                 g_command_table[i].Function(argc, parseBuf);
                 found = TRUE;
                 break;
@@ -73,9 +66,7 @@ Shell(IN const CHAR16 *Prompt)
 
         if (!found)
         {
-            ConsoleWriteStr(TEXT("Error: '"));
-            ConsoleWriteStr(inputLineBuf);
-            ConsoleWriteStr(TEXT("': command not found\r\n"));
+            ConsoleFormatWrite(L"Error: '%s': command not found\r\n", inputLineBuf);
         }
     }
 
@@ -84,39 +75,15 @@ Shell(IN const CHAR16 *Prompt)
     g_ST->BootServices->FreePool(parseBuf);
 }
 
-// Helper function to convert a number to hexadecimal string
-void
-UInt64ToHexStr(UINT64 value, CHAR16 *buffer, int width)
-{
-    static const CHAR16 hex_chars[16] = {TEXT('0'), TEXT('1'), TEXT('2'), TEXT('3'), TEXT('4'), TEXT('5'),
-                                         TEXT('6'), TEXT('7'), TEXT('8'), TEXT('9'), TEXT('A'), TEXT('B'),
-                                         TEXT('C'), TEXT('D'), TEXT('E'), TEXT('F')};
-    int i;
-
-    for (i = 0; i < width; i++)
-    {
-        buffer[i] = TEXT('0');
-    }
-    buffer[width] = TEXT('\0');
-
-    i = width - 1;
-    while (value > 0 && i >= 0)
-    {
-        buffer[i] = hex_chars[value & 0xF];
-        value >>= 4;
-        i--;
-    }
-}
-
 CHAR16 *
 MemoryTypeString(UINT32 Type)
 {
     if (Type == EfiReservedMemoryType)
         return L"Reserved    ";
     if (Type == EfiLoaderCode)
-        return L"LoderCode   ";
+        return L"LoaderCode  ";
     if (Type == EfiLoaderData)
-        return L"LoderData   ";
+        return L"LoaderData  ";
     if (Type == EfiBootServicesCode)
         return L"BootSvcCode ";
     if (Type == EfiBootServicesData)
@@ -145,33 +112,16 @@ MemoryTypeString(UINT32 Type)
 }
 
 void
-PadHexLL(CHAR16 *hex_buffer)
-{
-    UINTN length, offset;
-    CHAR16 buffer[17] = {'0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', 0};
-
-    length = 0;
-    while (hex_buffer[length] != TEXT('\0'))
-    {
-        length++;
-    }
-
-    offset = 16 - length;
-    memcpy(buffer + offset, hex_buffer, length * sizeof(CHAR16));
-    memcpy(hex_buffer, buffer, sizeof(buffer));
-}
-
-void
 ShowMemoryMap(MAYBE_UNUSED int argc, MAYBE_UNUSED void *arg)
 {
     MM_INITIAL_MAP *map = GetLoaderRuntimeMemoryMap();
     if (!map)
     {
-        PRINT_HEX_WITH_MESSAGE("Failed to get memory map: ", EFI_OUT_OF_RESOURCES);
+        ConsoleFormatWrite(L"Failed to get memory map: %k\r\n", EFI_OUT_OF_RESOURCES);
         return;
     }
 
-    ConsoleWriteStr(TEXT("The Memory Map in this PC: \r\n"));
+    ConsoleFormatWrite(L"The Memory Map in this PC: \r\n");
 
     UINTN i, map_total_entries, map_descriptor_size;
     EFI_MEMORY_DESCRIPTOR *efi_memory_map = NULL;
@@ -182,34 +132,21 @@ ShowMemoryMap(MAYBE_UNUSED int argc, MAYBE_UNUSED void *arg)
 
     for (i = 0; i < map_total_entries; i++)
     {
-        CHAR16 hex_buffer[30];
         EFI_PHYSICAL_ADDRESS physical_end;
-
-        ConsoleWriteStr(MemoryTypeString(efi_memory_map->Type));
-        ConsoleWriteStr(L" : ");
-
-        memset(hex_buffer, 0, sizeof(hex_buffer));
-        UInt64ToHexStr(efi_memory_map->PhysicalStart, hex_buffer, 16);
-        PadHexLL(hex_buffer);
-        ConsoleWriteStr(hex_buffer);
-        ConsoleWriteStr(L" - ");
-
         physical_end = efi_memory_map->PhysicalStart + efi_memory_map->NumberOfPages * 4096 - 1;
-        memset(hex_buffer, 0, sizeof(hex_buffer));
-        UInt64ToHexStr(physical_end, hex_buffer, 16);
-        PadHexLL(hex_buffer);
-        ConsoleWriteStr(hex_buffer);
-        ConsoleWriteStr(L" : ");
 
-        memset(hex_buffer, 0, sizeof(hex_buffer));
-        UInt64ToHexStr(efi_memory_map->Attribute, hex_buffer, 16);
-        PadHexLL(hex_buffer);
-        ConsoleWriteStr(hex_buffer);
-        ConsoleWriteStr(L"\r\n");
+        // Format: Type : Start - End : Attribute
+        // Assuming %016x is supported for zero-padding to 16 digits
+        ConsoleFormatWrite(L"%s : %016x - %016x : %016x\r\n",
+                           MemoryTypeString(efi_memory_map->Type),
+                           efi_memory_map->PhysicalStart,
+                           physical_end,
+                           efi_memory_map->Attribute);
+
         efi_memory_map = (EFI_MEMORY_DESCRIPTOR *)((UINT8 *)efi_memory_map + map_descriptor_size);
     }
 
-    PRINT_HEX_WITH_MESSAGE("Map Total Entries: ", map_total_entries);
+    ConsoleFormatWrite(L"Map Total Entries: %u\r\n", map_total_entries);
 
     g_ST->BootServices->FreePages((EFI_PHYSICAL_ADDRESS)map, map->DescriptorTotalSize >> 12);
 }
@@ -219,15 +156,15 @@ Boot(MAYBE_UNUSED int argc, MAYBE_UNUSED void *args)
 {
     if (argc < 2)
     {
-        ConsoleWriteStr(L"Error: Boot kernel path not specified\r\n");
-        ConsoleWriteStr(L"Usage: boot <path to kernel file>\r\n");
+        ConsoleFormatWrite(L"Error: Boot kernel path not specified\r\n");
+        ConsoleFormatWrite(L"Usage: boot <path to kernel file>\r\n");
         return;
     }
 
     COMMAND_STRING *kernelPath = FindCommandString(argc, args, MAX_ARGBUF_SIZ, 1);
     if (!kernelPath || kernelPath->Length == 0)
     {
-        ConsoleWriteStr(L"Error: Invalid kernel path\r\n");
+        ConsoleFormatWrite(L"Error: Invalid kernel path\r\n");
         return;
     }
     StagingKernel(kernelPath->String);
@@ -254,110 +191,59 @@ Dir(MAYBE_UNUSED int argc, void *args)
     status = g_ST->BootServices->AllocatePool(EfiBootServicesData, sizeof(FILE_INFO) * MAX_FILES, (void **)&files);
     if (EFI_ERROR(status))
     {
-        PRINT_HEX_WITH_MESSAGE("Failed to allocate memory for file list: ", status);
+        ConsoleFormatWrite(L"Failed to allocate memory for file list: %k (0x%x)\r\n", status, status);
         return;
     }
 
     result = ListDir(dir->String, files, MAX_FILES, &fileCount);
     if (result != EC_SUCCESS)
     {
-        PRINT_HEX_WITH_MESSAGE("Failed to list directory: ", result);
+        ConsoleFormatWrite(L"Failed to list directory: 0x%x\r\n", result);
         g_ST->BootServices->FreePool(files);
         return;
     }
 
-    CHAR16 formatBuffer[21];
     UINT64 totalFileCount = 0;
     UINT64 totalDirCount = 0;
     UINT64 totalSize = 0;
 
-    ConsoleWriteStr(L" Directory of /");
-    ConsoleWriteStr(dir->Length == 0 ? L"" : dir->String);
-    ConsoleWriteStr(L":\r\n");
-    ConsoleWriteStr(L"Date       Time           Size/Type Name\r\n");
-    ConsoleWriteStr(L"---------- ----- ------------------ ----------------\r\n");
+    ConsoleFormatWrite(L" Directory of /%s:\r\n", dir->Length == 0 ? L"" : dir->String);
+    ConsoleFormatWrite(L"Date       Time           Size/Type Name\r\n");
+    ConsoleFormatWrite(L"---------- ----- ------------------ ----------------\r\n");
 
     for (uint64_t i = 0; i < fileCount; i++)
     {
         FILE_INFO *info = &files[i];
 
-        if (info->ModificationTime.Month < 10)
-            ConsoleWriteStr(L"0");
-        FormatUInt64(info->ModificationTime.Month, formatBuffer);
-        ConsoleWriteStr(formatBuffer);
-        ConsoleWriteStr(L"/");
-        if (info->ModificationTime.Day < 10)
-            ConsoleWriteStr(L"0");
-        FormatUInt64(info->ModificationTime.Day, formatBuffer);
-        ConsoleWriteStr(formatBuffer);
-        ConsoleWriteStr(L"/");
-        FormatUInt64(info->ModificationTime.Year, formatBuffer);
-        ConsoleWriteStr(formatBuffer);
-        ConsoleWriteStr(L" ");
-
-        if (info->ModificationTime.Hour < 10)
-            ConsoleWriteStr(L"0");
-        FormatUInt64(info->ModificationTime.Hour, formatBuffer);
-        ConsoleWriteStr(formatBuffer);
-        ConsoleWriteStr(L":");
-        if (info->ModificationTime.Minute < 10)
-            ConsoleWriteStr(L"0");
-        FormatUInt64(info->ModificationTime.Minute, formatBuffer);
-        ConsoleWriteStr(formatBuffer);
-        ConsoleWriteStr(L" ");
+        // Date and Time: 01/02/2025 12:30
+        ConsoleFormatWrite(L"%02u/%02u/%04u %02u:%02u ",
+                           info->ModificationTime.Month,
+                           info->ModificationTime.Day,
+                           info->ModificationTime.Year,
+                           info->ModificationTime.Hour,
+                           info->ModificationTime.Minute);
 
         if (info->Attribute & EFI_FILE_DIRECTORY)
         {
-            ConsoleWriteStr(L"<DIR>              ");
+            // <DIR> aligned to 19 chars (including trailing space)
+            ConsoleFormatWrite(L"<DIR>              ");
             totalDirCount++;
         }
         else
         {
-            UINTN num_digits = 0;
-            UINT64 temp_size = info->FileSize;
-            if (temp_size == 0)
-            {
-                num_digits = 1;
-            }
-            else
-            {
-                while (temp_size > 0)
-                {
-                    temp_size /= 10;
-                    num_digits++;
-                }
-            }
-
-            for (UINTN j = 0; j < 18 - num_digits; ++j)
-            {
-                ConsoleWriteStr(L" ");
-            }
-
-            FormatUInt64(info->FileSize, formatBuffer);
-            ConsoleWriteStr(formatBuffer);
-            ConsoleWriteStr(L" ");
+            // Size right aligned to 18 chars + 1 space
+            ConsoleFormatWrite(L"%18u ", info->FileSize);
 
             totalFileCount++;
             totalSize += info->FileSize;
         }
 
-        ConsoleWriteStr(info->FileName);
-        ConsoleWriteStr(L"\r\n");
+        ConsoleFormatWrite(L"%s\r\n", info->FileName);
     }
 
-    ConsoleWriteStr(L"\r\n");
-    ConsoleWriteStr(L"        ");
-    FormatUInt64(totalFileCount, formatBuffer);
-    ConsoleWriteStr(formatBuffer);
-    ConsoleWriteStr(L" File(s)    ");
-    FormatAsStorageUnit(totalSize, formatBuffer);
-    ConsoleWriteStr(formatBuffer);
-    ConsoleWriteStr(L"\r\n");
-
-    ConsoleWriteStr(L"        ");
-    FormatUInt64(totalDirCount, formatBuffer);
-    ConsoleWriteStr(formatBuffer);
-    ConsoleWriteStr(L" Dir(s)\r\n");
+    ConsoleFormatWrite(L"\r\n");
+    ConsoleFormatWrite(L"        %u File(s)    %u byte\r\n", totalFileCount, totalSize);
+    ConsoleFormatWrite(L"        %u Dir(s)\r\n", totalDirCount);
 
     g_ST->BootServices->FreePool(files);
 }

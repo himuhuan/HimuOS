@@ -1,92 +1,19 @@
 #include "io.h"
 #include "libc/string.h"
+#include <libc/stdarg.h>
+#include <libc/hostdlib.h>
 
-void
-FormatHex(uint64_t value, CHAR16 *buffer)
-{
-    int i;
-    buffer[0] = '0';
-    buffer[1] = 'X';
-    for (i = 0; i < 16; ++i)
-    {
-        int shift = (15 - i) * 4;
-        int digit = (value >> shift) & 0xF;
-        buffer[2 + i] = (digit < 10) ? ('0' + digit) : ('A' + digit - 10);
-    }
-    buffer[18] = 0;
-}
+#define CONSOLE_BUFFER_SIZE 256
+#define DIGITS_STR          L"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
-void
-FormatUInt64(uint64_t value, CHAR16 *buffer)
-{
-    int i = 19;
-    buffer[20] = 0;
-
-    if (value == 0)
-    {
-        buffer[0] = '0';
-        buffer[1] = 0;
-        return;
-    }
-
-    while (value > 0)
-    {
-        buffer[i] = '0' + (value % 10);
-        value /= 10;
-        i--;
-    }
-
-    int len = 19 - i;
-    for (int j = 0; j <= len; j++)
-    {
-        buffer[j] = buffer[i + 1 + j];
-    }
-}
-
-void
-FormatAsStorageUnit(uint64_t Size, CHAR16 *buffer)
-{
-    const CHAR16 *units[] = {TEXT("B"), TEXT("KB"), TEXT("MB"), TEXT("GB"), TEXT("TB")};
-    int unit_idx = 0;
-    uint64_t value = Size;
-
-    while (value >= 1024 && unit_idx < 4)
-    {
-        value /= 1024;
-        unit_idx++;
-    }
-
-    CHAR16 numbuf[21];
-    FormatUInt64(value, numbuf);
-
-    int pos = 0;
-    while (numbuf[pos])
-    {
-        buffer[pos] = numbuf[pos];
-        pos++;
-    }
-    buffer[pos++] = ' ';
-    int u = 0;
-    while (units[unit_idx][u])
-    {
-        buffer[pos++] = units[unit_idx][u++];
-    }
-    buffer[pos] = 0;
-}
-
-int
-CopyString(CHAR16 *dest, const CHAR16 *src)
-{
-    int len = 0;
-
-    while (src[len])
-    {
-        dest[len] = src[len];
-        len++;
-    }
-    dest[len] = 0;
-    return len;
-}
+static const CHAR16 *EfiStatusToString(EFI_STATUS status);
+static void FlushConsoleBuffer(CHAR16 *Buffer, UINTN *Index);
+static void ConsoleEmitChar(CHAR16 *Buffer, UINTN *Index, CHAR16 Char);
+static void ConsoleEmitString(CHAR16 *Buffer, UINTN *Index, const CHAR16 *Str);
+static void WriteIntDecimal(UINT64 num, CHAR16 *buf, UINT8 digitSize);
+static void WriteIntTwoBase(UINT64 num, CHAR16 *buf, UINT8 digitSize, int base);
+static UINT64 UInt64ToWideStringEx(UINT64 value, CHAR16 *str, int base, int padding, CHAR16 padChar);
+static UINT64 Int64ToWideStringEx(INT64 val, CHAR16 *buf, int padding, CHAR16 padChar);
 
 INT64
 ConsoleReadline(OUT CHAR16 *Buffer, IN INT64 MaxCount)
@@ -152,51 +79,262 @@ ConsoleWriteStr(IN const CHAR16 *Buffer)
     conout->OutputString(conout, (CHAR16 *)Buffer);
 }
 
-void
-ConsoleWriteHex(uint64_t value)
+EFI_STATUS
+ConsoleFormatWrite(const CHAR16 *fmt, ...)
 {
-    CHAR16 hex_buffer[19];
-    FormatHex(value, hex_buffer);
-    ConsoleWriteStr(hex_buffer);
+    CHAR16 buffer[CONSOLE_BUFFER_SIZE];
+    UINTN index = 0;
+    CHAR16 numBuffer[64];
+
+    va_list args;
+    va_start(args, fmt);
+
+    while (*fmt)
+    {
+        if (*fmt != L'%')
+        {
+            ConsoleEmitChar(buffer, &index, *fmt);
+            fmt++;
+            continue;
+        }
+        fmt++;
+
+        if (*fmt == L'%')
+        {
+            (void)ConsoleEmitChar(buffer, &index, *fmt);
+            ++fmt;
+            continue;
+        }
+
+        // Parse padding
+        CHAR16 pc = ' ';
+        if (*fmt == L'0')
+        {
+            pc = L'0';
+            ++fmt;
+        }
+        UINT32 width = 0;
+        while (*fmt >= L'0' && *fmt <= L'9')
+        {
+            width = width * 10 + (*fmt - L'0');
+            fmt++;
+        }
+        if (width > 0 && !pc)
+            pc = L' ';
+
+        switch (*fmt)
+        {
+        case L's': {
+            CHAR16 *strArgs = va_arg(args, CHAR16 *);
+            ConsoleEmitString(buffer, &index, strArgs);
+            break;
+        }
+        case L'd': {
+            int64_t val = va_arg(args, int64_t);
+            Int64ToWideStringEx(val, numBuffer, width, pc);
+            ConsoleEmitString(buffer, &index, numBuffer);
+            break;
+        }
+        case L'u': {
+            uint64_t val = va_arg(args, uint64_t);
+            UInt64ToWideStringEx(val, numBuffer, 10, width, pc);
+            ConsoleEmitString(buffer, &index, numBuffer);
+            break;
+        }
+        case L'x': {
+            uint64_t val = va_arg(args, uint64_t);
+            UInt64ToWideStringEx(val, numBuffer, 16, width, pc);
+            ConsoleEmitString(buffer, &index, numBuffer);
+            break;
+        }
+        case L'p': {
+            uint64_t val = (uint64_t)(UINTN)va_arg(args, void *);
+            ConsoleEmitString(buffer, &index, L"0X");
+            UInt64ToWideStringEx(val, numBuffer, 16, -1, L'0');
+            ConsoleEmitString(buffer, &index, numBuffer);
+            break;
+        }
+        case L'k': { // Custom: EFI_STATUS
+            EFI_STATUS st = va_arg(args, EFI_STATUS);
+            ConsoleEmitString(buffer, &index, EfiStatusToString(st));
+            break;
+        }
+        case L'%': {
+            ConsoleEmitChar(buffer, &index, L'%');
+            break;
+        }
+        default: {
+            ConsoleEmitChar(buffer, &index, *fmt);
+            break;
+        }
+        }
+        if (*fmt)
+            fmt++;
+    }
+    FlushConsoleBuffer(buffer, &index);
+
+    va_end(args);
+    return EFI_SUCCESS;
 }
 
-void
-ConsoleWriteUInt64(uint64_t value)
+//
+// static functions
+//
+
+static void
+FlushConsoleBuffer(CHAR16 *Buffer, UINTN *Index)
 {
-    CHAR16 buffer[21];
-    FormatUInt64(value, buffer);
-    ConsoleWriteStr(buffer);
+    if (*Index > 0)
+    {
+        Buffer[*Index] = L'\0';
+        g_ST->ConsoleOutput->OutputString(g_ST->ConsoleOutput, Buffer);
+        *Index = 0;
+    }
 }
 
-void
-PrintFormatAddressRange(IN const CHAR16 *Msg, IN uint64_t Begin, IN uint64_t Size)
+static void
+ConsoleEmitChar(CHAR16 *Buffer, UINTN *Index, CHAR16 Char)
 {
-    CHAR16 buffer[256];
-    CHAR16 hex_begin[19], hex_end[19], size_str[21];
-    int pos = 0;
-
-    FormatHex(Begin, hex_begin);
-    FormatHex(Begin + Size - 1, hex_end);
-    FormatAsStorageUnit(Size, size_str);
-
-    pos += CopyString(&buffer[pos], Msg);
-    pos += CopyString(&buffer[pos], TEXT(": ["));
-    pos += CopyString(&buffer[pos], hex_begin);
-    pos += CopyString(&buffer[pos], TEXT("] - ["));
-    pos += CopyString(&buffer[pos], hex_end);
-    pos += CopyString(&buffer[pos], TEXT("] (size: "));
-    pos += CopyString(&buffer[pos], size_str);
-    pos += CopyString(&buffer[pos], TEXT(")\r\n"));
-
-    buffer[pos] = 0;
-
-    ConsoleWriteStr(buffer);
+    if (*Index >= CONSOLE_BUFFER_SIZE - 1)
+    {
+        FlushConsoleBuffer(Buffer, Index);
+    }
+    Buffer[(*Index)++] = Char;
 }
 
-void
-PrintFormatStorageSize(IN uint64_t Size)
+static void
+ConsoleEmitString(CHAR16 *Buffer, UINTN *Index, const CHAR16 *Str)
 {
-    CHAR16 buffer[21];
-    FormatAsStorageUnit(Size, buffer);
-    ConsoleWriteStr(buffer);
+    if (!Str)
+    {
+        Str = L"(null)"; // 处理空指针
+    }
+    while (*Str)
+    {
+        ConsoleEmitChar(Buffer, Index, *Str);
+        Str++;
+    }
+}
+
+static void
+WriteIntDecimal(UINT64 num, CHAR16 *buf, UINT8 digitSize)
+{
+    CHAR16 *end = buf + digitSize;
+    if (num == 0)
+    {
+        *(--end) = L'0';
+        return;
+    }
+    while (num > 0)
+    {
+        *(--end) = DIGITS_STR[num % 10];
+        num /= 10;
+    }
+}
+
+static void
+WriteIntTwoBase(UINT64 num, CHAR16 *buf, UINT8 digitSize, int base)
+{
+    int step = FindMostSignificantBit(base);
+    do
+    {
+        uint8_t digit = (uint8_t)(num & (base - 1));
+        buf[--digitSize] = DIGITS_STR[digit];
+        num >>= step;
+    } while (num != 0);
+}
+
+static UINT64
+UInt64ToWideStringEx(UINT64 value, CHAR16 *str, int base, int padding, CHAR16 padChar)
+{
+    if (str == NULL || !IsValidBase(base))
+        return 0;
+
+    int totalDigits = 0;
+    if (base == 10)
+    {
+        totalDigits = CountDecDigit(value);
+        int toFill = 0;
+        if (padding > totalDigits)
+            toFill = padding - totalDigits;
+        WriteIntDecimal(value, str + toFill, totalDigits);
+        for (int i = 0; i < toFill; i++)
+            *(str + i) = padChar;
+        totalDigits += toFill;
+    }
+    else
+    {
+        int toFill = 0;
+        int bitsPerDigit = FindMostSignificantBit(base);
+
+        if (value == 0)
+            totalDigits = 1;
+        else
+        {
+            int bitsInValue = FindMostSignificantBit(value) + 1;
+            totalDigits = (bitsInValue + bitsPerDigit - 1) / bitsPerDigit;
+        }
+
+        // special case for hex with negative padding means align to full digits
+        if (padding < 0)
+            padding = (64 + bitsPerDigit - 1) / bitsPerDigit;
+        if (padding > totalDigits)
+            toFill = padding - totalDigits;
+
+        WriteIntTwoBase(value, str + toFill, totalDigits, base);
+        for (int i = 0; i < toFill; i++)
+            *(str + i) = padChar;
+        totalDigits += toFill;
+    }
+
+    *(str + totalDigits) = L'\0';
+    return totalDigits;
+}
+
+static UINT64
+Int64ToWideStringEx(INT64 val, CHAR16 *buf, int padding, CHAR16 padChar)
+{
+    UINT64 magnitude = 0;
+    UINT8 neg = 0;
+    if (val < 0)
+    {
+        magnitude = (uint64_t)(-(val + 1)) + 1;
+        neg = 1;
+    }
+    else
+    {
+        magnitude = val;
+    }
+
+    UINT64 digits = UInt64ToWideStringEx(magnitude, buf + neg, 10, padding - neg, padChar);
+    if (neg)
+    {
+        buf[0] = '-';
+        digits += 1;
+    }
+    return digits;
+}
+
+static const CHAR16 *
+EfiStatusToString(EFI_STATUS status)
+{
+    switch (status)
+    {
+    case EFI_SUCCESS:
+        return L"EFI_SUCCESS";
+    case EFI_LOAD_ERROR:
+        return L"EFI_LOAD_ERROR";
+    case EFI_INVALID_PARAMETER:
+        return L"EFI_INVALID_PARAMETER";
+    case EFI_UNSUPPORTED:
+        return L"EFI_UNSUPPORTED";
+    case EFI_BUFFER_TOO_SMALL:
+        return L"EFI_BUFFER_TOO_SMALL";
+    case EFI_DEVICE_ERROR:
+        return L"EFI_DEVICE_ERROR";
+    case EFI_OUT_OF_RESOURCES:
+        return L"EFI_OUT_OF_RESOURCES";
+    default:
+        return L"EFI_UNKNOWN_ERROR";
+    }
 }

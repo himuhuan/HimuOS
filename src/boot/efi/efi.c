@@ -5,7 +5,7 @@
 #include "arch/amd64/pm.h"
 
 // ===========================================
-// Global varibles
+// Global variables
 
 struct EFI_SYSTEM_TABLE *g_ST;
 
@@ -32,25 +32,38 @@ EfiInitialize(EFI_HANDLE imageHandle, struct EFI_SYSTEM_TABLE *SystemTable)
 
     g_ST = SystemTable;
     g_ST->BootServices->SetWatchdogTimer(0, 0, 0, NULL);
-    ConsoleWriteStr(TEXT("HimuOS UEFI Boot Manager Initializing...\r\n"));
+    ConsoleFormatWrite(L"HimuOS UEFI Boot Manager Initializing...\r\n");
 
     if ((status = g_ST->BootServices->LocateProtocol(&gop_guid, NULL, (void **)&g_GOP)) != EFI_SUCCESS)
     {
-        PRINT_HEX_WITH_MESSAGE("Failed to locate Graphics Output Protocol: ", status);
+        ConsoleFormatWrite(L"Failed to locate Graphics Output Protocol: %k (0x%x)\r\n", status, status);
         return;
     }
 
     if ((status = g_ST->BootServices->LocateProtocol(&sfsp_guid, NULL, (void **)&g_FSP)) != EFI_SUCCESS)
     {
-        PRINT_HEX_WITH_MESSAGE("Failed to locate Simple File System Protocol: ", status);
+        ConsoleFormatWrite(L"Failed to locate Simple File System Protocol: %k (0x%x)\r\n", status, status);
         return;
     }
 
     gImageHandle = imageHandle;
 
-    ConsoleWriteStr(TEXT("\r\n**Welcome to HimuOS UEFI Boot Manager Shell!**\r\n"));
+    ConsoleFormatWrite(L"\r\n**Welcome to HimuOS UEFI Boot Manager Shell!**\r\n");
 }
 
+int
+CopyString(CHAR16 *dest, const CHAR16 *src)
+{
+    int len = 0;
+
+    while (src[len])
+    {
+        dest[len] = src[len];
+        len++;
+    }
+    dest[len] = 0;
+    return len;
+}
 
 HO_NODISCARD HO_KERNEL_API int
 ListDir(IN CHAR16 *dir, OUT FILE_INFO *files, IN uint64_t maxFiles, OUT uint64_t *fileCount)
@@ -68,7 +81,7 @@ ListDir(IN CHAR16 *dir, OUT FILE_INFO *files, IN uint64_t maxFiles, OUT uint64_t
     status = g_FSP->OpenVolume(g_FSP, &rootDir);
     if (EFI_ERROR(status))
     {
-        PRINT_HEX_WITH_MESSAGE("Failed to open root volume: ", status);
+        ConsoleFormatWrite(L"Failed to open root volume: %k (0x%x)\r\n", status, status);
         return EC_NOT_ENOUGH_MEMORY;
     }
 
@@ -77,7 +90,7 @@ ListDir(IN CHAR16 *dir, OUT FILE_INFO *files, IN uint64_t maxFiles, OUT uint64_t
         status = rootDir->Open(rootDir, &targetDir, dir, EFI_FILE_MODE_READ, 0);
         if (EFI_ERROR(status))
         {
-            PRINT_HEX_WITH_MESSAGE("Failed to open directory: ", status);
+            ConsoleFormatWrite(L"Failed to open directory: %k (0x%x)\r\n", status, status);
             rootDir->Close(rootDir);
             return EC_NOT_ENOUGH_MEMORY;
         }
@@ -95,7 +108,7 @@ ListDir(IN CHAR16 *dir, OUT FILE_INFO *files, IN uint64_t maxFiles, OUT uint64_t
 
         if (EFI_ERROR(status))
         {
-            PRINT_HEX_WITH_MESSAGE("Failed to read directory: ", status);
+            ConsoleFormatWrite(L"Failed to read directory: %k (0x%x)\r\n", status, status);
             break;
         }
 
@@ -142,13 +155,13 @@ FillMemoryMap(IN_OUT MM_INITIAL_MAP *map)
                                                          &map->DescriptorSize, &map->DescriptorVersion);
     if (GetStatusCodeLow(status) != EFI_BUFFER_TOO_SMALL)
     {
-        PRINT_HEX_WITH_MESSAGE("Failed to get memory_map_size: ", status);
+        ConsoleFormatWrite(L"Failed to get memory_map_size: %k (0x%x)\r\n", status, status);
         return status;
     }
     expectedMapSize = HO_ALIGN_UP(expectedMapSize + 32 * map->DescriptorSize, PAGE_4KB);
     if (expectedMapSize > map->DescriptorTotalSize)
     {
-        PRINT_SIZ_WITH_MESSAGE("Memory map buffer too small, required size: ", expectedMapSize);
+        ConsoleFormatWrite(L"Memory map buffer too small, required size: %u byte\r\n", expectedMapSize);
         return EFI_BUFFER_TOO_SMALL;
     }
     return g_ST->BootServices->GetMemoryMap(&map->DescriptorTotalSize, map->Segs, &map->MemoryMapKey,
@@ -175,7 +188,7 @@ GetLoaderRuntimeMemoryMap()
         status = g_ST->BootServices->AllocatePages(AllocateAnyPages, EfiLoaderData, mapBufferPages, &mapBuffer);
         if (EFI_ERROR(status))
         {
-            PRINT_HEX_WITH_MESSAGE("Failed to allocate pages for memory map: ", status);
+            ConsoleFormatWrite(L"Failed to allocate pages for memory map: %k (0x%x)\r\n", status, status);
             return NULL;
         }
         map = InitMemoryMap((void *)mapBuffer, mapBufferSize);
@@ -185,3 +198,4 @@ GetLoaderRuntimeMemoryMap()
 
     return map;
 }
+
