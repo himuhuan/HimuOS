@@ -1,17 +1,9 @@
-/**
- * HimuOperatingSystem
- *
- * File: alloc.h
- * Module: Boot
- * Description: A simple BUMP memory allocator in UEFI environment
- * Copyright(c) 2024-2025 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
- */
-
 #pragma once
 
-#include "efi.h"
+#include "_hobase.h"
+#include "arch/amd64/efi_min.h"
 
-/* HimuOs Boot Bump Allocator */
+/* HimuOS Boot Bump Allocator */
 typedef struct _HOB_BALLOC
 {
     UINTN Base;

@@ -14,7 +14,8 @@
 
 #include "_hobase.h"
 #include "basic_color.h"
-#include "boot/boot.h"
+#include "arch/amd64/efi_min.h"
+#include "boot/boot_capsule.h"
 
 typedef struct
 {
@@ -62,7 +63,7 @@ typedef struct _VIDEO_DRIVER
  * @param pd Video device to initialize
  * @param info Boot information header
  */
-void HO_KERNEL_API VdInit(VIDEO_DRIVER *pd, BOOT_INFO_HEADER *info);
+void HO_KERNEL_API VdInit(VIDEO_DRIVER *pd, STAGING_BLOCK *info);
 
 /**
  * @brief Renders a single pixel on the specified video device.

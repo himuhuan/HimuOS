@@ -1,5 +1,5 @@
-#include "alloc.h"
-#include "libc/string.h"
+#include "ho_balloc.h"
+
 
 HO_KERNEL_API HO_NODISCARD EFI_STATUS
 HobAllocCreate(UINT64 baseAddress, HOB_BALLOC *allocator, UINTN nPage)

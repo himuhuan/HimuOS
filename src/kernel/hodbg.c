@@ -1,4 +1,5 @@
 #include <kernel/hodbg.h>
+#include <kernel/hodefs.h>
 #include <kernel/console.h>
 #include <arch/amd64/pm.h>
 #include <arch/amd64/idt.h> // TODO: remove dependency on x86 arch

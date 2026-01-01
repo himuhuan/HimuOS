@@ -1,4 +1,6 @@
 #include "io.h"
+#include "bootloader.h"
+#include "arch/amd64/pm.h"
 #include "libc/string.h"
 #include <libc/stdarg.h>
 #include <libc/hostdlib.h>
@@ -6,6 +8,8 @@
 #define CONSOLE_BUFFER_SIZE 256
 #define DIGITS_STR          L"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
+static const CHAR16 *VideoModeTypeToString(enum VIDEO_MODE_TYPE type);
+static const CHAR16 *PixelFormatToString(enum PIXEL_FORMAT fmt);
 static const CHAR16 *EfiStatusToString(EFI_STATUS status);
 static void FlushConsoleBuffer(CHAR16 *Buffer, UINTN *Index);
 static void ConsoleEmitChar(CHAR16 *Buffer, UINTN *Index, CHAR16 Char);
@@ -177,6 +181,61 @@ ConsoleFormatWrite(const CHAR16 *fmt, ...)
     return EFI_SUCCESS;
 }
 
+void
+PrintCapsule(const BOOT_CAPSULE *capsule, const CHAR16 *tag)
+{
+    const CHAR16 *name = (tag && *tag) ? tag : L"capsule";
+
+    if (capsule == NULL)
+    {
+        LOG_ERROR(L"[CAPSULE] %s pointer is NULL\r\n", name);
+        return;
+    }
+
+    BOOL magicOk = (capsule->Magic == BOOT_CAPSULE_MAGIC);
+    const CHAR16 *mode = VideoModeTypeToString(capsule->VideoModeType);
+    const CHAR16 *pixelFmt = PixelFormatToString(capsule->PixelFormat);
+
+    ConsoleFormatWrite(L"\r\n+==================== BOOT CAPSULE ====================+\r\n");
+    ConsoleFormatWrite(L"| Label : %s\r\n", name);
+    ConsoleFormatWrite(L"| Magic : 0x%x (%s)\r\n", capsule->Magic, magicOk ? L"valid" : L"INVALID");
+    ConsoleFormatWrite(L"| Base  : %p\r\n", capsule->BasePhys);
+    ConsoleFormatWrite(L"| Video : %s %ux%u stride=%u fmt=%s\r\n",
+                       mode,
+                       capsule->HorizontalResolution,
+                       capsule->VerticalResolution,
+                       capsule->PixelsPerScanLine,
+                       pixelFmt);
+    ConsoleFormatWrite(L"| Framebuffer : %p (%u bytes)\r\n", capsule->FramebufferPhys, capsule->FramebufferSize);
+    ConsoleFormatWrite(L"| Layout (bytes): hdr=%u map=%u code=%u data=%u stack=%u ist1=%u\r\n",
+                       capsule->Layout.HeaderSize,
+                       capsule->Layout.MemoryMapSize,
+                       capsule->Layout.KrnlCodeSize,
+                       capsule->Layout.KrnlDataSize,
+                       capsule->Layout.KrnlStackSize,
+                       capsule->Layout.IST1StackSize);
+    ConsoleFormatWrite(L"| Pages  (4K) : hdr+map=%u kernel=%u stack=%u ist1=%u total=%u\r\n",
+                       capsule->PageLayout.HeaderWithMapPages,
+                       capsule->PageLayout.KrnlPages,
+                       capsule->PageLayout.KrnlStackPages,
+                       capsule->PageLayout.IST1StackPages,
+                       capsule->PageLayout.TotalPages);
+    ConsoleFormatWrite(L"| Phys map: mmap=%p entry=%p stack=%p ist1=%p\r\n",
+                       capsule->MemoryMapPhys,
+                       capsule->KrnlEntryPhys,
+                       capsule->KrnlStackPhys,
+                       capsule->KrnlIST1StackPhys);
+    ConsoleFormatWrite(L"| Paging: pml4=%p size=%u bytes\r\n",
+                       capsule->PageTableInfo.Ptr,
+                       capsule->PageTableInfo.Size);
+    ConsoleFormatWrite(L"| CPU: GDT.base=%p limit=%u TSS.rsp0=%p ist1=%p\r\n",
+                       capsule->CpuInfo.GdtPtr.Base,
+                       capsule->CpuInfo.GdtPtr.Limit,
+                       capsule->CpuInfo.Tss.RSP0,
+                       capsule->CpuInfo.Tss.IST1);
+    ConsoleFormatWrite(L"+======================================================+\r\n\r\n");
+}
+
 //
 // static functions
 //
@@ -207,7 +266,7 @@ ConsoleEmitString(CHAR16 *Buffer, UINTN *Index, const CHAR16 *Str)
 {
     if (!Str)
     {
-        Str = L"(null)"; // 处理空指针
+        Str = L"(null)";
     }
     while (*Str)
     {
@@ -316,6 +375,33 @@ Int64ToWideStringEx(INT64 val, CHAR16 *buf, int padding, CHAR16 padChar)
 }
 
 static const CHAR16 *
+VideoModeTypeToString(enum VIDEO_MODE_TYPE type)
+{
+    switch (type)
+    {
+    case VIDEO_MODE_TYPE_UEFI:
+        return L"UEFI";
+    case VIDEO_MODE_TYPE_UNDEFINED:
+    default:
+        return L"UNDEFINED";
+    }
+}
+
+static const CHAR16 *
+PixelFormatToString(enum PIXEL_FORMAT fmt)
+{
+    switch (fmt)
+    {
+    case PIXEL_FORMAT_RGB:
+        return L"RGB";
+    case PIXEL_FORMAT_BGR:
+        return L"BGR";
+    default:
+        return L"UNKNOWN";
+    }
+}
+
+static const CHAR16 *
 EfiStatusToString(EFI_STATUS status)
 {
     switch (status)
@@ -337,4 +423,99 @@ EfiStatusToString(EFI_STATUS status)
     default:
         return L"EFI_UNKNOWN_ERROR";
     }
+}
+
+EFI_STATUS
+GetFileSize(EFI_FILE_PROTOCOL *file, UINT64 *outSize)
+{
+    struct EFI_GUID fileInfoGuid = EFI_FILE_INFO_GUID;
+    UINTN bufferSize = 0;
+    EFI_FILE_INFO *info = NULL;
+
+    EFI_STATUS status = file->GetInfo(file, &fileInfoGuid, &bufferSize, NULL);
+    if (EFI_STATUS_CODE_LOW(status) != EFI_BUFFER_TOO_SMALL)
+    {
+        return status;
+    }
+
+    status = g_ST->BootServices->AllocatePool(EfiBootServicesData, bufferSize, (void **)&info);
+    if (EFI_ERROR(status))
+    {
+        return status;
+    }
+
+    status = file->GetInfo(file, &fileInfoGuid, &bufferSize, info);
+    if (!EFI_ERROR(status))
+    {
+        *outSize = info->FileSize;
+    }
+
+    (void)g_ST->BootServices->FreePool(info);
+    return status;
+}
+
+EFI_STATUS ReadKernelImage(IN const CHAR16 *path, OUT void **outImage, OUT UINT64 *outSize)
+{
+    EFI_STATUS status;
+    EFI_FILE_PROTOCOL *rootDir = NULL;
+    EFI_FILE_PROTOCOL *kernelFile = NULL;
+
+    status = g_FSP->OpenVolume(g_FSP, &rootDir);
+    if (EFI_ERROR(status))
+    {
+        LOG_ERROR(L"Failed to open root volume: %k (0x%x)\r\n", status, status);
+        return status;
+    }
+
+    status = rootDir->Open(rootDir, &kernelFile, (CHAR16 *)path, EFI_FILE_MODE_READ, EFI_FILE_READ_ONLY);
+    if (EFI_ERROR(status))
+    {
+        LOG_ERROR(L"Failed to open kernel file: %k (0x%x)\r\n", status, status);
+        rootDir->Close(rootDir);
+        return status;
+    }
+
+    UINT64 kernelFileSize = 0;
+    status = GetFileSize(kernelFile, &kernelFileSize);
+    if (EFI_ERROR(status))
+    {
+        LOG_ERROR(L"Failed to get kernel file size: %k (0x%x)\r\n", status, status);
+        kernelFile->Close(kernelFile);
+        rootDir->Close(rootDir);
+        return status;
+    }
+
+    EFI_PHYSICAL_ADDRESS bufferPhys = 0;
+    status = g_ST->BootServices->AllocatePages(AllocateAnyPages, EfiLoaderData,
+                                               HO_ALIGN_UP(kernelFileSize, PAGE_4KB) >> 12, &bufferPhys);
+    if (EFI_ERROR(status))
+    {
+        LOG_ERROR(L"Failed to allocate memory for kernel file: %k (0x%x)\r\n", status, status);
+        kernelFile->Close(kernelFile);
+        rootDir->Close(rootDir);
+        return status;
+    }
+
+    UINTN readSize = kernelFileSize;
+    status = kernelFile->Read(kernelFile, &readSize, (void *)bufferPhys);
+
+    if (EFI_ERROR(status) || readSize != kernelFileSize)
+    {
+        LOG_ERROR(L"Failed to read kernel file: %k (0x%x)\r\n", status, status);
+        kernelFile->Close(kernelFile);
+        rootDir->Close(rootDir);
+        (void)g_ST->BootServices->FreePages(bufferPhys, HO_ALIGN_UP(kernelFileSize, PAGE_4KB) >> 12);
+        return EFI_DEVICE_ERROR;
+    }
+
+    UINT32 crc32 = 0;
+    status = g_ST->BootServices->CalculateCrc32((void *)bufferPhys, kernelFileSize, &crc32);
+    LOG_DEBUG(L"Kernel image CRC32: 0x%x\r\n", crc32);
+
+    kernelFile->Close(kernelFile);
+    rootDir->Close(rootDir);
+
+    *outImage = (void *)bufferPhys;
+    *outSize = kernelFileSize;
+    return EFI_SUCCESS;
 }

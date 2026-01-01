@@ -2,9 +2,10 @@
 #include "libc/string.h"
 #include <kernel/hodbg.h>
 #include "efi/video_efi.h"
+#include "kernel/hodefs.h"
 
 void HO_KERNEL_API
-VdInit(VIDEO_DRIVER *pd, BOOT_INFO_HEADER *info)
+VdInit(VIDEO_DRIVER *pd, STAGING_BLOCK *info)
 {
     if (pd == NULL || info == NULL)
     {
@@ -25,7 +26,7 @@ VdInit(VIDEO_DRIVER *pd, BOOT_INFO_HEADER *info)
     pd->HorizontalResolution = info->HorizontalResolution;
     pd->VerticalResolution = info->VerticalResolution;
     pd->PixelsPerScanLine = info->PixelsPerScanLine;
-    pd->FrameBuffer = (void *)info->FramebufferPhys;
+    pd->FrameBuffer = (void *) MMIO_BASE_VA;
     pd->FrameBufferSize = info->FramebufferSize;
     pd->Methods = VdEfiGetVTable();
 }

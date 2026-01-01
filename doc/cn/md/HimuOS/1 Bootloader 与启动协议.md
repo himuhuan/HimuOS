@@ -1,61 +1,143 @@
-# Bootloader 与启动协议
+## 内核加载与早期内存管理架构设计
 
-## 概述 (Overview)
+### 3.X.1 高半核模型与动态物理加载策略
 
-本文档旨在精确定义HimuOS启动管理器（Bootloader）与内核（Kernel）之间的接口规范。
-它详细描述了内核镜像加载到物理内存的布局（Staging Block） ，以及内核启动后所处的虚拟地址空间（Virtual Space）的架构。
-遵循此规范是确保内核能被正确加载并启动的先决条件。
+本系统在整体启动架构设计中采用**高半核（Higher-Half Kernel, HHK）模型**，即将操作系统内核恒定映射至虚拟地址空间的高位区域，而用户态程序运行于低位虚拟地址空间。该模型通过在虚拟地址层面实现地址空间的结构性隔离，从根本上降低了内核态与用户态之间的相互干扰风险，是现代操作系统中广泛采用的内核布局方式之一。
 
-## 物理内存布局：Staging Block
+在传统内核加载机制中，引导加载器通常依据 ELF 可执行文件头中给定的物理地址（Physical Address, p_paddr）字段，将内核镜像装载至预定义的物理内存位置。然而，在实际硬件环境中，物理内存的容量与布局往往因设备差异而高度不确定，尤其是在 UEFI 启动模式下，内存区域可能呈现出高度碎片化的特征。这种静态、编译期决定的物理加载策略在灵活性与健壮性方面存在明显局限。
 
-为了将所有必要信息从`Bootloader`传递给内核，`Bootloader`会在物理内存的低地址区域分配一块连续的内存块，
-称为`Staging Block`。这块内存不仅是传递信息的容器，也直接存放了内核的物理镜像和初始栈。
+基于上述考虑，HimuOS 采用了由 **HimuBootManager（HBM）** 实现的**动态物理页帧分配（Dynamic Physical Page Allocation）** 加载策略。具体而言，尽管内核 ELF 镜像在链接阶段被指定了固定的高位虚拟基地址（例如 `0xFFFF800000000000`），HBM 在加载过程中**完全忽略 ELF 头中描述的物理地址字段**，不尝试进行虚拟地址与物理地址相等的恒等映射（Identity Mapping）。事实上，在 x86-64 架构下，该高位虚拟地址本身并不存在可直接寻址的对应物理地址。
 
-### 目的与分配
+在加载阶段，HBM 通过调用 UEFI Boot Services 接口，动态申请足够数量的物理页帧，用于承载内核镜像的各个加载段（包括代码段与数据段）。内核在物理内存中的实际驻留位置由引导阶段的运行环境动态决定，而非由编译期静态约束，从而实现了**内核物理布局的运行时决定性（Runtime-determined Physical Placement）**。
 
-- 目的: 作为一个单一、连续的实体，简化物理内存管理和信息交接。
-- 分配: Bootloader 负责找到并分配这块内存。其物理基地址不固定，但必须是页对齐的。 内核启动后，通过传递的`STAGING_BLOCK`
-  结构体获知其确切位置和大小。
+---
 
-如图所示，`Staging Block`的布局如下：
+### 3.X.2 预内核页表构建与最小化 HHDM
 
+为确保内核在获得 CPU 控制权后能够立即在一个合法且完整的虚拟地址上下文中运行，HBM 在跳转至内核入口点之前，负责构建并激活一套初始的四级页表结构（PML4）。该页表为内核早期执行阶段提供了必要且最小化的虚拟内存支持，其主要映射关系如下。
 
+1. **内核镜像映射（Kernel Image Mapping）**  
+    HBM 根据 ELF 文件中定义的虚拟地址布局，将内核镜像所在的物理页帧映射至对应的高位虚拟地址区间。该映射保证了内核在链接与编译阶段所假定的虚拟地址语义在实际执行过程中保持一致，从而避免了内核代码在早期阶段进行自重定位（Relocation）的复杂性。
+    
+2. **最小化高半区直接映射（Minimal Higher-Half Direct Mapping, HHDM）**  
+    为支持内核在尚未初始化完整物理内存管理器（PMM）之前访问物理内存，系统在高半区预留一段连续的虚拟地址区域（例如以 `0xFFFF900000000000` 为基址），并建立其到物理内存的线性映射关系。通过该最小化 HHDM，内核可采用简单的线性偏移计算方式（`Virtual Address = Physical Address + OFFSET`）直接访问关键的物理数据结构，如内存映射表和页表本身。
+    
+3. **恒等映射（Identity Mapping）**  
+    在页表激活的瞬间，CPU 的指令指针（RIP）仍位于 HBM 的执行代码区域，且在切换控制权之前仍需继续执行部分引导代码。因此，初始页表中保留了对引导加载器自身代码与数据所在物理区域的恒等映射，以确保页表切换过程的连续性与安全性。
+    
+4. **内存映射 I/O（MMIO）区域映射**  
+    系统在高位虚拟地址空间的特定区间（例如 `0xFFFFC00000000000` 起始）预留 MMIO 映射区域，用于访问硬件设备的内存映射寄存器。在当前 HimuOS 的实现中，该区域主要用于映射 UEFI Graphics Output Protocol（GOP）相关的帧缓冲资源，为后续图形输出提供基础支持。
+    
 
-### 内核启动时的内存布局对照表
+通过上述映射策略，内核在进入执行阶段时即具备了一个简洁、可预测且自洽的虚拟内存环境。
 
-根据`CreateKrnlMapping` 函数，Bootloader 在将控制权交给内核前，创建了如下的虚拟内存映射。这个映射是内核运行的第一个虚拟地址空间。
+---
 
-| 物理分布 (Staging Block) | 大小 / 特性       | 对应虚拟地址 (Virtual Space)                       | 说明                                | 权限          |
-| :------------------: | ------------- | -------------------------------------------- | --------------------------------- | :---------- |
-|      低 4GB 物理内存      | 0 ~ 4GB       | `0x00000000 ~ 0xFFFFFFFF`                    | Identity-map，启动过渡和兼容性使用           | R-W-X       |
-|      Boot Info       | 若干字节（结构体）     | `BaseVirt (0xFFFF800000000000)`              | 启动参数、命令行、内核属性等                    | R-W         |
-|   UEFI Memory Map    | 依赖固件提供大小      | `MemoryMapVirt`                              | 从 UEFI 传入的内存布局                    | R-W         |
-|      Page Table      | 页对齐 (4 KB 单元) | `PageTableVirt`                              | 启动时建立的分页结构                        | R-W         |
-|        Kernel        | ELF 段大小（对齐）   | `KrnlEntryVirt (0xFFFF804000000000)`         | 内核映像（.text, .rodata, .data, .bss） | R-W-X       |
-|     Kernel Stack     | 16 KB         | `KrnlStackVirt(0xFFFF808000000000)`          | 启动内核栈，RSP 指向此处栈顶                  | R-W         |
-|      IST1 堆栈保护页      | 4KB           | `KRNL_STACK_VA + KRNL_STACK_SIZE`            | 紧随主堆栈之后，用于防止堆栈溢出到 IST1 堆栈         | Not Present |
-|       IST1 堆栈        | 16 KB         | `KRNL_STACK_VA + KRNL_STACK_SIZE + PAGE_4KB` | 用于处理 Double Fault 等严重异常的特殊堆栈      | R-W         |
-|    GOP 帧缓冲 (MMIO)    | -             | `FramebufferVirt(0xFFFFC00000000000)`        | MMIO 映射区，设备寄存器、PCI BAR 等          | R-W         |
+### 3.X.3 物理内存管理的初始化与自举
 
-1.  Properties 特指 `STAGING_BLOCK` 结构体本身可见的所有字段，包含内核启动所需的所有参数和信息，以及其它区域的物理和虚拟地址。
-2. 特别地，Properties、UEFI Memory Map 和 Page Table 三部分共同构成了 `Boot Info` 区域。它们会被映射到同一块虚拟地址空间中。
-3. Kernel、 Kernel Stack 和 Low 4GB Physical Memory 三部分则分别映射到各自的虚拟地址空间中。
-4. RSP 将在被引导至内核时指向 Kernel Stack 顶 (`KrnlStackVirt + KrnlStackSize - 1`)
+当 CPU 控制权正式移交至内核入口点后，系统处于一种“虚拟地址环境已就绪，而物理内存尚未被内核接管管理”的过渡状态。此时，HBM 已通过引导协议向内核传递了完整的物理内存布局描述符（Memory Map），其中包含了各类内存区域的起始地址、长度及用途标记。
 
->[!Caution]
-> HBL 禁用了所有页的缓存。旨在避免在内核内存管理器完全初始化前，因复杂的缓存一致性问题导致系统不稳定。内核在初始化其内存管理子系统后，会根据需要重新建立页表，并精细地控制各个内存区域的缓存策略（如设置为 Write-Back）以获得最佳性能。
+内核初始化流程中的首要任务之一是建立物理内存管理器（Physical Memory Manager, PMM）。在该阶段，内核并不假设自身位于某一固定的物理地址区间，而是通过解析引导加载器提供的内存映射信息，识别出内核镜像当前占用的物理页帧范围，并在 PMM 所维护的位图或空闲页帧链表中将这些页帧标记为“已占用（Reserved / Kernel Used）”。
 
-## HimuOS 内核镜像的 ELF 文件格式要求
+这种设计使得内核能够在完全未知自身物理驻留位置的前提下完成对物理内存的接管，实现了**内核物理位置的自适应识别（Self-Adaptive Physical Placement Awareness）**。该机制显著提升了操作系统在不同硬件平台、不同内存规模及布局条件下的通用性与健壮性，为后续高级内存管理策略的实现奠定了坚实基础。
 
-HimuOS 的内核文件格式为 ELF 格式，内核文件名为 `kernel.bin`。内核在此基础上必须满足：
+基于你给出的具体约束条件，我们可以进行一次非常精确的**最坏情况分析 (Worst-Case Analysis)**。这种估算在撰写设计文档或论文时非常有说服力。
 
-1. 内核必须是 x86_64 架构的合法 ELF 文件。
-2. 内核必须是可执行文件（ELF Type 为 EXEC）。
-3. 内核的所有 `PT_LOAD` 段的起始地址必须位于内核基址 `0xFFFF804000000000` 之上。
-4. 最高的 `PT_LOAD` 段的结束地址必须小于 `0xFFFF808000000000`。
-5. 内核的入口点必须是 `kmain(STAGING_BLOCK*)` 函数。
-6. 只支持小端
-7. 加载器只处理 `PT_LOAD` 段，其他段会被忽略。`HimuOS` 不会包含任何动态链接段。
-8. 除非必要，`PT_LOAD` 段的数量应该尽可能少，且各段除必要的对齐要求外，应该尽可能连续。
+### 核心结论
 
-以上条件有任一不满足，启动器将拒绝加载内核。
+**绝对安全的预留大小是：64 页 (256 KB)。**
+
+虽然理论计算的刚性需求约为 29~35 页，但预留 64 页可以覆盖内存碎片的极端情况，且仅占用 256KB 内存，对于现代系统（最小 32MB 内存）而言是完全可接受的“零头”。
+
+---
+
+### 详细估算过程
+
+我们将页表分为四个层级 (PML4, PDP, PD, PT) 进行逐层累加。假设 x86-64 4级页表，每页 4KB，包含 512 个条目。
+
+#### 1. 骨架开销 (Spine Overhead)
+无论如何映射，我们需要建立通向高地址和低地址的“骨架”。
+*   **PML4 (Level 4):** 1 页 (覆盖 256TB)。
+*   **PDP (Level 3):**
+    *   1 页用于低端内存 (覆盖 0~512GB，包含恒等映射)。
+    *   1 页用于高端内存 (覆盖 -512GB~0，包含内核、HHDM、MMIO)。
+    *   **小计: 2 页**
+
+#### 2. 区域细分计算
+
+##### A. 内核代码、数据、栈 (32MB, 强制 4KB 映射)
+这是最大的页表消耗源，因为你禁止了 2MB 优化。
+*   **覆盖范围**: 32 MB。
+*   **PD (Level 2) 消耗**:
+    *   32 MB 远小于 1 GB (一个 PD 的覆盖范围)。
+    *   假设所有内核段在虚拟地址上相对集中（在同一个 1GB 窗口内），只需 **1 个 PD 页**。
+    *   *极端碎片化假设*: 如果栈和代码分隔很远，跨越了 1GB 边界，最多需要 2 个 PD。我们按 **2 页** 估算。
+*   **PT (Level 1) 消耗**:
+    *   计算公式: $\lceil \text{Total Size} / 2\text{MB} \rceil$。
+    *   $32 \text{ MB} / 2 \text{ MB per PT} = 16$ 个 PT 页。
+    *   **小计: 16 页**。
+
+##### B. 低 2GB 恒等映射 (Identity, 2MB 优化)
+*   **覆盖范围**: 2048 MB (2 GB)。
+*   **PD (Level 2) 消耗**:
+    *   $2 \text{ GB} / 1 \text{ GB per PD} = 2$ 个 PD 页。
+*   **PT (Level 1) 消耗**:
+    *   全大页映射，**0 页**。
+
+##### C. HHDM / Capsule (5MB, 2MB 优化)
+*   **覆盖范围**: 5 MB。
+*   **PD (Level 2) 消耗**:
+    *   占用极小，极大概率复用内核或 MMIO 的 PD。最坏情况需新建 **1 个 PD 页**。
+*   **PT (Level 1) 消耗**:
+    *   `MapRegion` 逻辑：头(4KB) + 中(2MB) + 尾(4KB)。
+    *   最坏对齐情况（Head 和 Tail 都非 2MB 对齐）：需要 1 个 PT 处理头部，1 个 PT 处理尾部。
+    *   **小计: 2 页**。
+
+##### D. MMIO (1GB, 2MB 优化)
+*   **覆盖范围**: 1024 MB (1 GB)。
+*   **PD (Level 2) 消耗**:
+    *   1 GB 正好填满 1 个 PD。
+    *   *最坏对齐情况*: 如果这段 1GB 的区域跨越了 1GB 的虚拟地址边界（例如从 0.5G 到 1.5G），则需要涉及 **2 个 PD 页**。
+*   **PT (Level 1) 消耗**:
+    *   同样考虑 `MapRegion` 的 Head/Tail 对齐问题。
+    *   最坏情况需要 **2 页**（首尾各一个 PT）。
+
+---
+
+### 汇总表
+
+| 结构层级 | 用途说明 | 估算页数 (Worst Case) | 备注 |
+| :--- | :--- | :--- | :--- |
+| **L4 (PML4)** | 根表 | **1** | |
+| **L3 (PDP)** | Low + High | **2** | |
+| **L2 (PD)** | Identity (Low 2GB) | 2 | |
+| | Kernel (强制 4K) | 2 | 考虑跨 1GB 边界 |
+| | HHDM | 1 | |
+| | MMIO | 2 | 考虑跨 1GB 边界 |
+| **L1 (PT)** | Kernel (32MB, 4K) | **16** | 硬性需求 (32/2) |
+| | HHDM (边缘) | 2 | |
+| | MMIO (边缘) | 2 | |
+| **总计 (理论)** | | **30 页** | 约 120 KB |
+
+### 为什么建议 64 页？
+
+理论计算出的 **30 页** 是基于“连续性”假设的。但在实际工程中，为了防止以下情况导致 Boot 失败（Panic），我们需要 Safety Margin：
+
+1.  **非连续分配 (Fragmentation)**：
+    *   如果 MMIO 不是连续的 1GB，而是分成了 5 个不连续的设备（PCIe BARs），每个设备都可能存在对齐问题，导致 PT 数量从 2 激增到 10。
+2.  **栈保护页 (Guard Pages)**：
+    *   为了安全性，你可能会在内核栈的上下设置不映射的 Guard Page。如果这个 Guard Page 恰好切断了 2MB 连续性，可能会迫使分配器多开一个 PT。
+3.  **调试开销**：
+    *   在早期开发中，你可能会临时映射一些额外的区域（如 UEFI Runtime Services）用于调试。
+
+**计算安全系数：**
+$$30 \text{ (Base)} + 10 \text{ (MMIO Fragmentation)} + 5 \text{ (Layout Gaps)} = 45 \text{ Pages}$$
+
+**向上取整：**
+为了内存分配器的对齐美观和绝对安全，**64 页 (256 KB)** 是一个完美的数值。
+
+### 文献/文档描述建议
+
+在你的文档中，可以这样描述：
+
+> "The initial page table pool is pre-allocated with **64 pages (256 KB)**. This size is derived from a worst-case analysis assuming a 32MB kernel (strictly 4KB mapped), a 2GB identity map, and up to 1GB of MMIO space using 2MB huge pages. The theoretical lower bound for this configuration is approximately 30 pages; the surplus ensures resilience against virtual address fragmentation and alignment overheads during the boot phase."

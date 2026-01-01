@@ -78,19 +78,17 @@ SRCS_LIBC_BOOT := \
 # Common ELF Sources
 # ------------------------------------------------------------------------------
 SRCS_ELF := \
-    src/common/elf/elf.c
+    src/lib/elf/elf.c
 
 # ------------------------------------------------------------------------------
 # EFI Bootloader Sources
 # ------------------------------------------------------------------------------
 SRCS_EFI_BOOT := \
-    src/boot/efi/efi_main.c    \
-    src/boot/efi/efi.c         \
-    src/boot/efi/shell.c       \
-    src/boot/efi/alloc.c       \
-    src/boot/efi/bootloader.c  \
-    src/boot/efi/io.c          \
-    src/kernel/mm/mm_efi.c     \
+    src/boot/v2/blmm.c    \
+    src/boot/v2/bootloader.c  \
+	src/boot/v2/ho_balloc.c \
+	src/boot/v2/efi_main.c   \
+    src/boot/v2/io.c          \
     src/arch/amd64/pm.c
 
 # EFI target: bootloader + minimal libc + elf

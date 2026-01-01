@@ -1,10 +1,7 @@
 #include <kernel/init.h>
-#include <kernel/console.h>
 #include <drivers/serial.h>
 #include <kernel/hodbg.h>
-#include <arch/arch.h>
 #include <arch/amd64/idt.h> // TODO: remove dependency on x86 arch
-#include <arch/amd64/pm.h>
 #include "assets/fonts/font8x16.h"
 
 //
@@ -37,18 +34,6 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
     }
 
     GetBasicCpuInfo(&gBasicCpuInfo);
-
-    kprintf("Total Usable Memory:     %i bytes\n", block->TotalReclaimableMem);
-    kprintf("CPU:                     %s (x86_64)\n", gBasicCpuInfo.ModelName);
-    kprintf("Timer Features\n");
-    kprintf(" * Counter:              %s\n", gBasicCpuInfo.TimerFeatures & ARCH_TIMER_FEAT_COUNTER ? "YES" : "NOT SUPPORTED");
-    kprintf(" * Invariant counter:    %s\n",
-            gBasicCpuInfo.TimerFeatures & ARCH_TIMER_FEAT_INVARIANT ? "YES" : "NOT SUPPORTED");
-    kprintf(" * Deadline mode:        %s\n\n",
-            gBasicCpuInfo.TimerFeatures & ARCH_TIMER_FEAT_ONE_SHOT ? "YES" : "NOT SUPPORTED");
-
-    kprintf("Himu Operating System VERSION %s\n", KRNL_VERSTR);
-    kprintf("Copyright(c) 2024-2025 Himu, ONLY FOR EDUCATIONAL PURPOSES.\n\n");
 }
 
 static void
@@ -65,8 +50,8 @@ InitBitmapFont(void)
 static void
 InitCpuState(STAGING_BLOCK *block)
 {
-    CPU_CORE_LOCAL_DATA *data = (CPU_CORE_LOCAL_DATA *)block->CoreLocalDataVirt;
-    data->Tss.RSP0 = block->KrnlStackVirt + block->KrnlStackSize;
-    data->Tss.IST1 = block->KrnlIST1StackVirt + block->KrnlStackSize;
+    CPU_CORE_LOCAL_DATA *data = &block->CpuInfo;
+    data->Tss.RSP0 = HHDM_PHYS2VIRT(block->KrnlStackPhys) + block->Layout.KrnlStackSize;
+    data->Tss.IST1 = HHDM_PHYS2VIRT(block->KrnlStackPhys) + block->Layout.IST1StackSize;
     data->Tss.IOMapBase = sizeof(TSS64); // No IO permission bitmap
 }
