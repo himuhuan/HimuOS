@@ -103,3 +103,4 @@ typedef int HO_STATUS;
 
 #define HO_ALIGN_UP(value, alignment)   (((value) + ((alignment)-1)) & ~((alignment)-1))
 #define HO_ALIGN_DOWN(value, alignment) ((value) & ~((alignment)-1))
+#define HO_IS_ALIGNED(addr, align)      (((addr) & ((align)-1)) == 0)

@@ -10,6 +10,14 @@
 #pragma once
 
 #include "_hobase.h"
-#include "boot/boot.h"
+#include <boot/boot_capsule.h>
+#include <kernel/console.h>
+#include <kernel/mm/mm.h>
+#include <arch/arch.h>
 
-void InitKernel(STAGING_BLOCK *block);
+extern VIDEO_DRIVER gVideoDevice;
+extern ARCH_BASIC_CPU_INFO gBasicCpuInfo;
+extern BITMAP_FONT_INFO gSystemFont;
+
+
+void InitKernel(BOOT_CAPSULE *block);

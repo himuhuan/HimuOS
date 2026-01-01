@@ -1,4 +1,4 @@
-#include "common/elf/elf.h"
+#include "lib/elf/elf.h"
 #include "arch/amd64/pm.h"
 
 BOOL
