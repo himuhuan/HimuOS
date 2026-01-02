@@ -17,9 +17,9 @@
       "build/efi/obj/boot/v2/blmm.o",
       "src/boot/v2/blmm.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/boot/v2/blmm.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/efi/obj/boot/v2/blmm.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/boot/v2/blmm.c",
+    "output": "/home/himu/projects/HimuOS/build/efi/obj/boot/v2/blmm.o"
   },
   {
     "arguments": [
@@ -39,9 +39,31 @@
       "build/efi/obj/boot/v2/bootloader.o",
       "src/boot/v2/bootloader.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/boot/v2/bootloader.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/efi/obj/boot/v2/bootloader.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/boot/v2/bootloader.c",
+    "output": "/home/himu/projects/HimuOS/build/efi/obj/boot/v2/bootloader.o"
+  },
+  {
+    "arguments": [
+      "/usr/bin/x86_64-w64-mingw32-gcc",
+      "-Wall",
+      "-Wextra",
+      "-fno-builtin",
+      "-nostdinc",
+      "-ffreestanding",
+      "-c",
+      "-mavx2",
+      "-g",
+      "-Isrc",
+      "-Isrc/include",
+      "-Isrc/include/libc",
+      "-o",
+      "build/efi/obj/boot/v2/ho_balloc.o",
+      "src/boot/v2/ho_balloc.c"
+    ],
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/boot/v2/ho_balloc.c",
+    "output": "/home/himu/projects/HimuOS/build/efi/obj/boot/v2/ho_balloc.o"
   },
   {
     "arguments": [
@@ -61,9 +83,9 @@
       "build/efi/obj/boot/v2/efi_main.o",
       "src/boot/v2/efi_main.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/boot/v2/efi_main.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/efi/obj/boot/v2/efi_main.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/boot/v2/efi_main.c",
+    "output": "/home/himu/projects/HimuOS/build/efi/obj/boot/v2/efi_main.o"
   },
   {
     "arguments": [
@@ -83,9 +105,9 @@
       "build/efi/obj/boot/v2/io.o",
       "src/boot/v2/io.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/boot/v2/io.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/efi/obj/boot/v2/io.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/boot/v2/io.c",
+    "output": "/home/himu/projects/HimuOS/build/efi/obj/boot/v2/io.o"
   },
   {
     "arguments": [
@@ -105,9 +127,9 @@
       "build/efi/obj/arch/amd64/pm.o",
       "src/arch/amd64/pm.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/arch/amd64/pm.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/efi/obj/arch/amd64/pm.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/arch/amd64/pm.c",
+    "output": "/home/himu/projects/HimuOS/build/efi/obj/arch/amd64/pm.o"
   },
   {
     "arguments": [
@@ -127,9 +149,9 @@
       "build/efi/obj/libc/string/memcpy.o",
       "src/libc/string/memcpy.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/libc/string/memcpy.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/efi/obj/libc/string/memcpy.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/libc/string/memcpy.c",
+    "output": "/home/himu/projects/HimuOS/build/efi/obj/libc/string/memcpy.o"
   },
   {
     "arguments": [
@@ -149,9 +171,9 @@
       "build/efi/obj/libc/string/memmove.o",
       "src/libc/string/memmove.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/libc/string/memmove.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/efi/obj/libc/string/memmove.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/libc/string/memmove.c",
+    "output": "/home/himu/projects/HimuOS/build/efi/obj/libc/string/memmove.o"
   },
   {
     "arguments": [
@@ -171,9 +193,9 @@
       "build/efi/obj/libc/string/memset.o",
       "src/libc/string/memset.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/libc/string/memset.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/efi/obj/libc/string/memset.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/libc/string/memset.c",
+    "output": "/home/himu/projects/HimuOS/build/efi/obj/libc/string/memset.o"
   },
   {
     "arguments": [
@@ -193,9 +215,9 @@
       "build/efi/obj/libc/string/strcmp.o",
       "src/libc/string/strcmp.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/libc/string/strcmp.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/efi/obj/libc/string/strcmp.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/libc/string/strcmp.c",
+    "output": "/home/himu/projects/HimuOS/build/efi/obj/libc/string/strcmp.o"
   },
   {
     "arguments": [
@@ -215,9 +237,9 @@
       "build/efi/obj/libc/string/strcpy.o",
       "src/libc/string/strcpy.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/libc/string/strcpy.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/efi/obj/libc/string/strcpy.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/libc/string/strcpy.c",
+    "output": "/home/himu/projects/HimuOS/build/efi/obj/libc/string/strcpy.o"
   },
   {
     "arguments": [
@@ -237,9 +259,9 @@
       "build/efi/obj/libc/string/strlen.o",
       "src/libc/string/strlen.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/libc/string/strlen.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/efi/obj/libc/string/strlen.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/libc/string/strlen.c",
+    "output": "/home/himu/projects/HimuOS/build/efi/obj/libc/string/strlen.o"
   },
   {
     "arguments": [
@@ -259,9 +281,9 @@
       "build/efi/obj/libc/wchar/wstrcmp.o",
       "src/libc/wchar/wstrcmp.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/libc/wchar/wstrcmp.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/efi/obj/libc/wchar/wstrcmp.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/libc/wchar/wstrcmp.c",
+    "output": "/home/himu/projects/HimuOS/build/efi/obj/libc/wchar/wstrcmp.o"
   },
   {
     "arguments": [
@@ -281,9 +303,9 @@
       "build/efi/obj/libc/stdlib/hostdlib.o",
       "src/libc/stdlib/hostdlib.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/libc/stdlib/hostdlib.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/efi/obj/libc/stdlib/hostdlib.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/libc/stdlib/hostdlib.c",
+    "output": "/home/himu/projects/HimuOS/build/efi/obj/libc/stdlib/hostdlib.o"
   },
   {
     "arguments": [
@@ -303,9 +325,9 @@
       "build/efi/obj/lib/elf/elf.o",
       "src/lib/elf/elf.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/lib/elf/elf.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/efi/obj/lib/elf/elf.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/lib/elf/elf.c",
+    "output": "/home/himu/projects/HimuOS/build/efi/obj/lib/elf/elf.o"
   },
   {
     "arguments": [
@@ -327,15 +349,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/kernel/hoentry.o",
       "src/kernel/hoentry.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/kernel/hoentry.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/kernel/hoentry.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/kernel/hoentry.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/kernel/hoentry.o"
   },
   {
     "arguments": [
@@ -357,15 +379,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/kernel/init.o",
       "src/kernel/init.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/kernel/init.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/kernel/init.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/kernel/init.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/kernel/init.o"
   },
   {
     "arguments": [
@@ -387,15 +409,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/kernel/hodbg.o",
       "src/kernel/hodbg.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/kernel/hodbg.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/kernel/hodbg.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/kernel/hodbg.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/kernel/hodbg.o"
   },
   {
     "arguments": [
@@ -417,15 +439,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/kernel/console/console.o",
       "src/kernel/console/console.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/kernel/console/console.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/kernel/console/console.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/kernel/console/console.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/kernel/console/console.o"
   },
   {
     "arguments": [
@@ -447,15 +469,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/kernel/console/console_device.o",
       "src/kernel/console/console_device.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/kernel/console/console_device.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/kernel/console/console_device.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/kernel/console/console_device.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/kernel/console/console_device.o"
   },
   {
     "arguments": [
@@ -477,15 +499,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/kernel/console/sinks/gfx_console_sink.o",
       "src/kernel/console/sinks/gfx_console_sink.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/kernel/console/sinks/gfx_console_sink.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/kernel/console/sinks/gfx_console_sink.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/kernel/console/sinks/gfx_console_sink.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/kernel/console/sinks/gfx_console_sink.o"
   },
   {
     "arguments": [
@@ -507,15 +529,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/kernel/console/sinks/serial_console_sink.o",
       "src/kernel/console/sinks/serial_console_sink.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/kernel/console/sinks/serial_console_sink.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/kernel/console/sinks/serial_console_sink.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/kernel/console/sinks/serial_console_sink.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/kernel/console/sinks/serial_console_sink.o"
   },
   {
     "arguments": [
@@ -537,15 +559,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/kernel/console/sinks/mux_console_sink.o",
       "src/kernel/console/sinks/mux_console_sink.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/kernel/console/sinks/mux_console_sink.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/kernel/console/sinks/mux_console_sink.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/kernel/console/sinks/mux_console_sink.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/kernel/console/sinks/mux_console_sink.o"
   },
   {
     "arguments": [
@@ -567,15 +589,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/arch/arch.o",
       "src/arch/arch.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/arch/arch.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/arch/arch.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/arch/arch.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/arch/arch.o"
   },
   {
     "arguments": [
@@ -597,15 +619,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/arch/amd64/idt.o",
       "src/arch/amd64/idt.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/arch/amd64/idt.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/arch/amd64/idt.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/arch/amd64/idt.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/arch/amd64/idt.o"
   },
   {
     "arguments": [
@@ -627,15 +649,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/arch/amd64/cpu.o",
       "src/arch/amd64/cpu.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/arch/amd64/cpu.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/arch/amd64/cpu.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/arch/amd64/cpu.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/arch/amd64/cpu.o"
   },
   {
     "arguments": [
@@ -657,15 +679,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/arch/amd64/pm.o",
       "src/arch/amd64/pm.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/arch/amd64/pm.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/arch/amd64/pm.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/arch/amd64/pm.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/arch/amd64/pm.o"
   },
   {
     "arguments": [
@@ -687,15 +709,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/drivers/video/video_driver.o",
       "src/drivers/video/video_driver.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/drivers/video/video_driver.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/drivers/video/video_driver.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/drivers/video/video_driver.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/drivers/video/video_driver.o"
   },
   {
     "arguments": [
@@ -717,15 +739,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/drivers/video/efi/video_efi.o",
       "src/drivers/video/efi/video_efi.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/drivers/video/efi/video_efi.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/drivers/video/efi/video_efi.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/drivers/video/efi/video_efi.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/drivers/video/efi/video_efi.o"
   },
   {
     "arguments": [
@@ -747,15 +769,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/drivers/serial/serial.o",
       "src/drivers/serial/serial.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/drivers/serial/serial.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/drivers/serial/serial.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/drivers/serial/serial.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/drivers/serial/serial.o"
   },
   {
     "arguments": [
@@ -777,15 +799,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/lib/tui/bitmap_font.o",
       "src/lib/tui/bitmap_font.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/lib/tui/bitmap_font.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/lib/tui/bitmap_font.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/lib/tui/bitmap_font.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/lib/tui/bitmap_font.o"
   },
   {
     "arguments": [
@@ -807,15 +829,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/assets/fonts/font8x16.o",
       "src/assets/fonts/font8x16.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/assets/fonts/font8x16.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/assets/fonts/font8x16.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/assets/fonts/font8x16.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/assets/fonts/font8x16.o"
   },
   {
     "arguments": [
@@ -837,15 +859,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/libc/string/memcpy.o",
       "src/libc/string/memcpy.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/libc/string/memcpy.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/libc/string/memcpy.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/libc/string/memcpy.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/libc/string/memcpy.o"
   },
   {
     "arguments": [
@@ -867,15 +889,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/libc/string/memmove.o",
       "src/libc/string/memmove.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/libc/string/memmove.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/libc/string/memmove.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/libc/string/memmove.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/libc/string/memmove.o"
   },
   {
     "arguments": [
@@ -897,15 +919,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/libc/string/memset.o",
       "src/libc/string/memset.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/libc/string/memset.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/libc/string/memset.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/libc/string/memset.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/libc/string/memset.o"
   },
   {
     "arguments": [
@@ -927,15 +949,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/libc/string/strcmp.o",
       "src/libc/string/strcmp.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/libc/string/strcmp.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/libc/string/strcmp.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/libc/string/strcmp.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/libc/string/strcmp.o"
   },
   {
     "arguments": [
@@ -957,15 +979,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/libc/string/strcpy.o",
       "src/libc/string/strcpy.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/libc/string/strcpy.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/libc/string/strcpy.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/libc/string/strcpy.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/libc/string/strcpy.o"
   },
   {
     "arguments": [
@@ -987,15 +1009,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/libc/string/strlen.o",
       "src/libc/string/strlen.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/libc/string/strlen.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/libc/string/strlen.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/libc/string/strlen.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/libc/string/strlen.o"
   },
   {
     "arguments": [
@@ -1017,15 +1039,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/libc/wchar/wstrcmp.o",
       "src/libc/wchar/wstrcmp.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/libc/wchar/wstrcmp.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/libc/wchar/wstrcmp.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/libc/wchar/wstrcmp.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/libc/wchar/wstrcmp.o"
   },
   {
     "arguments": [
@@ -1047,15 +1069,15 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/libc/stdlib/hostdlib.o",
       "src/libc/stdlib/hostdlib.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/libc/stdlib/hostdlib.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/libc/stdlib/hostdlib.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/libc/stdlib/hostdlib.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/libc/stdlib/hostdlib.o"
   },
   {
     "arguments": [
@@ -1077,14 +1099,14 @@
       "-Isrc",
       "-Isrc/include",
       "-Isrc/include/libc",
-      "-DKRNL_VERSTR=\"1.0.0 251227\"",
+      "-DKRNL_VERSTR=\"1.0.0 260102\"",
       "-D__HO_DEBUG_BUILD__=1",
       "-o",
       "build/kernel/obj/lib/elf/elf.o",
       "src/lib/elf/elf.c"
     ],
-    "directory": "/mnt/f/HimuOperatingSystem",
-    "file": "/mnt/f/HimuOperatingSystem/src/lib/elf/elf.c",
-    "output": "/mnt/f/HimuOperatingSystem/build/kernel/obj/lib/elf/elf.o"
+    "directory": "/home/himu/projects/HimuOS",
+    "file": "/home/himu/projects/HimuOS/src/lib/elf/elf.c",
+    "output": "/home/himu/projects/HimuOS/build/kernel/obj/lib/elf/elf.o"
   }
 ]

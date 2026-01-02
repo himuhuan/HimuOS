@@ -9,5 +9,6 @@ doc/
 vmbox/
 
 himu_os.iso
+compile_commands.json
 
 esp/
