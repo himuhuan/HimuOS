@@ -58,12 +58,12 @@
 #define ANSI_BG_WHITE       "\x1B[47m"
 #endif
 
-struct CONSOLE_DEVICE; // Opaque
-typedef struct CONSOLE_DEVICE CONSOLE_DEVICE;
+struct KE_CONSOLE_DEVICE; // Opaque
+typedef struct KE_CONSOLE_DEVICE KE_CONSOLE_DEVICE;
 
-HO_PUBLIC_API HO_STATUS ConsoleInit(VIDEO_DRIVER *driver, BITMAP_FONT_INFO *font);
+HO_PUBLIC_API HO_STATUS ConsoleInit(KE_VIDEO_DRIVER *driver, BITMAP_FONT_INFO *font);
 
-HO_PUBLIC_API CONSOLE_DEVICE* ConsoleGetGlobalDevice(void);
+HO_PUBLIC_API KE_CONSOLE_DEVICE* ConsoleGetGlobalDevice(void);
 
 HO_PUBLIC_API int ConsoleWriteChar(char c);
 

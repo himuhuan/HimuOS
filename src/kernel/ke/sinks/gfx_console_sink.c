@@ -31,7 +31,7 @@ static HO_STATUS
 GfxConSinkPutChar(void *self, uint16_t gridX, uint16_t gridY, char c, COLOR32 fg, COLOR32 bg)
 {
     GFX_CONSOLE_SINK *sink = (GFX_CONSOLE_SINK *)self;
-    VIDEO_DRIVER *device = sink->Driver;
+    KE_VIDEO_DRIVER *device = sink->Driver;
     uint16_t scale = sink->Scale;
     uint32_t x = gridX * sink->Font->Width * scale;
     uint32_t y = gridY * sink->Font->Height * scale;
@@ -135,7 +135,7 @@ GfxConSinkClear(void *self, COLOR32 fillColor)
     return EC_SUCCESS;
 }
 
-void KeGfxConSinkInit(GFX_CONSOLE_SINK *sink, VIDEO_DRIVER *driver, BITMAP_FONT_INFO *font, uint8_t scale)
+void KeGfxConSinkInit(GFX_CONSOLE_SINK *sink, KE_VIDEO_DRIVER *driver, BITMAP_FONT_INFO *font, uint8_t scale)
 {
     sink->Base.GetInfo = GfxConSinkGetInfo;
     sink->Base.PutChar = GfxConSinkPutChar;

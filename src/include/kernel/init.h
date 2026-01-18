@@ -15,7 +15,7 @@
 #include <kernel/mm/mm.h>
 #include <arch/arch.h>
 
-extern VIDEO_DRIVER gVideoDevice;
+extern KE_VIDEO_DRIVER gVideoDriver;
 extern ARCH_BASIC_CPU_INFO gBasicCpuInfo;
 extern BITMAP_FONT_INFO gSystemFont;
 

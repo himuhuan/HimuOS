@@ -14,7 +14,7 @@
 // Global Variables
 //
 
-static CONSOLE_DEVICE gConsoleDevice;
+static KE_CONSOLE_DEVICE gConsoleDevice;
 static GFX_CONSOLE_SINK gGfxConsoleSink;
 #if __HO_DEBUG_BUILD__
 static SERIAL_CONSOLE_SINK gSerialConsoleSink;
@@ -23,7 +23,7 @@ static MUX_CONSOLE_SINK gMuxConsoleSink;
 static BOOL gConsoleInitialized = FALSE;
 
 HO_PUBLIC_API HO_STATUS
-ConsoleInit(VIDEO_DRIVER *driver, BITMAP_FONT_INFO *font)
+ConsoleInit(KE_VIDEO_DRIVER *driver, BITMAP_FONT_INFO *font)
 {
     if (gConsoleInitialized)
         return EC_SUCCESS;
@@ -32,18 +32,18 @@ ConsoleInit(VIDEO_DRIVER *driver, BITMAP_FONT_INFO *font)
     GfxConSinkInit(&gGfxConsoleSink, driver, font, 1);
     ConDevInit(&gConsoleDevice, (CONSOLE_SINK *)&gGfxConsoleSink);
 #else
-    MuxConSinkInit(&gMuxConsoleSink);
-    GfxConSinkInit(&gGfxConsoleSink, driver, font, 1);
-    MuxConSinkAddSink(&gMuxConsoleSink, (CONSOLE_SINK *)&gGfxConsoleSink); // As primary sink
-    SerialConSinkInit(&gSerialConsoleSink, COM1_PORT);
-    MuxConSinkAddSink(&gMuxConsoleSink, (CONSOLE_SINK *)&gSerialConsoleSink);
-    ConDevInit(&gConsoleDevice, (CONSOLE_SINK *)&gMuxConsoleSink);
+    KeMuxConSinkInit(&gMuxConsoleSink);
+    KeGfxConSinkInit(&gGfxConsoleSink, driver, font, 1);
+    KeMuxConSinkAddSink(&gMuxConsoleSink, (KE_CONSOLE_SINK *)&gGfxConsoleSink); // As primary sink
+    KeSerialConSinkInit(&gSerialConsoleSink, COM1_PORT);
+    KeMuxConSinkAddSink(&gMuxConsoleSink, (KE_CONSOLE_SINK *)&gSerialConsoleSink);
+    KeConDevInit(&gConsoleDevice, (KE_CONSOLE_SINK *)&gMuxConsoleSink);
 #endif
     gConsoleInitialized = TRUE;
     return EC_SUCCESS;
 }
 
-HO_PUBLIC_API CONSOLE_DEVICE *
+HO_PUBLIC_API KE_CONSOLE_DEVICE *
 ConsoleGetGlobalDevice(void)
 {
     return &gConsoleDevice;
@@ -55,7 +55,7 @@ ConsoleWriteChar(char c)
     if (!gConsoleInitialized)
         return -1;
 
-    return ConDevPutChar(&gConsoleDevice, c);
+    return KeConDevPutChar(&gConsoleDevice, c);
 }
 
 HO_PUBLIC_API uint64_t
@@ -64,7 +64,7 @@ ConsoleWrite(const char *str)
     if (!gConsoleInitialized)
         return 0;
 
-    return ConDevPutStr(&gConsoleDevice, str);
+    return KeConDevPutStr(&gConsoleDevice, str);
 }
 
 HO_PUBLIC_API uint64_t
@@ -232,5 +232,5 @@ HO_PUBLIC_API void ConsoleClearScreen(COLOR32 color)
     if (!gConsoleInitialized)
         return;
 
-    ConDevClearScreen(&gConsoleDevice, color);
+    KeConDevClearScreen(&gConsoleDevice, color);
 }
