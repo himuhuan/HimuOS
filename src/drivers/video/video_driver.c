@@ -5,14 +5,14 @@
 #include "kernel/hodefs.h"
 
 void HO_KERNEL_API
-VdInit(VIDEO_DRIVER *pd, STAGING_BLOCK *info)
+VdInit(KE_VIDEO_DRIVER *pd, STAGING_BLOCK *info)
 {
     if (pd == NULL || info == NULL)
     {
         return;
     }
 
-    memset(pd, 0, sizeof(VIDEO_DRIVER));
+    memset(pd, 0, sizeof(KE_VIDEO_DRIVER));
     pd->Type = info->VideoModeType;
     kprintf("Video mode type: %d\n", pd->Type);
     if (pd->Type != VIDEO_MODE_TYPE_UEFI)
@@ -32,7 +32,7 @@ VdInit(VIDEO_DRIVER *pd, STAGING_BLOCK *info)
 }
 
 HO_STATUS HO_KERNEL_API
-VdRenderPixel(VIDEO_DRIVER *device, uint32_t x, uint32_t y, COLOR32 color)
+VdRenderPixel(KE_VIDEO_DRIVER *device, uint32_t x, uint32_t y, COLOR32 color)
 {
     if (device == NULL)
         return EC_ILLEGAL_ARGUMENT;
@@ -43,7 +43,7 @@ VdRenderPixel(VIDEO_DRIVER *device, uint32_t x, uint32_t y, COLOR32 color)
 }
 
 HO_STATUS HO_KERNEL_API
-VdRenderRect(VIDEO_DRIVER *device, VD_RENDER_RECT_PARAMS *params)
+VdRenderRect(KE_VIDEO_DRIVER *device, VD_RENDER_RECT_PARAMS *params)
 {
     if (device == NULL || params == NULL)
         return EC_ILLEGAL_ARGUMENT;
@@ -54,7 +54,7 @@ VdRenderRect(VIDEO_DRIVER *device, VD_RENDER_RECT_PARAMS *params)
 }
 
 HO_STATUS HO_KERNEL_API
-VdClearScreen(VIDEO_DRIVER *device, uint32_t color)
+VdClearScreen(KE_VIDEO_DRIVER *device, uint32_t color)
 {
     if (device == NULL)
         return EC_ILLEGAL_ARGUMENT;

@@ -18,9 +18,9 @@ HO_INTERNAL_STRUCT typedef struct
 {
     KE_CONSOLE_SINK Base;
     uint8_t Scale;
-    VIDEO_DRIVER *Driver;
+    KE_VIDEO_DRIVER *Driver;
     BITMAP_FONT_INFO *Font;
 } GFX_CONSOLE_SINK;
 
 HO_KERNEL_API
-void KeGfxConSinkInit(GFX_CONSOLE_SINK *sink, VIDEO_DRIVER *driver, BITMAP_FONT_INFO *font, uint8_t scale);
+void KeGfxConSinkInit(GFX_CONSOLE_SINK *sink, KE_VIDEO_DRIVER *driver, BITMAP_FONT_INFO *font, uint8_t scale);

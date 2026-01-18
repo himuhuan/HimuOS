@@ -1,6 +1,7 @@
 .cache/
 .idea/
 .vscode/
+.claude/
 .DS_Store
 
 build/
@@ -10,5 +11,6 @@ vmbox/
 
 himu_os.iso
 compile_commands.json
+claude.md
 
 esp/

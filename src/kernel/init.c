@@ -8,7 +8,7 @@
 // Global kernel variables that need to be initialized at startup
 //
 
-VIDEO_DRIVER gVideoDevice;
+KE_VIDEO_DRIVER gVideoDriver;
 ARCH_BASIC_CPU_INFO gBasicCpuInfo;
 BITMAP_FONT_INFO gSystemFont;
 
@@ -20,9 +20,9 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
 {
     InitCpuState(block);
     InitBitmapFont();
-    VdInit(&gVideoDevice, block);
-    VdClearScreen(&gVideoDevice, COLOR_BLACK);
-    ConsoleInit(&gVideoDevice, &gSystemFont);
+    VdInit(&gVideoDriver, block);
+    VdClearScreen(&gVideoDriver, COLOR_BLACK);
+    ConsoleInit(&gVideoDriver, &gSystemFont);
 
     HO_STATUS initStatus;
     initStatus = IdtInit();

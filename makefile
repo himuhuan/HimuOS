@@ -103,11 +103,11 @@ SRCS_KERNEL_C := \
     src/kernel/hoentry.c                            \
     src/kernel/init.c                               \
     src/kernel/hodbg.c                              \
-    src/kernel/console/console.c                    \
-    src/kernel/console/console_device.c             \
-    src/kernel/console/sinks/gfx_console_sink.c     \
-    src/kernel/console/sinks/serial_console_sink.c  \
-    src/kernel/console/sinks/mux_console_sink.c     \
+    src/kernel/ke/console.c                 		\
+    src/kernel/ke/console_device.c             		\
+    src/kernel/ke/sinks/gfx_console_sink.c     		\
+    src/kernel/ke/sinks/serial_console_sink.c  		\
+    src/kernel/ke/sinks/mux_console_sink.c     		\
     src/arch/arch.c                                 \
     src/arch/amd64/idt.c                            \
     src/arch/amd64/cpu.c                            \

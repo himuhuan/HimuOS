@@ -52,7 +52,7 @@ typedef struct _VIDEO_DRIVER
     void *FrameBuffer;
     uint64_t FrameBufferSize;  // Size of the framebuffer in bytes
     const VD_VTABLE *Methods;
-} VIDEO_DRIVER;
+} KE_VIDEO_DRIVER;
 
 /**
  * @brief Initialize the video device context.
@@ -63,7 +63,7 @@ typedef struct _VIDEO_DRIVER
  * @param pd Video device to initialize
  * @param info Boot information header
  */
-void HO_KERNEL_API VdInit(VIDEO_DRIVER *pd, STAGING_BLOCK *info);
+void HO_KERNEL_API VdInit(KE_VIDEO_DRIVER *pd, STAGING_BLOCK *info);
 
 /**
  * @brief Renders a single pixel on the specified video device.
@@ -77,7 +77,7 @@ void HO_KERNEL_API VdInit(VIDEO_DRIVER *pd, STAGING_BLOCK *info);
  * @param color The COLOR32 value to set for the pixel.
  * @return HO_STATUS indicating the success or failure of the operation.
  */
-HO_STATUS HO_KERNEL_API VdRenderPixel(VIDEO_DRIVER *device, uint32_t x, uint32_t y, COLOR32 color);
+HO_STATUS HO_KERNEL_API VdRenderPixel(KE_VIDEO_DRIVER *device, uint32_t x, uint32_t y, COLOR32 color);
 
 /**
  * @brief Render a rectangle on the video device.
@@ -88,7 +88,7 @@ HO_STATUS HO_KERNEL_API VdRenderPixel(VIDEO_DRIVER *device, uint32_t x, uint32_t
  * @param params Pointer to the parameters defining the rectangle's properties (position, size, color, etc.).
  * @return HO_STATUS indicating success or failure of the operation.
  */
-HO_STATUS HO_KERNEL_API VdRenderRect(VIDEO_DRIVER *device, VD_RENDER_RECT_PARAMS *params);
+HO_STATUS HO_KERNEL_API VdRenderRect(KE_VIDEO_DRIVER *device, VD_RENDER_RECT_PARAMS *params);
 
 /**
  * @brief Clear the entire screen of the video device with a specified color.
@@ -99,4 +99,4 @@ HO_STATUS HO_KERNEL_API VdRenderRect(VIDEO_DRIVER *device, VD_RENDER_RECT_PARAMS
  * @param color The color to fill the screen with, represented as a 32-bit unsigned integer.
  * @return HO_STATUS indicating success or failure of the operation.
  */
-HO_STATUS HO_KERNEL_API VdClearScreen(VIDEO_DRIVER *device, uint32_t color);
+HO_STATUS HO_KERNEL_API VdClearScreen(KE_VIDEO_DRIVER *device, uint32_t color);
