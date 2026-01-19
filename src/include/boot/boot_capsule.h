@@ -72,6 +72,7 @@ typedef struct BOOT_CAPSULE
     BOOT_CAPSULE_PAGE_LAYOUT PageLayout; // Actual page layout used
 
     HO_PHYSICAL_ADDRESS MemoryMapPhys;     // Physical address of the memory map, HHDM
+    HO_PHYSICAL_ADDRESS AcpiRsdpPhys;      // Physical address of ACPI RSDP, HHDM
     HO_PHYSICAL_ADDRESS KrnlEntryPhys;     // Physical address of the kernel loaded segments, BOOT_KRNL_ENTRY_VA
     HO_PHYSICAL_ADDRESS KrnlStackPhys;     // Physical address of the kernel stack, BOOT_KRNL_STACK_VA
     HO_PHYSICAL_ADDRESS KrnlIST1StackPhys; // Physical address of the IST#1 stack, BOOT_KRNL_IST1_STACK_VA

@@ -225,6 +225,7 @@ PrintCapsule(const BOOT_CAPSULE *capsule, const CHAR16 *tag)
                        capsule->KrnlEntryPhys,
                        capsule->KrnlStackPhys,
                        capsule->KrnlIST1StackPhys);
+    ConsoleFormatWrite(L"| ACPI: rsdp=%p (HHDM)\r\n", capsule->AcpiRsdpPhys);
     ConsoleFormatWrite(L"| Paging: pml4=%p size=%u bytes\r\n",
                        capsule->PageTableInfo.Ptr,
                        capsule->PageTableInfo.Size);

@@ -100,6 +100,12 @@ struct EFI_GUID
     BYTE Data4[8];
 };
 
+typedef struct EFI_CONFIGURATION_TABLE
+{
+    struct EFI_GUID VendorGuid;
+    void *VendorTable;
+} EFI_CONFIGURATION_TABLE;
+
 struct EFI_SIMPLE_TEXT_INPUT_PROTOCOL
 {
     STRUCT_RESERVED(1, 8);
@@ -352,6 +358,8 @@ typedef struct EFI_SYSTEM_TABLE
     struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL *ConsoleOutput;
     STRUCT_RESERVED(3, 24);
     struct EFI_BOOT_SERVICES *BootServices;
+    UINTN NumberOfTableEntries;
+    struct EFI_CONFIGURATION_TABLE *ConfigurationTable;
 } EFI_SYSTEM_TABLE;
 
 enum VIDEO_MODE_TYPE

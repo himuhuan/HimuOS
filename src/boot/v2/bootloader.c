@@ -22,6 +22,8 @@ EFI_HANDLE gImageHandle;
 
 static BOOL LoadKernel(void *image, UINT64 imageSize, STAGING_BLOCK *staging);
 static void JumpToKernel(STAGING_BLOCK *block);
+static HO_PHYSICAL_ADDRESS FindAcpiRsdpPhys(void);
+static BOOL IsGuidEqual(const struct EFI_GUID *left, const struct EFI_GUID *right);
 
 void
 LoaderInitialize(EFI_HANDLE imageHandle, struct EFI_SYSTEM_TABLE *SystemTable)
@@ -102,6 +104,17 @@ StagingKernel(const CHAR16 *path)
     layout.KrnlDataSize = elfInfo.DataPhysPages << 12;
     layout.KrnlStackSize = layout.IST1StackSize = HO_STACK_SIZE;
     BOOT_CAPSULE *capsule = CreateCapsule(&layout);
+    if (capsule == NULL)
+    {
+        status = EFI_OUT_OF_RESOURCES;
+        goto handle_error;
+    }
+
+    capsule->AcpiRsdpPhys = FindAcpiRsdpPhys();
+    if (capsule->AcpiRsdpPhys == 0)
+    {
+        LOG_WARNING(L"ACPI RSDP not found in UEFI configuration tables\r\n");
+    }
 
     size_t remain = CreateInitialMapping(capsule);
     if (!remain)
@@ -183,4 +196,53 @@ JumpToKernel(STAGING_BLOCK *block)
     __asm__ __volatile__("mov %0, %%rdi" ::"r"(blockVirt) : "rdi", "memory");
     __asm__ __volatile__("jmp *%0" ::"r"(entryVirt));
 
+}
+
+static HO_PHYSICAL_ADDRESS
+FindAcpiRsdpPhys(void)
+{
+    static struct EFI_GUID acpi20Guid = {0x8868e871, 0xe4f1, 0x11d3, {0xbc, 0x22, 0x00, 0x80, 0xc7, 0x3c, 0x88, 0x81}};
+    static struct EFI_GUID acpi10Guid = {0xeb9d2d30, 0x2d88, 0x11d3, {0x9a, 0x16, 0x00, 0x90, 0x27, 0x3f, 0xc1, 0x4d}};
+
+    if (g_ST == NULL || g_ST->ConfigurationTable == NULL || g_ST->NumberOfTableEntries == 0)
+        return 0;
+
+    UINTN index = 0;
+    for (index = 0; index < g_ST->NumberOfTableEntries; ++index)
+    {
+        EFI_CONFIGURATION_TABLE *table = &g_ST->ConfigurationTable[index];
+        if (IsGuidEqual(&table->VendorGuid, &acpi20Guid))
+        {
+            return (HO_PHYSICAL_ADDRESS)(UINTN)table->VendorTable;
+        }
+    }
+
+    for (index = 0; index < g_ST->NumberOfTableEntries; ++index)
+    {
+        EFI_CONFIGURATION_TABLE *table = &g_ST->ConfigurationTable[index];
+        if (IsGuidEqual(&table->VendorGuid, &acpi10Guid))
+        {
+            return (HO_PHYSICAL_ADDRESS)(UINTN)table->VendorTable;
+        }
+    }
+
+    return 0;
+}
+
+static BOOL
+IsGuidEqual(const struct EFI_GUID *left, const struct EFI_GUID *right)
+{
+    if (left == NULL || right == NULL)
+        return FALSE;
+
+    if (left->Data1 != right->Data1 || left->Data2 != right->Data2 || left->Data3 != right->Data3)
+        return FALSE;
+
+    for (int i = 0; i < 8; ++i)
+    {
+        if (left->Data4[i] != right->Data4[i])
+            return FALSE;
+    }
+
+    return TRUE;
 }
