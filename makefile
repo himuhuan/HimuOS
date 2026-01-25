@@ -55,6 +55,7 @@ SRCS_LIBC := \
     src/libc/string/memcpy.c   \
     src/libc/string/memmove.c  \
     src/libc/string/memset.c   \
+    src/libc/string/memcmp.c   \
     src/libc/string/strcmp.c   \
     src/libc/string/strcpy.c   \
     src/libc/string/strlen.c   \
@@ -68,6 +69,7 @@ SRCS_LIBC_BOOT := \
     src/libc/string/memcpy.c   \
     src/libc/string/memmove.c  \
     src/libc/string/memset.c   \
+    src/libc/string/memcmp.c   \
     src/libc/string/strcmp.c   \
     src/libc/string/strcpy.c   \
     src/libc/string/strlen.c   \
@@ -84,10 +86,10 @@ SRCS_ELF := \
 # EFI Bootloader Sources
 # ------------------------------------------------------------------------------
 SRCS_EFI_BOOT := \
-    src/boot/v2/blmm.c    \
+    src/boot/v2/blmm.c        \
     src/boot/v2/bootloader.c  \
-	src/boot/v2/ho_balloc.c \
-	src/boot/v2/efi_main.c   \
+    src/boot/v2/ho_balloc.c   \
+    src/boot/v2/efi_main.c    \
     src/boot/v2/io.c          \
     src/arch/amd64/pm.c
 
@@ -100,22 +102,27 @@ TARGET_EFI   := $(EFI_BINDIR)/main.efi
 # Kernel Sources
 # ------------------------------------------------------------------------------
 SRCS_KERNEL_C := \
-    src/kernel/hoentry.c                            \
-    src/kernel/init.c                               \
-    src/kernel/hodbg.c                              \
-    src/kernel/ke/console.c                 		\
-    src/kernel/ke/console_device.c             		\
-    src/kernel/ke/sinks/gfx_console_sink.c     		\
-    src/kernel/ke/sinks/serial_console_sink.c  		\
-    src/kernel/ke/sinks/mux_console_sink.c     		\
-    src/arch/arch.c                                 \
-    src/arch/amd64/idt.c                            \
-    src/arch/amd64/cpu.c                            \
-    src/arch/amd64/pm.c                             \
-    src/drivers/video/video_driver.c                \
-    src/drivers/video/efi/video_efi.c               \
-    src/drivers/serial/serial.c                     \
-    src/lib/tui/bitmap_font.c                       \
+    src/kernel/hoentry.c                                \
+    src/kernel/init.c                                   \
+    src/kernel/hodbg.c                                  \
+    src/kernel/ke/console/console.c                     \
+    src/kernel/ke/console/console_device.c              \
+    src/kernel/ke/console/sinks/gfx_console_sink.c      \
+    src/kernel/ke/console/sinks/serial_console_sink.c   \
+    src/kernel/ke/console/sinks/mux_console_sink.c      \
+    src/kernel/ke/time/time_source.c                    \
+    src/kernel/ke/time/sinks/tsc_sink.c                 \
+    src/kernel/ke/time/sinks/hpet_sink.c                \
+    src/arch/arch.c                                     \
+    src/arch/amd64/idt.c                                \
+    src/arch/amd64/cpu.c                                \
+    src/arch/amd64/pm.c                                 \
+    src/drivers/time/tsc_driver.c                       \
+    src/drivers/time/hpet_driver.c                      \
+    src/drivers/video/video_driver.c                    \
+    src/drivers/video/efi/video_efi.c                   \
+    src/drivers/serial/serial.c                         \
+    src/lib/tui/bitmap_font.c                           \
     src/assets/fonts/font8x16.c
 
 SRCS_KERNEL_ASM := \
@@ -188,7 +195,7 @@ run: $(ESP_BOOT_EFI) $(ESP_KERNEL_BIN)
 		-m 512M \
 		-bios /usr/share/OVMF/OVMF_CODE.fd \
 		-net none \
-		-cpu host \
+		-cpu host,+invtsc \
 		-enable-kvm \
 		-drive file=fat:rw:esp,index=0,format=vvfat \
 		-serial stdio

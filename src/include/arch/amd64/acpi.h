@@ -38,3 +38,17 @@ typedef struct __attribute__((packed)) ACPI_SDT_HEADER
     uint32_t CreatorId;
     uint32_t CreatorRevision;
 } ACPI_SDT_HEADER;
+
+typedef struct __attribute__((packed)) ACPI_HPET
+{
+    ACPI_SDT_HEADER Header;
+    uint32_t EventTimerBlockId;
+    uint8_t AddressSpaceId;
+    uint8_t RegisterBitWidth;
+    uint8_t RegisterBitOffset;
+    uint8_t Reserved;
+    uint64_t BaseAddressPhys;
+    uint8_t HpetNumber;
+    uint16_t MinimumTick;
+    uint8_t PageProtection;
+} ACPI_HPET;

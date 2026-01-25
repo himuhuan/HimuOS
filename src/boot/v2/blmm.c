@@ -466,6 +466,24 @@ MapAcpiTables(HOB_BALLOC *allocator, UINT64 pml4BasePhys, HO_PHYSICAL_ADDRESS rs
         status = MapAcpiRange(allocator, pml4BasePhys, tablePhys, tableHeader->Length);
         if (EFI_ERROR(status))
             return status;
+
+        // If this is HPET table, also map the HPET MMIO region
+        if (tableHeader->Signature[0] == 'H' && tableHeader->Signature[1] == 'P' &&
+            tableHeader->Signature[2] == 'E' && tableHeader->Signature[3] == 'T')
+        {
+            ACPI_HPET *hpet = (ACPI_HPET *)tableHeader;
+            if (hpet->AddressSpaceId == 0 && hpet->BaseAddressPhys != 0)
+            {
+                // Map HPET MMIO region (typically 1KB, map 4KB to be safe)
+                status = MapRegion(allocator, pml4BasePhys, hpet->BaseAddressPhys,
+                                   HHDM_BASE_VA + hpet->BaseAddressPhys, PAGE_4KB,
+                                   PTE_CACHE_DISABLE | PTE_WRITABLE | PTE_NO_EXECUTE);
+                if (EFI_ERROR(status))
+                {
+                    LOG_WARNING("Failed to map HPET MMIO at %p\r\n", hpet->BaseAddressPhys);
+                }
+            }
+        }
     }
 
     return EFI_SUCCESS;

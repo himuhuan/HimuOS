@@ -10,7 +10,7 @@
 #pragma once
 
 #include "_hobase.h"
-#include "console_sink.h"
+#include <kernel/ke/sinks/console_sink.h>
 #include <drivers/serial.h>
 
 HO_INTERNAL_STRUCT typedef struct
