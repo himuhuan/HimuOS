@@ -11,8 +11,8 @@
 
 #include "_hobase.h"
 #include <boot/boot_capsule.h>
-#include <kernel/console.h>
-#include <kernel/mm/mm.h>
+#include <kernel/ke/console.h>
+#include <kernel/ke/mm.h>
 #include <arch/arch.h>
 
 extern KE_VIDEO_DRIVER gVideoDriver;

@@ -1,4 +1,4 @@
-#include <kernel/console.h>
+#include <kernel/ke/console.h>
 #include <string.h>
 #include <stdarg.h>
 #include <kernel/hodbg.h>

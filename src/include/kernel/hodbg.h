@@ -9,7 +9,7 @@
 #pragma once
 
 #include <hostdlib.h>
-#include <kernel/console.h>
+#include <kernel/ke/console.h>
 // #include "arch/amd64/idt.h"
 
 #define kprintf(fmt, ...) ConsoleWriteFmt(fmt, ##__VA_ARGS__)

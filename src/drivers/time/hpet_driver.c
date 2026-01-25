@@ -9,7 +9,7 @@
 
 #include "hpet_driver.h"
 #include <arch/amd64/acpi.h>
-#include <kernel/mm/mm.h>
+#include <kernel/ke/mm.h>
 #include <libc/string.h>
 
 static uint64_t

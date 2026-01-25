@@ -1,6 +1,6 @@
 #include <drivers/serial.h>
 #include <arch/amd64/asm.h>
-#include <kernel/console.h>
+#include <kernel/ke/console.h>
 
 
 void
