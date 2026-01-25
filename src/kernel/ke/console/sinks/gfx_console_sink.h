@@ -11,7 +11,7 @@
 
 #include "_hobase.h"
 #include "drivers/video_driver.h"
-#include "console_sink.h"
+#include <kernel/ke/sinks/console_sink.h>
 #include <lib/tui/bitmap_font.h>
 
 HO_INTERNAL_STRUCT typedef struct

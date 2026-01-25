@@ -11,7 +11,7 @@
 
 #include "_hobase.h"
 #include "drivers/basic_color.h"
-#include "sinks/console_sink.h"
+#include <kernel/ke/sinks/console_sink.h>
 
 struct KE_CONSOLE_SINK;
 

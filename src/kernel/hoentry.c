@@ -10,6 +10,7 @@
 #include <boot/boot_capsule.h>
 #include <kernel/hodbg.h>
 #include <kernel/init.h>
+#include <kernel/ke/time_source.h>
 
 void kmain(BOOT_CAPSULE *capsule);
 
@@ -31,6 +32,10 @@ kmain(BOOT_CAPSULE *capsule)
     kprintf("Himu Operating System VERSION %s\n", KRNL_VERSTR);
     kprintf("Copyright(c) 2024-2025 Himu, ONLY FOR EDUCATIONAL PURPOSES.\n\n");
 
-    while (1)
-        ;
+    while (1) {
+        int i = 0;
+        KeBusyWaitUs(1000000);
+        ++i;
+        kprintf("%d sec passed!\n", i);
+    }
 }

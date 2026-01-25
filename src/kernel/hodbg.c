@@ -20,6 +20,8 @@ KrGetStatusMessage(HO_STATUS status)
         "Should never reach here",
         "Operation not supported",
         "Out of resource",
+        "Operation cannot be performed in the current state",
+        "The machine architecture is not supported"
     };
     // clang-format on
     uint64_t index = (uint64_t)status;

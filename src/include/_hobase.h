@@ -79,6 +79,8 @@ enum _HIMUOS_ERROR_CODE
     EC_UNREACHABLE,       // Should never reach here
     EC_NOT_SUPPORTED,     // Operation not supported
     EC_OUT_OF_RESOURCE,   // Out of resource
+    EC_INVALID_STATE, // Operation cannot be performed in the current state
+    EC_UNSUPPORTED_MACHINE, // The machine architecture is not supported
 };
 
 typedef int HO_STATUS;
