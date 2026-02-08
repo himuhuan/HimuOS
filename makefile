@@ -28,13 +28,16 @@ KRNL_VER_PATCH  := 0
 KRNL_BUILD_DATE := $(shell date +'%y%m%d')
 KRNL_VERSTR     := "$(KRNL_VER_MAJOR).$(KRNL_VER_MINOR).$(KRNL_VER_PATCH) $(KRNL_BUILD_DATE)"
 KRNL_ENTRY_POINT := 0xFFFF800000000000
+TIMESTAMP_LOG   ?= 1
+SUDO_PASSWORD   ?=
 
 CFLAGS := -Wall -Wextra -Wmissing-prototypes -Wstrict-prototypes -Werror \
           -fno-stack-protector -nostdlib -fno-builtin -nostartfiles \
           -nodefaultlibs -nostdinc -ffreestanding -fdiagnostics-color \
           -c -m64 -g -mcmodel=large \
           -Isrc -Isrc/include -Isrc/include/libc \
-          -DKRNL_VERSTR=\"$(KRNL_VERSTR)\" -D__HO_DEBUG_BUILD__=1
+          -DKRNL_VERSTR=\"$(KRNL_VERSTR)\" -D__HO_DEBUG_BUILD__=1 \
+          -DHO_ENABLE_TIMESTAMP_LOG=$(TIMESTAMP_LOG)
 
 LDFLAGS := -T himuos.ld -nostdlib -static -e kmain -Map=build/kernel/bin/kernel.map
 
@@ -110,6 +113,7 @@ SRCS_KERNEL_C := \
     src/kernel/ke/console/sinks/gfx_console_sink.c      \
     src/kernel/ke/console/sinks/serial_console_sink.c   \
     src/kernel/ke/console/sinks/mux_console_sink.c      \
+    src/kernel/ke/log/log.c                             \
     src/kernel/ke/time/time_source.c                    \
     src/kernel/ke/time/sinks/tsc_sink.c                 \
     src/kernel/ke/time/sinks/hpet_sink.c                \
@@ -191,7 +195,7 @@ $(ESP_KERNEL_BIN): $(TARGET_KERNEL)
 
 run: $(ESP_BOOT_EFI) $(ESP_KERNEL_BIN)
 	@echo "Starting VM with EFI..."
-	@sudo qemu-system-x86_64 \
+	@printf '%s\n' "$(SUDO_PASSWORD)" | sudo -S qemu-system-x86_64 \
 		-m 512M \
 		-bios /usr/share/OVMF/OVMF_CODE.fd \
 		-net none \

@@ -22,6 +22,8 @@ static MUX_CONSOLE_SINK gMuxConsoleSink;
 #endif
 static BOOL gConsoleInitialized = FALSE;
 
+static uint64_t ConsoleWriteFmtImpl(const char *fmt, VA_LIST args);
+
 HO_PUBLIC_API HO_STATUS
 ConsoleInit(KE_VIDEO_DRIVER *driver, BITMAP_FONT_INFO *font)
 {
@@ -67,11 +69,9 @@ ConsoleWrite(const char *str)
     return KeConDevPutStr(&gConsoleDevice, str);
 }
 
-HO_PUBLIC_API uint64_t
-ConsoleWriteFmt(const char *fmt, ...)
+static uint64_t
+ConsoleWriteFmtImpl(const char *fmt, VA_LIST args)
 {
-    VA_LIST args;
-    VA_START(args, fmt);
     char buf[MAX_FORMAT_BUFFER];
     uint64_t written = 0;
 
@@ -223,8 +223,23 @@ ConsoleWriteFmt(const char *fmt, ...)
             break;
         }
     }
+    return written;
+}
+
+HO_PUBLIC_API uint64_t
+ConsoleWriteFmt(const char *fmt, ...)
+{
+    VA_LIST args;
+    VA_START(args, fmt);
+    uint64_t written = ConsoleWriteFmtImpl(fmt, args);
     VA_END(args);
     return written;
+}
+
+HO_PUBLIC_API uint64_t
+ConsoleWriteVFmt(const char *fmt, VA_LIST args)
+{
+    return ConsoleWriteFmtImpl(fmt, args);
 }
 
 HO_PUBLIC_API void ConsoleClearScreen(COLOR32 color)
