@@ -31,6 +31,13 @@ KRNL_ENTRY_POINT := 0xFFFF800000000000
 
 HO_DEBUG_BUILD ?= 1
 HO_ENABLE_TIMESTAMP_LOG ?= $(HO_DEBUG_BUILD)
+SUDO ?= sudo
+
+ifeq ($(strip $(SUDO_PASSWORD)),)
+SUDO_RUN := $(SUDO)
+else
+SUDO_RUN := printf '%s\n' "$(SUDO_PASSWORD)" | $(SUDO) -S
+endif
 
 CFLAGS := -Wall -Wextra -Wmissing-prototypes -Wstrict-prototypes -Werror \
           -fno-stack-protector -nostdlib -fno-builtin -nostartfiles \
@@ -197,7 +204,7 @@ $(ESP_KERNEL_BIN): $(TARGET_KERNEL)
 
 run: $(ESP_BOOT_EFI) $(ESP_KERNEL_BIN)
 	@echo "Starting VM with EFI..."
-	@sudo qemu-system-x86_64 \
+	@$(SUDO_RUN) qemu-system-x86_64 \
 		-m 512M \
 		-bios /usr/share/OVMF/OVMF_CODE.fd \
 		-net none \
