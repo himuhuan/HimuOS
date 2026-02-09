@@ -125,6 +125,9 @@ typedef uint64_t PAGE_TABLE_ENTRY;
 #define PTE_GLOBAL         (1ULL << 8)  // Global page
 #define PTE_NO_EXECUTE     (1ULL << 63) // No execute (NXE)
 
+#define IA32_EFER_MSR      0xC0000080U
+#define IA32_EFER_NXE      (1ULL << 11)
+
 #define PML4_SHIFT         39
 #define PDPT_SHIFT         30
 #define PD_SHIFT           21

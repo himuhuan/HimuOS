@@ -12,6 +12,8 @@ static EFI_MEMORY_MAP *InitMemoryMap(void *base, size_t size);
 static EFI_STATUS FillMemoryMap(EFI_MEMORY_MAP *map);
 static EFI_STATUS MapAcpiTables(HOB_BALLOC *allocator, UINT64 pml4BasePhys, HO_PHYSICAL_ADDRESS rsdpPhys);
 static EFI_STATUS MapAcpiRange(HOB_BALLOC *allocator, UINT64 pml4BasePhys, UINT64 tablePhys, UINT32 length);
+static BOOL IsSameMapping(UINT64 existingEntry, UINT64 targetPhys, UINT64 flags, UINT64 isPresent);
+static UINT64 GetNxFlag(void);
 
 EFI_MEMORY_MAP *
 GetLoaderRuntimeMemoryMap()
@@ -122,6 +124,7 @@ CreateInitialMapping(BOOT_CAPSULE *capsule)
     EFI_PHYSICAL_ADDRESS poolBase = 0;
     HOB_BALLOC pageTableAlloc;
     EFI_STATUS status;
+    UINT64 nxFlag = GetNxFlag();
 
     do
     {
@@ -159,7 +162,7 @@ CreateInitialMapping(BOOT_CAPSULE *capsule)
         {
             size_t capsuleSize = capsule->PageLayout.TotalPages << 12;
             status = MapRegion(&pageTableAlloc, pml4Phys, capsule->BasePhys, HHDM_BASE_VA + capsule->BasePhys,
-                               capsuleSize, PTE_WRITABLE | PTE_NO_EXECUTE);
+                               capsuleSize, PTE_WRITABLE | nxFlag);
             if (EFI_ERROR(status))
             {
                 LOG_ERROR("Failed to map BOOT_CAPSULE at HHDM: %k (0x%x)\r\n", status, status);
@@ -193,8 +196,7 @@ CreateInitialMapping(BOOT_CAPSULE *capsule)
             UINT64 dataSizeAligned = HO_ALIGN_UP(capsule->Layout.KrnlDataSize, PAGE_4KB);
             UINT64 dataPhys = capsule->KrnlEntryPhys + codeSizeAligned;
             UINT64 dataVirt = KRNL_BASE_VA + codeSizeAligned;
-            status = MapRegion(&pageTableAlloc, pml4Phys, dataPhys, dataVirt, dataSizeAligned,
-                               PTE_WRITABLE | PTE_NO_EXECUTE);
+            status = MapRegion(&pageTableAlloc, pml4Phys, dataPhys, dataVirt, dataSizeAligned, PTE_WRITABLE | nxFlag);
             if (EFI_ERROR(status))
                 break;
         }
@@ -203,14 +205,14 @@ CreateInitialMapping(BOOT_CAPSULE *capsule)
         if (capsule->Layout.KrnlStackSize > 0)
         {
             status = MapRegion(&pageTableAlloc, pml4Phys, capsule->KrnlStackPhys, KRNL_STACK_VA,
-                               capsule->Layout.KrnlStackSize, PTE_WRITABLE | PTE_NO_EXECUTE);
+                               capsule->Layout.KrnlStackSize, PTE_WRITABLE | nxFlag);
             if (EFI_ERROR(status))
                 break;
         }
         if (capsule->Layout.IST1StackSize > 0)
         {
             status = MapRegion(&pageTableAlloc, pml4Phys, capsule->KrnlIST1StackPhys, KRNL_IST1_STACK_VA,
-                               capsule->Layout.IST1StackSize, PTE_WRITABLE | PTE_NO_EXECUTE);
+                               capsule->Layout.IST1StackSize, PTE_WRITABLE | nxFlag);
             if (EFI_ERROR(status))
                 break;
         }
@@ -219,7 +221,7 @@ CreateInitialMapping(BOOT_CAPSULE *capsule)
         if (capsule->FramebufferSize > 0)
         {
             status = MapRegion(&pageTableAlloc, pml4Phys, capsule->FramebufferPhys, MMIO_BASE_VA,
-                               capsule->FramebufferSize, PTE_CACHE_DISABLE | PTE_WRITABLE | PTE_NO_EXECUTE);
+                               capsule->FramebufferSize, PTE_CACHE_DISABLE | PTE_WRITABLE | nxFlag);
             if (EFI_ERROR(status))
                 break;
         }
@@ -271,6 +273,13 @@ MapPage(MAP_PAGE_PARAMS *params)
     {
         if (pdpt[pdptIndex] & PTE_PRESENT)
         {
+            if (!(pdpt[pdptIndex] & PTE_PAGE_SIZE))
+            {
+                LOG_ERROR(L"Virtual address already mapped by non-1GB entry: 0x%x\r\n", alignedAddrVirt);
+                return EFI_INVALID_PARAMETER;
+            }
+            if (IsSameMapping(pdpt[pdptIndex], alignedAddrPhys, flags, isPresent))
+                return EFI_SUCCESS;
             LOG_ERROR(L"Virtual address already mapped: 0x%x\r\n", alignedAddrVirt);
             return EFI_INVALID_PARAMETER;
         }
@@ -295,6 +304,13 @@ MapPage(MAP_PAGE_PARAMS *params)
     {
         if (pd[pdIndex] & PTE_PRESENT)
         {
+            if (!(pd[pdIndex] & PTE_PAGE_SIZE))
+            {
+                LOG_ERROR(L"Virtual address already mapped by non-2MB entry: 0x%x\r\n", alignedAddrVirt);
+                return EFI_INVALID_PARAMETER;
+            }
+            if (IsSameMapping(pd[pdIndex], alignedAddrPhys, flags, isPresent))
+                return EFI_SUCCESS;
             LOG_ERROR(L"Virtual address already mapped: 0x%x\r\n", alignedAddrVirt);
             return EFI_INVALID_PARAMETER;
         }
@@ -317,6 +333,8 @@ MapPage(MAP_PAGE_PARAMS *params)
     UINT64 ptIndex = PT_INDEX(alignedAddrVirt);
     if (pt[ptIndex] & PTE_PRESENT)
     {
+        if (IsSameMapping(pt[ptIndex], alignedAddrPhys, flags, isPresent))
+            return EFI_SUCCESS;
         LOG_ERROR(L"Virtual address already mapped: 0x%x\r\n", alignedAddrVirt);
         return EFI_INVALID_PARAMETER;
     }
@@ -477,7 +495,7 @@ MapAcpiTables(HOB_BALLOC *allocator, UINT64 pml4BasePhys, HO_PHYSICAL_ADDRESS rs
                 // Map HPET MMIO region (typically 1KB, map 4KB to be safe)
                 status = MapRegion(allocator, pml4BasePhys, hpet->BaseAddressPhys,
                                    HHDM_BASE_VA + hpet->BaseAddressPhys, PAGE_4KB,
-                                   PTE_CACHE_DISABLE | PTE_WRITABLE | PTE_NO_EXECUTE);
+                                   PTE_CACHE_DISABLE | PTE_WRITABLE | GetNxFlag());
                 if (EFI_ERROR(status))
                 {
                     LOG_WARNING("Failed to map HPET MMIO at %p\r\n", hpet->BaseAddressPhys);
@@ -499,5 +517,20 @@ MapAcpiRange(HOB_BALLOC *allocator, UINT64 pml4BasePhys, UINT64 tablePhys, UINT3
     if (mapSize == 0)
         return EFI_INVALID_PARAMETER;
 
-    return MapRegion(allocator, pml4BasePhys, startPhys, HHDM_BASE_VA + startPhys, mapSize, PTE_NO_EXECUTE);
+    return MapRegion(allocator, pml4BasePhys, startPhys, HHDM_BASE_VA + startPhys, mapSize, GetNxFlag());
+}
+
+static UINT64
+GetNxFlag(void)
+{
+    return BootUseNx() ? PTE_NO_EXECUTE : 0;
+}
+
+static BOOL
+IsSameMapping(UINT64 existingEntry, UINT64 targetPhys, UINT64 flags, UINT64 isPresent)
+{
+    UINT64 mask = PAGE_MASK | PTE_PRESENT | PTE_WRITABLE | PTE_USER | PTE_WRITETHROUGH | PTE_CACHE_DISABLE |
+                  PTE_GLOBAL | PTE_PAGE_SIZE | PTE_NO_EXECUTE;
+    UINT64 expected = (targetPhys & PAGE_MASK) | flags | isPresent;
+    return ((existingEntry & mask) == (expected & mask)) ? TRUE : FALSE;
 }
