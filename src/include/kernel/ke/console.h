@@ -11,6 +11,7 @@
 #include "_hobase.h"
 #include <drivers/video_driver.h>
 #include <lib/tui/bitmap_font.h>
+#include <stdarg.h>
 
 // ANSI Colors
 
@@ -70,5 +71,6 @@ HO_PUBLIC_API int ConsoleWriteChar(char c);
 HO_PUBLIC_API uint64_t ConsoleWrite(const char *str);
 
 HO_PUBLIC_API uint64_t ConsoleWriteFmt(const char *fmt, ...);
+HO_PUBLIC_API uint64_t ConsoleWriteVFmt(const char *fmt, VA_LIST args);
 
 HO_PUBLIC_API void ConsoleClearScreen(COLOR32 color);

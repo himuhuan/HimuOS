@@ -124,6 +124,12 @@ KeGetSystemUpRealTime(void)
     return Mul64Div64(elapsed, 1000000ULL, gTimeDevice.FreqHz);
 }
 
+HO_KERNEL_API BOOL
+KeIsTimeSourceReady(void)
+{
+    return gTimeDevice.Initialized;
+}
+
 HO_KERNEL_API TIME_SOURCE_KIND
 KeGetTimeSourceKind(void)
 {

@@ -48,6 +48,12 @@ KeTimeSourceInit(HO_PHYSICAL_ADDRESS acpiRsdpPhys);
 HO_KERNEL_API uint64_t KeGetSystemUpRealTime(void);
 
 /**
+ * @brief Query whether time source is initialized and usable.
+ * @return TRUE if the active time source is ready.
+ */
+HO_KERNEL_API BOOL KeIsTimeSourceReady(void);
+
+/**
  * @brief Get the type of the active time source.
  * @return Kind enum.
  */

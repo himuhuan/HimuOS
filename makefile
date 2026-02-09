@@ -29,12 +29,17 @@ KRNL_BUILD_DATE := $(shell date +'%y%m%d')
 KRNL_VERSTR     := "$(KRNL_VER_MAJOR).$(KRNL_VER_MINOR).$(KRNL_VER_PATCH) $(KRNL_BUILD_DATE)"
 KRNL_ENTRY_POINT := 0xFFFF800000000000
 
+HO_DEBUG_BUILD ?= 1
+HO_ENABLE_TIMESTAMP_LOG ?= $(HO_DEBUG_BUILD)
+
 CFLAGS := -Wall -Wextra -Wmissing-prototypes -Wstrict-prototypes -Werror \
           -fno-stack-protector -nostdlib -fno-builtin -nostartfiles \
           -nodefaultlibs -nostdinc -ffreestanding -fdiagnostics-color \
           -c -m64 -g -mcmodel=large \
           -Isrc -Isrc/include -Isrc/include/libc \
-          -DKRNL_VERSTR=\"$(KRNL_VERSTR)\" -D__HO_DEBUG_BUILD__=1
+          -DKRNL_VERSTR=\"$(KRNL_VERSTR)\" \
+          -D__HO_DEBUG_BUILD__=$(HO_DEBUG_BUILD) \
+          -DHO_ENABLE_TIMESTAMP_LOG=$(HO_ENABLE_TIMESTAMP_LOG)
 
 LDFLAGS := -T himuos.ld -nostdlib -static -e kmain -Map=build/kernel/bin/kernel.map
 
@@ -113,6 +118,7 @@ SRCS_KERNEL_C := \
     src/kernel/ke/time/time_source.c                    \
     src/kernel/ke/time/sinks/tsc_sink.c                 \
     src/kernel/ke/time/sinks/hpet_sink.c                \
+    src/kernel/ke/log/log.c                             \
     src/arch/arch.c                                     \
     src/arch/amd64/idt.c                                \
     src/arch/amd64/cpu.c                                \
