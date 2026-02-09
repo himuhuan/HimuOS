@@ -10,9 +10,14 @@
 
 #include <hostdlib.h>
 #include <kernel/ke/console.h>
+#include <kernel/log.h>
 // #include "arch/amd64/idt.h"
 
+#if HO_ENABLE_TIMESTAMP_LOG
+#define kprintf(fmt, ...) KLogWriteFmt(fmt, ##__VA_ARGS__)
+#else
 #define kprintf(fmt, ...) ConsoleWriteFmt(fmt, ##__VA_ARGS__)
+#endif
 
 /**
  * @brief Structure representing the context information when a kernel panic occurs.
