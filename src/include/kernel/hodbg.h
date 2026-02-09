@@ -9,8 +9,7 @@
 #pragma once
 
 #include <hostdlib.h>
-#include <kernel/console.h>
-#include <kernel/log.h>
+#include <kernel/ke/console.h>
 // #include "arch/amd64/idt.h"
 
 #ifndef HO_ENABLE_TIMESTAMP_LOG

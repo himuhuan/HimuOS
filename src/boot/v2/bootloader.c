@@ -5,7 +5,7 @@
 #include "blmm.h"
 #include "kernel/hodefs.h"
 #include "lib/elf/elf.h"
-#include "kernel/mm/mm.h"
+#include "kernel/ke/mm.h"
 
 // ===========================================
 // Global variables
