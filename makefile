@@ -124,6 +124,7 @@ SRCS_KERNEL_C := \
     src/kernel/ke/console/sinks/mux_console_sink.c      \
     src/kernel/ke/time/time_source.c                    \
     src/kernel/ke/time/sinks/tsc_sink.c                 \
+    src/kernel/ke/time/sinks/pmtimer_sink.c             \
     src/kernel/ke/time/sinks/hpet_sink.c                \
     src/kernel/ke/log/log.c                             \
     src/arch/arch.c                                     \
@@ -131,6 +132,7 @@ SRCS_KERNEL_C := \
     src/arch/amd64/cpu.c                                \
     src/arch/amd64/pm.c                                 \
     src/drivers/time/tsc_driver.c                       \
+    src/drivers/time/pmtimer_driver.c                   \
     src/drivers/time/hpet_driver.c                      \
     src/drivers/video/video_driver.c                    \
     src/drivers/video/efi/video_efi.c                   \

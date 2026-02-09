@@ -14,6 +14,7 @@
 #include <libc/string.h>
 
 #include "sinks/hpet_sink.h"
+#include "sinks/pmtimer_sink.h"
 #include "sinks/tsc_sink.h"
 
 //
@@ -25,6 +26,7 @@ static KE_TIME_DEVICE gTimeDevice;
 // Sinks Storage
 //
 static KE_HPET_TIME_SINK gHpetSink;
+static KE_PMTIMER_TIME_SINK gPmTimerSink;
 static KE_TSC_TIME_SINK gTscSink;
 
 //
@@ -63,20 +65,31 @@ KeTimeSourceInit(HO_PHYSICAL_ADDRESS acpiRsdpPhys)
     
     // 1. Initialize Sinks
     HO_STATUS tscStatus = KeTscTimeSinkInit(&gTscSink);
+    HO_STATUS pmtStatus = KePmTimerTimeSinkInit(&gPmTimerSink, acpiRsdpPhys);
     HO_STATUS hpetStatus = KeHpetTimeSinkInit(&gHpetSink, acpiRsdpPhys);
 
     // 2. Calibration Strategy
     if (tscStatus == EC_SUCCESS && !gTscSink.Calibrated)
     {
-        if (!hpetStatus)
+        KE_TIME_SINK *refSink = NULL;
+        if (pmtStatus == EC_SUCCESS && gPmTimerSink.Initialized)
         {
-             HO_STATUS calStatus = KeTscTimeSinkCalibrate(&gTscSink, &gHpetSink.Base);
-             if (calStatus != EC_SUCCESS)
-                 kprintf("[TIME] TSC calibration failed, trying rollback...\n");
+            refSink = &gPmTimerSink.Base;
+        }
+        else if (hpetStatus == EC_SUCCESS && gHpetSink.Initialized)
+        {
+            refSink = &gHpetSink.Base;
+        }
+
+        if (refSink)
+        {
+            HO_STATUS calStatus = KeTscTimeSinkCalibrate(&gTscSink, refSink);
+            if (calStatus != EC_SUCCESS)
+                kprintf("[TIME] TSC calibration failed, trying rollback...\n");
         }
         else
         {
-            kprintf("[TIME] Error: TSC needs calibration but HPET unavailable\n");
+            kprintf("[TIME] Error: TSC needs calibration but no ref timer available\n");
         }
     }
 
@@ -87,6 +100,11 @@ KeTimeSourceInit(HO_PHYSICAL_ADDRESS acpiRsdpPhys)
     {
         selectedSink = &gTscSink.Base;
         kind = TIME_SOURCE_TSC;
+    }
+    else if (gPmTimerSink.Initialized)
+    {
+        selectedSink = &gPmTimerSink.Base;
+        kind = TIME_SOURCE_PM_TIMER;
     }
     else if (gHpetSink.Initialized)
     {
