@@ -20,3 +20,5 @@ extern EFI_HANDLE gImageHandle;
 void LoaderInitialize(EFI_HANDLE imageHandle, struct EFI_SYSTEM_TABLE *systemTable);
 
 EFI_STATUS StagingKernel(const CHAR16 *path);
+
+BOOL BootUseNx(void);

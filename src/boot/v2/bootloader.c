@@ -1,5 +1,6 @@
 #include "bootloader.h"
 #include "io.h"
+#include "arch/amd64/asm.h"
 #include "arch/amd64/pm.h"
 #include "arch/amd64/efi_mem.h"
 #include "blmm.h"
@@ -24,6 +25,16 @@ static BOOL LoadKernel(void *image, UINT64 imageSize, STAGING_BLOCK *staging);
 static void JumpToKernel(STAGING_BLOCK *block);
 static HO_PHYSICAL_ADDRESS FindAcpiRsdpPhys(void);
 static BOOL IsGuidEqual(const struct EFI_GUID *left, const struct EFI_GUID *right);
+static BOOL CpuSupportsNx(void);
+static BOOL EnableNxe(void);
+
+static BOOL kBootUseNx = FALSE;
+
+BOOL
+BootUseNx(void)
+{
+    return kBootUseNx;
+}
 
 void
 LoaderInitialize(EFI_HANDLE imageHandle, struct EFI_SYSTEM_TABLE *SystemTable)
@@ -116,6 +127,10 @@ StagingKernel(const CHAR16 *path)
         LOG_WARNING(L"ACPI RSDP not found in UEFI configuration tables\r\n");
     }
 
+    kBootUseNx = CpuSupportsNx();
+    if (!kBootUseNx)
+        LOG_WARNING(L"CPU does not support NX bit; boot mappings will be executable\r\n");
+
     size_t remain = CreateInitialMapping(capsule);
     if (!remain)
     {
@@ -151,6 +166,12 @@ StagingKernel(const CHAR16 *path)
         return status;
     }
 
+    if (kBootUseNx && !EnableNxe())
+    {
+        LOG_ERROR(L"Failed to enable IA32_EFER.NXE\r\n");
+        return EFI_DEVICE_ERROR;
+    }
+    __asm__ __volatile__("cli" ::: "memory");
     LoadCR3(capsule->PageTableInfo.Ptr);
     LoadGdtAndTss(&capsule->CpuInfo);
     JumpToKernel(capsule);
@@ -196,6 +217,27 @@ JumpToKernel(STAGING_BLOCK *block)
     __asm__ __volatile__("mov %0, %%rdi" ::"r"(blockVirt) : "rdi", "memory");
     __asm__ __volatile__("jmp *%0" ::"r"(entryVirt));
 
+}
+
+static BOOL
+CpuSupportsNx(void)
+{
+    uint32_t eax, ebx, ecx, edx;
+    cpuid(0x80000000U, &eax, &ebx, &ecx, &edx);
+    if (eax < 0x80000001U)
+        return FALSE;
+
+    cpuid(0x80000001U, &eax, &ebx, &ecx, &edx);
+    return (edx & (1U << 20)) != 0;
+}
+
+static BOOL
+EnableNxe(void)
+{
+    uint64_t efer = rdmsr(IA32_EFER_MSR);
+    efer |= IA32_EFER_NXE;
+    wrmsr(IA32_EFER_MSR, efer);
+    return (rdmsr(IA32_EFER_MSR) & IA32_EFER_NXE) != 0;
 }
 
 static HO_PHYSICAL_ADDRESS
