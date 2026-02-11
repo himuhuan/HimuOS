@@ -61,7 +61,7 @@ InitCpuState(STAGING_BLOCK *block)
 {
     CPU_CORE_LOCAL_DATA *data = &block->CpuInfo;
     data->Tss.RSP0 = HHDM_PHYS2VIRT(block->KrnlStackPhys) + block->Layout.KrnlStackSize;
-    data->Tss.IST1 = HHDM_PHYS2VIRT(block->KrnlStackPhys) + block->Layout.IST1StackSize;
+    data->Tss.IST1 = HHDM_PHYS2VIRT(block->KrnlIST1StackPhys) + block->Layout.IST1StackSize;
     data->Tss.IOMapBase = sizeof(TSS64); // No IO permission bitmap
 }
 

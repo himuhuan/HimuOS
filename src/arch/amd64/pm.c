@@ -6,9 +6,7 @@ void
 LoadCR3(HO_PHYSICAL_ADDRESS pml4PhysAddr)
 {
     uint64_t cr3 = pml4PhysAddr & PAGE_MASK;
-    __asm__ __volatile__("cli");
     __asm__ __volatile__("mov %0, %%cr3" ::"r"(cr3) : "memory");
-    __asm__ __volatile__("sti");
 }
 
 HO_KERNEL_API uint64_t
