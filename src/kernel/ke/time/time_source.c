@@ -68,8 +68,9 @@ KeTimeSourceInit(HO_PHYSICAL_ADDRESS acpiRsdpPhys)
     HO_STATUS pmtStatus = KePmTimerTimeSinkInit(&gPmTimerSink, acpiRsdpPhys);
     HO_STATUS hpetStatus = KeHpetTimeSinkInit(&gHpetSink, acpiRsdpPhys);
 
-    // 2. Calibration Strategy
-    if (tscStatus == EC_SUCCESS && !gTscSink.Calibrated)
+    // 2. Calibration Strategy (keep TSC as preferred active source)
+    // If PM Timer exists, always prefer it as TSC calibration reference.
+    if (tscStatus == EC_SUCCESS)
     {
         KE_TIME_SINK *refSink = NULL;
         if (pmtStatus == EC_SUCCESS && gPmTimerSink.Initialized)
@@ -83,11 +84,28 @@ KeTimeSourceInit(HO_PHYSICAL_ADDRESS acpiRsdpPhys)
 
         if (refSink)
         {
+            uint64_t oldFreqHz = gTscSink.FreqHz;
             HO_STATUS calStatus = KeTscTimeSinkCalibrate(&gTscSink, refSink);
-            if (calStatus != EC_SUCCESS)
-                kprintf("[TIME] TSC calibration failed, trying rollback...\n");
+            if (calStatus == EC_SUCCESS)
+            {
+                kprintf("[TIME] TSC calibrated by %s: %lu -> %lu Hz\n",
+                        refSink->GetName(refSink), oldFreqHz, gTscSink.FreqHz);
+            }
+            else if (oldFreqHz != 0)
+            {
+                gTscSink.FreqHz = oldFreqHz;
+                gTscSink.Calibrated = TRUE;
+                kprintf("[TIME] TSC calibration by %s failed, fallback to %lu Hz\n",
+                        refSink->GetName(refSink), oldFreqHz);
+            }
+            else
+            {
+                gTscSink.Calibrated = FALSE;
+                kprintf("[TIME] TSC calibration by %s failed and no fallback freq\n",
+                        refSink->GetName(refSink));
+            }
         }
-        else
+        else if (!gTscSink.Calibrated)
         {
             kprintf("[TIME] Error: TSC needs calibration but no ref timer available\n");
         }
