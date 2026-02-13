@@ -10,4 +10,11 @@
 
 #include "_hobase.h"
 
-HO_KERNEL_API uint64_t KLogWriteFmt(const char *fmt, ...);
+enum KE_LOG_LEVEL {
+    KLOG_LEVEL_DEBUG = 0,
+    KLOG_LEVEL_INFO,
+    KLOG_LEVEL_WARNING,
+    KLOG_LEVEL_ERROR,
+};
+
+HO_KERNEL_API uint64_t KLogWriteFmt(enum KE_LOG_LEVEL level, const char *fmt, ...);

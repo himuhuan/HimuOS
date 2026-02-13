@@ -14,10 +14,12 @@
 // #include "arch/amd64/idt.h"
 
 #if HO_ENABLE_TIMESTAMP_LOG
-#define kprintf(fmt, ...) KLogWriteFmt(fmt, ##__VA_ARGS__)
+#define klog(level, fmt, ...) KLogWriteFmt(level, fmt, ##__VA_ARGS__)
 #else
-#define kprintf(fmt, ...) ConsoleWriteFmt(fmt, ##__VA_ARGS__)
+#define klog(fmt, ...) 
 #endif
+
+#define kprintf(fmt, ...) ConsoleWriteFmt(fmt, ##__VA_ARGS__)
 
 /**
  * @brief Structure representing the context information when a kernel panic occurs.

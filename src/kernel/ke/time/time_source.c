@@ -62,7 +62,7 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS
 KeTimeSourceInit(HO_PHYSICAL_ADDRESS acpiRsdpPhys)
 {
     memset(&gTimeDevice, 0, sizeof(gTimeDevice));
-    
+
     // 1. Initialize Sinks
     HO_STATUS tscStatus = KeTscTimeSinkInit(&gTscSink);
     HO_STATUS pmtStatus = KePmTimerTimeSinkInit(&gPmTimerSink, acpiRsdpPhys);
@@ -88,26 +88,25 @@ KeTimeSourceInit(HO_PHYSICAL_ADDRESS acpiRsdpPhys)
             HO_STATUS calStatus = KeTscTimeSinkCalibrate(&gTscSink, refSink);
             if (calStatus == EC_SUCCESS)
             {
-                kprintf("[TIME] TSC calibrated by %s: %lu -> %lu Hz\n",
-                        refSink->GetName(refSink), oldFreqHz, gTscSink.FreqHz);
+                klog(KLOG_LEVEL_ERROR, "[TIME] TSC calibrated by %s: %lu -> %lu Hz\n", refSink->GetName(refSink),
+                     oldFreqHz, gTscSink.FreqHz);
             }
             else if (oldFreqHz != 0)
             {
                 gTscSink.FreqHz = oldFreqHz;
                 gTscSink.Calibrated = TRUE;
-                kprintf("[TIME] TSC calibration by %s failed, fallback to %lu Hz\n",
-                        refSink->GetName(refSink), oldFreqHz);
+                klog(KLOG_LEVEL_ERROR, "[TIME] TSC calibration by %s failed, fallback to %lu Hz\n", refSink->GetName(refSink),
+                        oldFreqHz);
             }
             else
             {
                 gTscSink.Calibrated = FALSE;
-                kprintf("[TIME] TSC calibration by %s failed and no fallback freq\n",
-                        refSink->GetName(refSink));
+                klog(KLOG_LEVEL_ERROR, "[TIME] TSC calibration by %s failed and no fallback freq\n", refSink->GetName(refSink));
             }
         }
         else if (!gTscSink.Calibrated)
         {
-            kprintf("[TIME] Error: TSC needs calibration but no ref timer available\n");
+            klog(KLOG_LEVEL_ERROR, "[TIME] Error: TSC needs calibration but no ref timer available\n");
         }
     }
 
@@ -132,7 +131,7 @@ KeTimeSourceInit(HO_PHYSICAL_ADDRESS acpiRsdpPhys)
 
     if (!selectedSink)
     {
-        kprintf("[TIME] No usable time source found\n");
+        klog(KLOG_LEVEL_ERROR, "[TIME] No usable time source found\n");
         return EC_UNSUPPORTED_MACHINE;
     }
 
@@ -143,7 +142,7 @@ KeTimeSourceInit(HO_PHYSICAL_ADDRESS acpiRsdpPhys)
     gTimeDevice.StartTick = selectedSink->ReadCounter(selectedSink);
     gTimeDevice.Initialized = TRUE;
 
-    kprintf("[TIME] Source: %s @ %lu Hz\n", selectedSink->GetName(selectedSink), gTimeDevice.FreqHz);
+    klog(KLOG_LEVEL_INFO, "[TIME] Source: %s @ %lu Hz\n", selectedSink->GetName(selectedSink), gTimeDevice.FreqHz);
 
     return EC_SUCCESS;
 }
