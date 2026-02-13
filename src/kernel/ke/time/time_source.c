@@ -155,3 +155,15 @@ KeBusyWaitUs(uint64_t microsec)
         __asm__ __volatile__("pause");
     }
 }
+
+HO_KERNEL_API KE_TIME_SINK *
+KeTimeSourceGetActiveSink(void)
+{
+    return gTimeDevice.ActiveSink;
+}
+
+HO_KERNEL_API uint64_t
+KeTimeSourceGetFrequencyHz(void)
+{
+    return gTimeDevice.FreqHz;
+}

@@ -4,6 +4,7 @@
 #include <arch/amd64/idt.h> // TODO: remove dependency on x86 arch
 #include <arch/amd64/acpi.h>
 #include <kernel/ke/time_source.h>
+#include <kernel/ke/clockevent.h>
 #include "assets/fonts/font8x16.h"
 
 //
@@ -42,6 +43,12 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
     if (initStatus != EC_SUCCESS)
     {
         HO_KPANIC(initStatus, "Failed to initialize time source");
+    }
+
+    initStatus = KeClockEventInit(block->AcpiRsdpPhys);
+    if (initStatus != EC_SUCCESS)
+    {
+        HO_KPANIC(initStatus, "Failed to initialize clockevent");
     }
 }
 

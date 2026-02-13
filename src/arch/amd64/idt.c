@@ -1,11 +1,18 @@
 #include "arch/amd64/idt.h"
 #include "arch/amd64/pm.h"
 #include "kernel/hodbg.h"
+#include "libc/string.h"
 
-#define IDT_TRAP_GATE 0x8F
+#define IDT_EXCEPTION_VECTOR_COUNT 32
+#define IDT_TOTAL_VECTOR_COUNT     256
+#define IDT_EXCEPTION_GATE         IDT_FLAG_TRAP_GATE
+#define IDT_EXTERNAL_GATE          IDT_FLAG_INTERRUPT_GATE
+#define IDT_SPURIOUS_VECTOR        0xFF
 
-static IDT_ENTRY kInterruptDescriptorTable[256];
+static IDT_ENTRY kInterruptDescriptorTable[IDT_TOTAL_VECTOR_COUNT];
 static IDT_PTR kIdtPtr;
+static IDT_INTERRUPT_HANDLER kInterruptHandlers[IDT_TOTAL_VECTOR_COUNT];
+static void *kInterruptHandlerContexts[IDT_TOTAL_VECTOR_COUNT];
 extern void *gIsrStubTable[];
 
 static inline void
@@ -14,10 +21,17 @@ LoadIdt(IDT_PTR *pIdtPtr)
     __asm__ __volatile__("lidt %0" : : "m"(*pIdtPtr));
 }
 
-void
-IdtSetEntry(int vn, uint64_t isrAddr, uint16_t selector, uint8_t attributes, uint8_t ist)
+static HO_NORETURN void
+PanicUnhandledExternalInterrupt(uint8_t vectorNumber, KRNL_INTERRUPT_FRAME *frame)
 {
-    IDT_ENTRY *entry = &kInterruptDescriptorTable[vn];
+    kprintf("FATAL: Unhandled external interrupt vector %u at RIP=%p\n", vectorNumber, (void *)frame->RIP);
+    HO_KPANIC(EC_INVALID_STATE, "Unhandled external interrupt");
+}
+
+HO_PUBLIC_API void
+IdtSetEntry(int vectorNumber, uint64_t isrAddr, uint16_t selector, uint8_t attributes, uint8_t ist)
+{
+    IDT_ENTRY *entry = &kInterruptDescriptorTable[vectorNumber];
     entry->OffsetLow = (uint16_t)(isrAddr & 0xFFFF);
     entry->Selector = selector;
     entry->Ist = ist & 0x7;
@@ -28,11 +42,59 @@ IdtSetEntry(int vn, uint64_t isrAddr, uint16_t selector, uint8_t attributes, uin
 }
 
 HO_PUBLIC_API void
-IdtExceptionHandler(void *frame)
+IdtDispatchInterrupt(void *frame)
 {
     KRNL_INTERRUPT_FRAME *dump = (KRNL_INTERRUPT_FRAME *)frame;
-    int vc = (int) dump->VectorNumber;
-    KernelHalt(-vc, dump);
+    uint8_t vectorNumber = (uint8_t)dump->VectorNumber;
+
+    if (vectorNumber < IDT_EXCEPTION_VECTOR_COUNT)
+    {
+        KernelHalt(-((int64_t)vectorNumber), dump);
+    }
+
+    if (vectorNumber == IDT_SPURIOUS_VECTOR)
+    {
+        return;
+    }
+
+    IDT_INTERRUPT_HANDLER handler = kInterruptHandlers[vectorNumber];
+    if (handler == NULL)
+    {
+        PanicUnhandledExternalInterrupt(vectorNumber, dump);
+    }
+
+    handler(vectorNumber, dump, kInterruptHandlerContexts[vectorNumber]);
+}
+
+HO_PUBLIC_API HO_STATUS
+IdtRegisterInterruptHandler(uint8_t vectorNumber, IDT_INTERRUPT_HANDLER handler, void *context)
+{
+    if (vectorNumber < IDT_EXCEPTION_VECTOR_COUNT || handler == NULL)
+    {
+        return EC_ILLEGAL_ARGUMENT;
+    }
+
+    if (kInterruptHandlers[vectorNumber] != NULL)
+    {
+        return EC_INVALID_STATE;
+    }
+
+    kInterruptHandlers[vectorNumber] = handler;
+    kInterruptHandlerContexts[vectorNumber] = context;
+    return EC_SUCCESS;
+}
+
+HO_PUBLIC_API HO_STATUS
+IdtUnregisterInterruptHandler(uint8_t vectorNumber)
+{
+    if (vectorNumber < IDT_EXCEPTION_VECTOR_COUNT)
+    {
+        return EC_ILLEGAL_ARGUMENT;
+    }
+
+    kInterruptHandlers[vectorNumber] = NULL;
+    kInterruptHandlerContexts[vectorNumber] = NULL;
+    return EC_SUCCESS;
 }
 
 HO_PUBLIC_API const char *
@@ -85,9 +147,19 @@ IdtGetExceptionMessage(uint8_t vectorNumber)
 HO_PUBLIC_API HO_STATUS
 IdtInit(void)
 {
-    // All exceptions uses IST1.
-    for (int i = 0; i < 32; i++)
-        IdtSetEntry(i, (uint64_t)gIsrStubTable[i], GDT_KRNL_CODE_SEL, IDT_TRAP_GATE, 1);
+    memset(kInterruptDescriptorTable, 0, sizeof(kInterruptDescriptorTable));
+    memset(kInterruptHandlers, 0, sizeof(kInterruptHandlers));
+    memset(kInterruptHandlerContexts, 0, sizeof(kInterruptHandlerContexts));
+
+    for (int i = 0; i < IDT_EXCEPTION_VECTOR_COUNT; i++)
+    {
+        IdtSetEntry(i, (uint64_t)gIsrStubTable[i], GDT_KRNL_CODE_SEL, IDT_EXCEPTION_GATE, 1);
+    }
+
+    for (int i = IDT_EXCEPTION_VECTOR_COUNT; i < IDT_TOTAL_VECTOR_COUNT; i++)
+    {
+        IdtSetEntry(i, (uint64_t)gIsrStubTable[i], GDT_KRNL_CODE_SEL, IDT_EXTERNAL_GATE, 0);
+    }
 
     kIdtPtr.Limit = sizeof(kInterruptDescriptorTable) - 1;
     kIdtPtr.Base = (uint64_t)&kInterruptDescriptorTable;

@@ -26,8 +26,8 @@ kmain(BOOT_CAPSULE *capsule)
             gBasicCpuInfo.TimerFeatures & ARCH_TIMER_FEAT_COUNTER ? "YES" : "NOT SUPPORTED");
     kprintf(" * Invariant counter:    %s\n",
             gBasicCpuInfo.TimerFeatures & ARCH_TIMER_FEAT_INVARIANT ? "YES" : "NOT SUPPORTED");
-    kprintf(" * Deadline mode:        %s\n\n",
-            gBasicCpuInfo.TimerFeatures & ARCH_TIMER_FEAT_ONE_SHOT ? "YES" : "NOT SUPPORTED");
+    kprintf(" * TSC Deadline mode:    %s\n\n",
+            gBasicCpuInfo.TimerFeatures & ARCH_TIMER_FEAT_TSC_DEADLINE ? "YES" : "NOT SUPPORTED");
     
     kprintf("Himu Operating System VERSION %s\n", KRNL_VERSTR);
     kprintf("Copyright(c) 2024-2025 Himu, ONLY FOR EDUCATIONAL PURPOSES.\n\n");

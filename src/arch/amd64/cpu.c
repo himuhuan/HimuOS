@@ -20,7 +20,7 @@ x64_GetBasicCpuInfo(ARCH_BASIC_CPU_INFO *info)
     cpuid(0x1, &eax, &ebx, &ecx, &edx);
     info->IsRunningInHypervisor = ecx & (1 << 31);
     if (ecx & (1 << 24))
-        info->TimerFeatures |= ARCH_TIMER_FEAT_ONE_SHOT;
+        info->TimerFeatures |= ARCH_TIMER_FEAT_TSC_DEADLINE;
     if (edx & (1 << 4))
         info->TimerFeatures |= ARCH_TIMER_FEAT_COUNTER;
 

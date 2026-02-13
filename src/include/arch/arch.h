@@ -15,7 +15,7 @@
 #define ARCH_TIMER_FEAT_NONE      (0)      // No special timer features -- HimuOS do NOT expect it! :(
 #define ARCH_TIMER_FEAT_COUNTER   (1 << 0) // Time Stamp Counter (TSC) is available
 #define ARCH_TIMER_FEAT_INVARIANT (1 << 1) // Counter is invariant across frequency changes
-#define ARCH_TIMER_FEAT_ONE_SHOT  (1 << 2) // Supports one-shot mode
+#define ARCH_TIMER_FEAT_TSC_DEADLINE (1 << 2) // TSC deadline mode is available
 
 #define CPU_MODEL_NAME_LENGTH     128
 

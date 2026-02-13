@@ -1,21 +1,29 @@
 bits 64
 default rel
 
-extern IdtExceptionHandler ; see src/arch/amd64/idt.c
+extern IdtDispatchInterrupt ; see src/arch/amd64/idt.c
 
 %macro ISR_NO_ERR_STUB 1
 global IsrStub%1
 IsrStub%1:
-    push 0
-    push %1
+    push qword 0
+    push qword %1
     jmp CommonIsrStub
 %endmacro
 
 %macro ISR_ERR_STUB 1
 global IsrStub%1
 IsrStub%1:
-    push %1
+    push qword %1
     jmp CommonIsrStub
+%endmacro
+
+%macro GEN_ISR_STUB 1
+%if %1 = 8 || %1 = 10 || %1 = 11 || %1 = 12 || %1 = 13 || %1 = 14 || %1 = 17 || %1 = 21 || %1 = 29 || %1 = 30
+    ISR_ERR_STUB %1
+%else
+    ISR_NO_ERR_STUB %1
+%endif
 %endmacro
 
 CommonIsrStub:
@@ -36,7 +44,7 @@ CommonIsrStub:
     push r15
 
     mov rdi, rsp
-    call IdtExceptionHandler
+    call IdtDispatchInterrupt
 
     pop r15
     pop r14
@@ -54,73 +62,19 @@ CommonIsrStub:
     pop rbx
     pop rax
 
-    add rsp, 16          ; Skip error code or dummy error code
+    add rsp, 16 ; Skip vector number and error code/dummy error code
     iretq
 
-ISR_NO_ERR_STUB 0  ; #DE Divide Error
-ISR_NO_ERR_STUB 1  ; #DB Debug
-ISR_NO_ERR_STUB 2  ; NMI
-ISR_NO_ERR_STUB 3  ; #BP Breakpoint
-ISR_NO_ERR_STUB 4  ; #OF Overflow
-ISR_NO_ERR_STUB 5  ; #BR Bound Range Exceeded
-ISR_NO_ERR_STUB 6  ; #UD Invalid Opcode
-ISR_NO_ERR_STUB 7  ; #NM Device Not Available
-ISR_ERR_STUB    8  ; #DF Double Fault
-ISR_NO_ERR_STUB 9  ; Coprocessor Segment Overrun
-ISR_ERR_STUB    10 ; #TS Invalid TSS
-ISR_ERR_STUB    11 ; #NP Segment Not Present
-ISR_ERR_STUB    12 ; #SS Stack-Segment Fault
-ISR_ERR_STUB    13 ; #GP General Protection Fault
-ISR_ERR_STUB    14 ; #PF Page Fault
-ISR_NO_ERR_STUB 15 ; (Reserved)
-ISR_NO_ERR_STUB 16 ; #MF x87 Floating-Point Exception
-ISR_ERR_STUB    17 ; #AC Alignment Check
-ISR_NO_ERR_STUB 18 ; #MC Machine Check
-ISR_NO_ERR_STUB 19 ; #XM SIMD Floating-Point Exception
-ISR_NO_ERR_STUB 20 ; #VE Virtualization Exception
-ISR_NO_ERR_STUB 21 ; #CP Control Protection Exception
-ISR_NO_ERR_STUB 22 ; (Reserved)
-ISR_NO_ERR_STUB 23 ; (Reserved)
-ISR_NO_ERR_STUB 24 ; (Reserved)
-ISR_NO_ERR_STUB 25 ; (Reserved)
-ISR_NO_ERR_STUB 26 ; (Reserved)
-ISR_NO_ERR_STUB 27 ; (Reserved)
-ISR_NO_ERR_STUB 28 ; #HV Hypervisor Injection Exception (AMD, no error code)
-ISR_ERR_STUB    29 ; #VC VMM Communication Exception (AMD SEV-ES, has error code)
-ISR_ERR_STUB    30 ; #SX Security Exception (has error code)
-ISR_NO_ERR_STUB 31 ; (Reserved)
+%assign i 0
+%rep 256
+    GEN_ISR_STUB i
+%assign i i + 1
+%endrep
 
 global gIsrStubTable
 gIsrStubTable:
-    dq IsrStub0
-    dq IsrStub1
-    dq IsrStub2
-    dq IsrStub3
-    dq IsrStub4
-    dq IsrStub5
-    dq IsrStub6
-    dq IsrStub7
-    dq IsrStub8
-    dq IsrStub9
-    dq IsrStub10
-    dq IsrStub11
-    dq IsrStub12
-    dq IsrStub13
-    dq IsrStub14
-    dq IsrStub15
-    dq IsrStub16
-    dq IsrStub17
-    dq IsrStub18
-    dq IsrStub19
-    dq IsrStub20
-    dq IsrStub21
-    dq IsrStub22
-    dq IsrStub23
-    dq IsrStub24
-    dq IsrStub25
-    dq IsrStub26
-    dq IsrStub27
-    dq IsrStub28
-    dq IsrStub29
-    dq IsrStub30
-    dq IsrStub31
+%assign i 0
+%rep 256
+    dq IsrStub %+ i
+%assign i i + 1
+%endrep

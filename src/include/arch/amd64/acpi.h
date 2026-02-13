@@ -52,3 +52,34 @@ typedef struct __attribute__((packed)) ACPI_HPET
     uint16_t MinimumTick;
     uint8_t PageProtection;
 } ACPI_HPET;
+
+typedef struct __attribute__((packed)) ACPI_MADT
+{
+    ACPI_SDT_HEADER Header;
+    uint32_t LocalApicAddress;
+    uint32_t Flags;
+} ACPI_MADT;
+
+typedef struct __attribute__((packed)) ACPI_MADT_ENTRY_HEADER
+{
+    uint8_t Type;
+    uint8_t Length;
+} ACPI_MADT_ENTRY_HEADER;
+
+typedef struct __attribute__((packed)) ACPI_MADT_LOCAL_APIC
+{
+    ACPI_MADT_ENTRY_HEADER Header;
+    uint8_t ProcessorUid;
+    uint8_t ApicId;
+    uint32_t Flags;
+} ACPI_MADT_LOCAL_APIC;
+
+typedef struct __attribute__((packed)) ACPI_MADT_LOCAL_APIC_ADDR_OVERRIDE
+{
+    ACPI_MADT_ENTRY_HEADER Header;
+    uint16_t Reserved;
+    uint64_t LocalApicAddress;
+} ACPI_MADT_LOCAL_APIC_ADDR_OVERRIDE;
+
+#define ACPI_MADT_ENTRY_LOCAL_APIC               0
+#define ACPI_MADT_ENTRY_LOCAL_APIC_ADDR_OVERRIDE 5

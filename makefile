@@ -42,7 +42,7 @@ endif
 CFLAGS := -Wall -Wextra -Wmissing-prototypes -Wstrict-prototypes -Werror \
           -fno-stack-protector -nostdlib -fno-builtin -nostartfiles \
           -nodefaultlibs -nostdinc -ffreestanding -fdiagnostics-color \
-          -c -m64 -g -mcmodel=large \
+          -c -m64 -g -mcmodel=large -mno-red-zone \
           -Isrc -Isrc/include -Isrc/include/libc \
           -DKRNL_VERSTR=\"$(KRNL_VERSTR)\" \
           -D__HO_DEBUG_BUILD__=$(HO_DEBUG_BUILD) \
@@ -123,8 +123,10 @@ SRCS_KERNEL_C := \
     src/kernel/ke/console/sinks/serial_console_sink.c   \
     src/kernel/ke/console/sinks/mux_console_sink.c      \
     src/kernel/ke/time/time_source.c                    \
+    src/kernel/ke/time/clockevent.c                     \
     src/kernel/ke/time/sinks/tsc_sink.c                 \
     src/kernel/ke/time/sinks/hpet_sink.c                \
+    src/kernel/ke/time/sinks/lapic_timer_sink.c         \
     src/kernel/ke/log/log.c                             \
     src/arch/arch.c                                     \
     src/arch/amd64/idt.c                                \
@@ -132,6 +134,7 @@ SRCS_KERNEL_C := \
     src/arch/amd64/pm.c                                 \
     src/drivers/time/tsc_driver.c                       \
     src/drivers/time/hpet_driver.c                      \
+    src/drivers/time/lapic_timer_driver.c               \
     src/drivers/video/video_driver.c                    \
     src/drivers/video/efi/video_efi.c                   \
     src/drivers/serial/serial.c                         \

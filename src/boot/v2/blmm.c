@@ -12,6 +12,7 @@ static EFI_MEMORY_MAP *InitMemoryMap(void *base, size_t size);
 static EFI_STATUS FillMemoryMap(EFI_MEMORY_MAP *map);
 static EFI_STATUS MapAcpiTables(HOB_BALLOC *allocator, UINT64 pml4BasePhys, HO_PHYSICAL_ADDRESS rsdpPhys);
 static EFI_STATUS MapAcpiRange(HOB_BALLOC *allocator, UINT64 pml4BasePhys, UINT64 tablePhys, UINT32 length);
+static HO_PHYSICAL_ADDRESS GetMadtLocalApicBase(ACPI_MADT *madt);
 static BOOL IsSameMapping(UINT64 existingEntry, UINT64 targetPhys, UINT64 flags, UINT64 isPresent);
 static UINT64 GetNxFlag(void);
 
@@ -485,7 +486,25 @@ MapAcpiTables(HOB_BALLOC *allocator, UINT64 pml4BasePhys, HO_PHYSICAL_ADDRESS rs
         if (EFI_ERROR(status))
             return status;
 
-        // If this is HPET table, also map the HPET MMIO region
+        // If this is MADT table, also map LAPIC MMIO region.
+        if (tableHeader->Signature[0] == 'A' && tableHeader->Signature[1] == 'P' &&
+            tableHeader->Signature[2] == 'I' && tableHeader->Signature[3] == 'C')
+        {
+            ACPI_MADT *madt = (ACPI_MADT *)tableHeader;
+            HO_PHYSICAL_ADDRESS lapicBasePhys = GetMadtLocalApicBase(madt);
+            if (lapicBasePhys != 0)
+            {
+                status = MapRegion(allocator, pml4BasePhys, lapicBasePhys, HHDM_BASE_VA + lapicBasePhys, PAGE_4KB,
+                                   PTE_CACHE_DISABLE | PTE_WRITABLE | GetNxFlag());
+                if (EFI_ERROR(status))
+                {
+                    LOG_ERROR("Failed to map LAPIC MMIO at %p\r\n", lapicBasePhys);
+                    return status;
+                }
+            }
+        }
+
+        // If this is HPET table, also map the HPET MMIO region.
         if (tableHeader->Signature[0] == 'H' && tableHeader->Signature[1] == 'P' &&
             tableHeader->Signature[2] == 'E' && tableHeader->Signature[3] == 'T')
         {
@@ -518,6 +537,47 @@ MapAcpiRange(HOB_BALLOC *allocator, UINT64 pml4BasePhys, UINT64 tablePhys, UINT3
         return EFI_INVALID_PARAMETER;
 
     return MapRegion(allocator, pml4BasePhys, startPhys, HHDM_BASE_VA + startPhys, mapSize, GetNxFlag());
+}
+
+static HO_PHYSICAL_ADDRESS
+GetMadtLocalApicBase(ACPI_MADT *madt)
+{
+    if (madt == NULL || madt->Header.Length < sizeof(ACPI_MADT))
+    {
+        return 0;
+    }
+
+    HO_PHYSICAL_ADDRESS localApicBasePhys = HO_ALIGN_DOWN((HO_PHYSICAL_ADDRESS)madt->LocalApicAddress, PAGE_4KB);
+    UINT8 *cursor = (UINT8 *)madt + sizeof(ACPI_MADT);
+    UINT8 *tableEnd = (UINT8 *)madt + madt->Header.Length;
+
+    while (cursor + sizeof(ACPI_MADT_ENTRY_HEADER) <= tableEnd)
+    {
+        ACPI_MADT_ENTRY_HEADER *entry = (ACPI_MADT_ENTRY_HEADER *)cursor;
+        if (entry->Length < sizeof(ACPI_MADT_ENTRY_HEADER))
+        {
+            break;
+        }
+
+        if (cursor + entry->Length > tableEnd)
+        {
+            break;
+        }
+
+        if (entry->Type == ACPI_MADT_ENTRY_LOCAL_APIC_ADDR_OVERRIDE &&
+            entry->Length >= sizeof(ACPI_MADT_LOCAL_APIC_ADDR_OVERRIDE))
+        {
+            ACPI_MADT_LOCAL_APIC_ADDR_OVERRIDE *overrideEntry = (ACPI_MADT_LOCAL_APIC_ADDR_OVERRIDE *)entry;
+            if (overrideEntry->LocalApicAddress != 0)
+            {
+                localApicBasePhys = HO_ALIGN_DOWN((HO_PHYSICAL_ADDRESS)overrideEntry->LocalApicAddress, PAGE_4KB);
+            }
+        }
+
+        cursor += entry->Length;
+    }
+
+    return localApicBasePhys;
 }
 
 static UINT64

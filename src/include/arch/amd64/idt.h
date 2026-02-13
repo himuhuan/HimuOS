@@ -58,7 +58,11 @@ typedef struct INTERRUPT_FRAME INTERRUPT_FRAME, CPU_DUMP_CONTEXT;
 
 typedef struct IDT_PTR IDT_PTR;
 
+typedef void (*IDT_INTERRUPT_HANDLER)(uint8_t vectorNumber, KRNL_INTERRUPT_FRAME *frame, void *context);
+
 HO_PUBLIC_API void IdtSetEntry(int vn, uint64_t isrAddr, uint16_t selector, uint8_t attributes, uint8_t ist);
 HO_PUBLIC_API HO_STATUS IdtInit(void);
-HO_PUBLIC_API void IdtExceptionHandler(void *frame);
+HO_PUBLIC_API void IdtDispatchInterrupt(void *frame);
+HO_PUBLIC_API HO_STATUS IdtRegisterInterruptHandler(uint8_t vectorNumber, IDT_INTERRUPT_HANDLER handler, void *context);
+HO_PUBLIC_API HO_STATUS IdtUnregisterInterruptHandler(uint8_t vectorNumber);
 HO_PUBLIC_API const char *IdtGetExceptionMessage(uint8_t vectorNumber);
