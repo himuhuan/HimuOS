@@ -1,17 +1,40 @@
 #include "arch/amd64/idt.h"
 #include "arch/amd64/pm.h"
 #include "kernel/hodbg.h"
-
-#define IDT_TRAP_GATE 0x8F
+#include <libc/string.h>
 
 static IDT_ENTRY kInterruptDescriptorTable[256];
 static IDT_PTR kIdtPtr;
+
+typedef struct IDT_IRQ_HANDLER_ENTRY
+{
+    IDT_INTERRUPT_HANDLER Handler;
+    void *Context;
+} IDT_IRQ_HANDLER_ENTRY;
+
+static IDT_IRQ_HANDLER_ENTRY kInterruptHandlers[256];
+
 extern void *gIsrStubTable[];
 
 static inline void
 LoadIdt(IDT_PTR *pIdtPtr)
 {
     __asm__ __volatile__("lidt %0" : : "m"(*pIdtPtr));
+}
+
+static void
+HandleExternalInterrupt(KRNL_INTERRUPT_FRAME *frame)
+{
+    uint8_t vectorNumber = (uint8_t)frame->VectorNumber;
+    IDT_IRQ_HANDLER_ENTRY *entry = &kInterruptHandlers[vectorNumber];
+
+    if (entry->Handler == NULL)
+    {
+        klog(KLOG_LEVEL_ERROR, "[IDT] Unhandled external interrupt vector=%u\n", vectorNumber);
+        return;
+    }
+
+    entry->Handler(frame, entry->Context);
 }
 
 void
@@ -31,8 +54,15 @@ HO_PUBLIC_API void
 IdtExceptionHandler(void *frame)
 {
     KRNL_INTERRUPT_FRAME *dump = (KRNL_INTERRUPT_FRAME *)frame;
-    int vc = (int) dump->VectorNumber;
-    KernelHalt(-vc, dump);
+    uint8_t vectorNumber = (uint8_t)dump->VectorNumber;
+
+    if (vectorNumber < 32)
+    {
+        KernelHalt(-(int64_t)vectorNumber, dump);
+        return;
+    }
+
+    HandleExternalInterrupt(dump);
 }
 
 HO_PUBLIC_API const char *
@@ -83,11 +113,27 @@ IdtGetExceptionMessage(uint8_t vectorNumber)
 }
 
 HO_PUBLIC_API HO_STATUS
+IdtRegisterInterruptHandler(uint8_t vectorNumber, IDT_INTERRUPT_HANDLER handler, void *context)
+{
+    if (vectorNumber < 32 || handler == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    kInterruptHandlers[vectorNumber].Handler = handler;
+    kInterruptHandlers[vectorNumber].Context = context;
+    return EC_SUCCESS;
+}
+
+HO_PUBLIC_API HO_STATUS
 IdtInit(void)
 {
-    // All exceptions uses IST1.
-    for (int i = 0; i < 32; i++)
-        IdtSetEntry(i, (uint64_t)gIsrStubTable[i], GDT_KRNL_CODE_SEL, IDT_TRAP_GATE, 1);
+    memset(kInterruptHandlers, 0, sizeof(kInterruptHandlers));
+
+    // All vectors use IST1 currently. Exceptions are trap gates, external vectors are interrupt gates.
+    for (int i = 0; i < 256; i++)
+    {
+        uint8_t attributes = (i < 32) ? IDT_FLAG_TRAP_GATE : IDT_FLAG_INTERRUPT_GATE;
+        IdtSetEntry(i, (uint64_t)gIsrStubTable[i], GDT_KRNL_CODE_SEL, attributes, 1);
+    }
 
     kIdtPtr.Limit = sizeof(kInterruptDescriptorTable) - 1;
     kIdtPtr.Base = (uint64_t)&kInterruptDescriptorTable;

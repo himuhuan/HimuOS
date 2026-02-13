@@ -90,37 +90,16 @@ ISR_ERR_STUB    29 ; #VC VMM Communication Exception (AMD SEV-ES, has error code
 ISR_ERR_STUB    30 ; #SX Security Exception (has error code)
 ISR_NO_ERR_STUB 31 ; (Reserved)
 
+%assign n 32
+%rep 224
+ISR_NO_ERR_STUB n
+%assign n n+1
+%endrep
+
 global gIsrStubTable
 gIsrStubTable:
-    dq IsrStub0
-    dq IsrStub1
-    dq IsrStub2
-    dq IsrStub3
-    dq IsrStub4
-    dq IsrStub5
-    dq IsrStub6
-    dq IsrStub7
-    dq IsrStub8
-    dq IsrStub9
-    dq IsrStub10
-    dq IsrStub11
-    dq IsrStub12
-    dq IsrStub13
-    dq IsrStub14
-    dq IsrStub15
-    dq IsrStub16
-    dq IsrStub17
-    dq IsrStub18
-    dq IsrStub19
-    dq IsrStub20
-    dq IsrStub21
-    dq IsrStub22
-    dq IsrStub23
-    dq IsrStub24
-    dq IsrStub25
-    dq IsrStub26
-    dq IsrStub27
-    dq IsrStub28
-    dq IsrStub29
-    dq IsrStub30
-    dq IsrStub31
+%assign n 0
+%rep 256
+    dq IsrStub %+ n
+%assign n n+1
+%endrep
