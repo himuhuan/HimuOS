@@ -13,20 +13,41 @@
 #include <stdarg.h>
 
 HO_KERNEL_API uint64_t
-KLogWriteFmt(const char *fmt, ...)
+KLogWriteFmt(enum KE_LOG_LEVEL level, const char *fmt, ...)
 {
     uint64_t written = 0;
+
+    const char *levelStr = "";
+    switch (level)
+    {
+        case KLOG_LEVEL_DEBUG:
+            levelStr = "[DBG] ";
+            break;
+        case KLOG_LEVEL_INFO:
+            levelStr = "[INF] ";
+            break;
+        case KLOG_LEVEL_WARNING:
+            levelStr = "[WRN] ";
+            break;
+        case KLOG_LEVEL_ERROR:
+            levelStr = "[ERR] ";
+            break;
+        default:
+            levelStr = "[UNK] ";
+            break;
+    }
+    written += ConsoleWrite(levelStr);
 
     if (KeIsTimeSourceReady())
     {
         uint64_t uptimeUs = KeGetSystemUpRealTime();
         uint64_t sec = uptimeUs / 1000000ULL;
         uint64_t fracUs = uptimeUs % 1000000ULL;
-        written += ConsoleWriteFmt("[%lu.%06lu] ", sec, fracUs);
+        written += ConsoleWriteFmt("[+%04lu.%06lu] ", sec, fracUs);
     }
     else
     {
-        written += ConsoleWrite("[----.------] ");
+        written += ConsoleWrite("[+----.------] ");
     }
 
     VA_LIST args;

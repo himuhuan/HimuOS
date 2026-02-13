@@ -31,7 +31,7 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
     initStatus = IdtInit();
     if (initStatus != EC_SUCCESS)
     {
-        kprintf("FATAL: HimuOS initialization failed!\n");
+        klog(KLOG_LEVEL_ERROR, "FATAL: HimuOS initialization failed!\n");
         while (1)
             ;
     }
