@@ -16,6 +16,7 @@
 
 #define LAPIC_SPURIOUS_VECTOR 0xFF
 
+static uint64_t Div128By64(uint64_t hi, uint64_t lo, uint64_t div);
 static uint64_t Mul64Div64(uint64_t value, uint64_t mul, uint64_t div);
 static HO_STATUS CalibrateLapicTimerForCpu(KE_LAPIC_TIMER_SINK *sink, uint32_t cpuIndex, KE_TIME_SINK *refSink);
 static HO_STATUS LapicTimerSinkInitPerCpu(void *self, uint32_t cpuIndex, uint8_t vectorNumber);
@@ -26,6 +27,14 @@ static uint32_t LapicTimerSinkGetCapabilityFlags(void *self);
 static const char *LapicTimerSinkGetName(void *self);
 
 static uint64_t
+Div128By64(uint64_t hi, uint64_t lo, uint64_t div)
+{
+    uint64_t quot;
+    __asm__ __volatile__("divq %3" : "=a"(quot) : "d"(hi), "a"(lo), "r"(div));
+    return quot;
+}
+
+static uint64_t
 Mul64Div64(uint64_t value, uint64_t mul, uint64_t div)
 {
     if (div == 0)
@@ -34,7 +43,9 @@ Mul64Div64(uint64_t value, uint64_t mul, uint64_t div)
     }
 
     __uint128_t product = (__uint128_t)value * mul;
-    return (uint64_t)(product / div);
+    uint64_t hi = (uint64_t)(product >> 64);
+    uint64_t lo = (uint64_t)product;
+    return Div128By64(hi, lo, div);
 }
 
 static HO_STATUS
