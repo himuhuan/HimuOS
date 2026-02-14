@@ -32,6 +32,7 @@ KRNL_ENTRY_POINT := 0xFFFF800000000000
 HO_DEBUG_BUILD ?= 1
 HO_ENABLE_TIMESTAMP_LOG ?= $(HO_DEBUG_BUILD)
 SUDO ?= sudo
+QEMU_CPU_FLAGS ?= host,+invtsc
 
 ifeq ($(strip $(SUDO_PASSWORD)),)
 SUDO_RUN := $(SUDO)
@@ -213,7 +214,7 @@ run: $(ESP_BOOT_EFI) $(ESP_KERNEL_BIN)
 		-m 512M \
 		-bios /usr/share/OVMF/OVMF_CODE.fd \
 		-net none \
-		-cpu host,+invtsc \
+		-cpu $(QEMU_CPU_FLAGS) \
 		-enable-kvm \
 		-drive file=fat:rw:esp,index=0,format=vvfat \
 		-serial stdio
@@ -224,6 +225,7 @@ debug: $(ESP_BOOT_EFI) $(ESP_KERNEL_BIN)
 		-m 512M \
 		-bios /usr/share/OVMF/OVMF_CODE.fd \
 		-net none \
+		-cpu $(QEMU_CPU_FLAGS) \
 		-drive file=fat:rw:esp,index=0,format=vvfat \
 		-serial stdio \
 		-s -S

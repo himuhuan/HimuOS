@@ -87,6 +87,10 @@ static const char *
 LapicClockEventGetName(void *self)
 {
     (void)self;
+
+    if (LapicIsX2ApicActive())
+        return "x2APIC";
+
     return "LAPIC";
 }
 

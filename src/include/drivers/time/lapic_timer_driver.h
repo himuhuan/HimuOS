@@ -12,6 +12,7 @@
 #include <_hobase.h>
 
 #define IA32_APIC_BASE_MSR       0x1BU
+#define IA32_X2APIC_MSR_BASE     0x800U
 #define IA32_APIC_BASE_X2APIC    (1ULL << 10)
 #define IA32_APIC_BASE_ENABLE    (1ULL << 11)
 #define IA32_APIC_BASE_ADDR_MASK 0x00000000FFFFF000ULL
@@ -30,9 +31,17 @@
 
 #define LAPIC_TIMER_DIVIDE_BY_16 0x3U
 
+typedef enum LAPIC_ACCESS_MODE
+{
+    LAPIC_ACCESS_XAPIC_MMIO = 0,
+    LAPIC_ACCESS_X2APIC_MSR = 1
+} LAPIC_ACCESS_MODE;
+
 HO_STATUS LapicDetectAndEnable(HO_PHYSICAL_ADDRESS *basePhysOut, HO_VIRTUAL_ADDRESS *baseVirtOut);
 uint32_t LapicReadReg(HO_VIRTUAL_ADDRESS baseVirt, uint32_t regOffset);
 void LapicWriteReg(HO_VIRTUAL_ADDRESS baseVirt, uint32_t regOffset, uint32_t value);
+LAPIC_ACCESS_MODE LapicGetAccessMode(void);
+BOOL LapicIsX2ApicActive(void);
 void LapicSetSpuriousVector(HO_VIRTUAL_ADDRESS baseVirt, uint8_t vectorNumber);
 void LapicSendEoi(HO_VIRTUAL_ADDRESS baseVirt);
 void LapicTimerConfigureOneShot(HO_VIRTUAL_ADDRESS baseVirt, uint8_t vectorNumber, uint32_t dividerValue, BOOL masked);

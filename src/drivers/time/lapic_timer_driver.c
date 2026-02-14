@@ -11,22 +11,29 @@
 #include <arch/amd64/asm.h>
 #include <kernel/ke/mm.h>
 
-static BOOL LapicDetectByCpuid(void);
+static HO_STATUS LapicGetCpuidFeatureBits(uint32_t *featureEcx, uint32_t *featureEdx);
 static volatile uint32_t *LapicGetRegPtr(HO_VIRTUAL_ADDRESS baseVirt, uint32_t regOffset);
+static uint32_t LapicRegOffsetToMsr(uint32_t regOffset);
 
-static BOOL
-LapicDetectByCpuid(void)
+static LAPIC_ACCESS_MODE gLapicAccessMode = LAPIC_ACCESS_XAPIC_MMIO;
+
+static HO_STATUS
+LapicGetCpuidFeatureBits(uint32_t *featureEcx, uint32_t *featureEdx)
 {
+    if (featureEcx == NULL || featureEdx == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
     uint32_t eax;
     uint32_t ebx;
     uint32_t ecx;
     uint32_t edx;
 
-    cpuid(0x1, &eax, &ebx, &ecx, &edx);
+    cpuid(0x1U, &eax, &ebx, &ecx, &edx);
     (void)eax;
     (void)ebx;
-    (void)ecx;
-    return (edx & (1U << 9)) != 0;
+    *featureEcx = ecx;
+    *featureEdx = edx;
+    return EC_SUCCESS;
 }
 
 static volatile uint32_t *
@@ -35,28 +42,55 @@ LapicGetRegPtr(HO_VIRTUAL_ADDRESS baseVirt, uint32_t regOffset)
     return (volatile uint32_t *)(baseVirt + regOffset);
 }
 
+static uint32_t
+LapicRegOffsetToMsr(uint32_t regOffset)
+{
+    return IA32_X2APIC_MSR_BASE + (regOffset >> 4);
+}
+
 HO_STATUS
 LapicDetectAndEnable(HO_PHYSICAL_ADDRESS *basePhysOut, HO_VIRTUAL_ADDRESS *baseVirtOut)
 {
     if (basePhysOut == NULL || baseVirtOut == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (!LapicDetectByCpuid())
+    uint32_t featureEcx;
+    uint32_t featureEdx;
+    HO_STATUS status = LapicGetCpuidFeatureBits(&featureEcx, &featureEdx);
+    if (status != EC_SUCCESS)
+        return status;
+
+    if ((featureEdx & (1U << 9)) == 0)
         return EC_NOT_SUPPORTED;
+
+    BOOL hasX2Apic = (featureEcx & (1U << 21)) != 0;
 
     uint64_t apicBase = rdmsr(IA32_APIC_BASE_MSR);
-    if ((apicBase & IA32_APIC_BASE_X2APIC) != 0)
-        return EC_NOT_SUPPORTED;
-
-    apicBase |= IA32_APIC_BASE_ENABLE;
+    if (hasX2Apic)
+        apicBase |= IA32_APIC_BASE_ENABLE | IA32_APIC_BASE_X2APIC;
+    else
+        apicBase = (apicBase | IA32_APIC_BASE_ENABLE) & ~IA32_APIC_BASE_X2APIC;
     wrmsr(IA32_APIC_BASE_MSR, apicBase);
 
     apicBase = rdmsr(IA32_APIC_BASE_MSR);
     if ((apicBase & IA32_APIC_BASE_ENABLE) == 0)
         return EC_FAILURE;
 
+    if (hasX2Apic)
+    {
+        if ((apicBase & IA32_APIC_BASE_X2APIC) == 0)
+            return EC_FAILURE;
+        gLapicAccessMode = LAPIC_ACCESS_X2APIC_MSR;
+    }
+    else
+    {
+        if ((apicBase & IA32_APIC_BASE_X2APIC) != 0)
+            return EC_FAILURE;
+        gLapicAccessMode = LAPIC_ACCESS_XAPIC_MMIO;
+    }
+
     HO_PHYSICAL_ADDRESS basePhys = apicBase & IA32_APIC_BASE_ADDR_MASK;
-    if (basePhys == 0)
+    if (gLapicAccessMode == LAPIC_ACCESS_XAPIC_MMIO && basePhys == 0)
         return EC_FAILURE;
 
     *basePhysOut = basePhys;
@@ -67,6 +101,12 @@ LapicDetectAndEnable(HO_PHYSICAL_ADDRESS *basePhysOut, HO_VIRTUAL_ADDRESS *baseV
 uint32_t
 LapicReadReg(HO_VIRTUAL_ADDRESS baseVirt, uint32_t regOffset)
 {
+    if (gLapicAccessMode == LAPIC_ACCESS_X2APIC_MSR)
+    {
+        (void)baseVirt;
+        return (uint32_t)rdmsr(LapicRegOffsetToMsr(regOffset));
+    }
+
     volatile uint32_t *reg = LapicGetRegPtr(baseVirt, regOffset);
     return *reg;
 }
@@ -74,9 +114,30 @@ LapicReadReg(HO_VIRTUAL_ADDRESS baseVirt, uint32_t regOffset)
 void
 LapicWriteReg(HO_VIRTUAL_ADDRESS baseVirt, uint32_t regOffset, uint32_t value)
 {
-    volatile uint32_t *reg = LapicGetRegPtr(baseVirt, regOffset);
-    *reg = value;
+    if (gLapicAccessMode == LAPIC_ACCESS_X2APIC_MSR)
+    {
+        (void)baseVirt;
+        wrmsr(LapicRegOffsetToMsr(regOffset), (uint64_t)value);
+    }
+    else
+    {
+        volatile uint32_t *reg = LapicGetRegPtr(baseVirt, regOffset);
+        *reg = value;
+    }
+
     __asm__ __volatile__("" ::: "memory");
+}
+
+LAPIC_ACCESS_MODE
+LapicGetAccessMode(void)
+{
+    return gLapicAccessMode;
+}
+
+BOOL
+LapicIsX2ApicActive(void)
+{
+    return gLapicAccessMode == LAPIC_ACCESS_X2APIC_MSR;
 }
 
 void
