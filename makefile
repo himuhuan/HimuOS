@@ -40,6 +40,19 @@ else
 SUDO_RUN := printf '%s\n' "$(SUDO_PASSWORD)" | $(SUDO) -S
 endif
 
+# UEFI firmware path for QEMU (override with: make run OVMF_CODE=/path/to/OVMF_CODE.fd)
+OVMF_CODE ?= $(shell \
+	for p in \
+		/usr/share/edk2/x64/OVMF.4m.fd \
+		/usr/share/OVMF/OVMF.fd \
+		/usr/share/qemu/OVMF.fd \
+		/usr/share/OVMF/OVMF_CODE.fd \
+		/usr/share/edk2/x64/OVMF_CODE.4m.fd \
+		/usr/share/edk2/x64/OVMF_CODE.fd \
+		/usr/share/edk2/x64/OVMF_CODE.secboot.4m.fd; do \
+		[ -r "$$p" ] && { echo "$$p"; break; }; \
+	done)
+
 CFLAGS := -Wall -Wextra -Wmissing-prototypes -Wstrict-prototypes -Werror \
           -fno-stack-protector -nostdlib -fno-builtin -nostartfiles \
           -nodefaultlibs -nostdinc -ffreestanding -fdiagnostics-color \
@@ -209,10 +222,15 @@ $(ESP_KERNEL_BIN): $(TARGET_KERNEL)
 	@cp $< $@
 
 run: $(ESP_BOOT_EFI) $(ESP_KERNEL_BIN)
+	@if [ -z "$(OVMF_CODE)" ] || [ ! -r "$(OVMF_CODE)" ]; then \
+		echo "ERROR: OVMF firmware not found/readable."; \
+		echo "Set it explicitly, e.g. make run OVMF_CODE=/usr/share/edk2/x64/OVMF.4m.fd"; \
+		exit 1; \
+	fi
 	@echo "Starting VM with EFI..."
 	@$(SUDO_RUN) qemu-system-x86_64 \
 		-m 512M \
-		-bios /usr/share/OVMF/OVMF_CODE.fd \
+		-bios "$(OVMF_CODE)" \
 		-net none \
 		-cpu $(QEMU_CPU_FLAGS) \
 		-enable-kvm \
@@ -220,10 +238,15 @@ run: $(ESP_BOOT_EFI) $(ESP_KERNEL_BIN)
 		-serial stdio
 		
 debug: $(ESP_BOOT_EFI) $(ESP_KERNEL_BIN)
+	@if [ -z "$(OVMF_CODE)" ] || [ ! -r "$(OVMF_CODE)" ]; then \
+		echo "ERROR: OVMF firmware not found/readable."; \
+		echo "Set it explicitly, e.g. make debug OVMF_CODE=/usr/share/edk2/x64/OVMF.4m.fd"; \
+		exit 1; \
+	fi
 	@echo "Starting VM with EFI and GDB server..."
 	@qemu-system-x86_64 \
 		-m 512M \
-		-bios /usr/share/OVMF/OVMF_CODE.fd \
+		-bios "$(OVMF_CODE)" \
 		-net none \
 		-cpu $(QEMU_CPU_FLAGS) \
 		-drive file=fat:rw:esp,index=0,format=vvfat \
@@ -267,9 +290,14 @@ iso: all copy
 	@echo "✅ Hybrid Bootable ISO is ready: $(ISO_NAME)"
 
 run_iso: $(ISO_NAME)
+	@if [ -z "$(OVMF_CODE)" ] || [ ! -r "$(OVMF_CODE)" ]; then \
+		echo "ERROR: OVMF firmware not found/readable."; \
+		echo "Set it explicitly, e.g. make run_iso OVMF_CODE=/usr/share/edk2/x64/OVMF.4m.fd"; \
+		exit 1; \
+	fi
 	qemu-system-x86_64 \
     -m 512M \
-    -bios /usr/share/OVMF/OVMF_CODE.fd \
+    -bios "$(OVMF_CODE)" \
     -net none \
     -cdrom himu_os.iso \
     -serial stdio
