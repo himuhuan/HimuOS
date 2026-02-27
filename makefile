@@ -32,6 +32,7 @@ KRNL_ENTRY_POINT := 0xFFFF800000000000
 HO_DEBUG_BUILD ?= 1
 HO_ENABLE_TIMESTAMP_LOG ?= $(HO_DEBUG_BUILD)
 SUDO ?= sudo
+QEMU_CPU_FLAGS ?= host,+invtsc
 
 ifeq ($(strip $(SUDO_PASSWORD)),)
 SUDO_RUN := $(SUDO)
@@ -123,9 +124,11 @@ SRCS_KERNEL_C := \
     src/kernel/ke/console/sinks/serial_console_sink.c   \
     src/kernel/ke/console/sinks/mux_console_sink.c      \
     src/kernel/ke/time/time_source.c                    \
+    src/kernel/ke/time/clock_event.c                    \
     src/kernel/ke/time/sinks/tsc_sink.c                 \
     src/kernel/ke/time/sinks/pmtimer_sink.c             \
     src/kernel/ke/time/sinks/hpet_sink.c                \
+    src/kernel/ke/time/sinks/lapic_clockevent_sink.c    \
     src/kernel/ke/log/log.c                             \
     src/arch/arch.c                                     \
     src/arch/amd64/idt.c                                \
@@ -134,6 +137,7 @@ SRCS_KERNEL_C := \
     src/drivers/time/tsc_driver.c                       \
     src/drivers/time/pmtimer_driver.c                   \
     src/drivers/time/hpet_driver.c                      \
+    src/drivers/time/lapic_timer_driver.c               \
     src/drivers/video/video_driver.c                    \
     src/drivers/video/efi/video_efi.c                   \
     src/drivers/serial/serial.c                         \
@@ -210,7 +214,7 @@ run: $(ESP_BOOT_EFI) $(ESP_KERNEL_BIN)
 		-m 512M \
 		-bios /usr/share/OVMF/OVMF_CODE.fd \
 		-net none \
-		-cpu host,+invtsc \
+		-cpu $(QEMU_CPU_FLAGS) \
 		-enable-kvm \
 		-drive file=fat:rw:esp,index=0,format=vvfat \
 		-serial stdio
@@ -221,6 +225,7 @@ debug: $(ESP_BOOT_EFI) $(ESP_KERNEL_BIN)
 		-m 512M \
 		-bios /usr/share/OVMF/OVMF_CODE.fd \
 		-net none \
+		-cpu $(QEMU_CPU_FLAGS) \
 		-drive file=fat:rw:esp,index=0,format=vvfat \
 		-serial stdio \
 		-s -S

@@ -1,12 +1,15 @@
 #include "blmm.h"
 #include "bootloader.h"
 #include "arch/amd64/pm.h"
+#include "arch/amd64/asm.h"
 #include "arch/amd64/acpi.h"
 #include "ho_balloc.h"
 #include "io.h"
 
 #define MIN_MEMMAP_PAGES          3  // 12KB for memory map at least
 #define MAX_PAGE_TABLE_POOL_PAGES 64 // 512KB for page table
+#define IA32_APIC_BASE_MSR        0x1BU
+#define IA32_APIC_BASE_ADDR_MASK  0x00000000FFFFF000ULL
 
 static EFI_MEMORY_MAP *InitMemoryMap(void *base, size_t size);
 static EFI_STATUS FillMemoryMap(EFI_MEMORY_MAP *map);
@@ -224,6 +227,20 @@ CreateInitialMapping(BOOT_CAPSULE *capsule)
                                capsule->FramebufferSize, PTE_CACHE_DISABLE | PTE_WRITABLE | nxFlag);
             if (EFI_ERROR(status))
                 break;
+        }
+
+        // G. Local APIC MMIO @ HHDM
+        UINT64 apicBaseMsr = rdmsr(IA32_APIC_BASE_MSR);
+        UINT64 lapicBasePhys = apicBaseMsr & IA32_APIC_BASE_ADDR_MASK;
+        if (lapicBasePhys != 0)
+        {
+            status = MapRegion(&pageTableAlloc, pml4Phys, lapicBasePhys, HHDM_BASE_VA + lapicBasePhys, PAGE_4KB,
+                               PTE_CACHE_DISABLE | PTE_WRITABLE | nxFlag);
+            if (EFI_ERROR(status))
+            {
+                LOG_ERROR("Failed to map LAPIC MMIO at %p\r\n", lapicBasePhys);
+                break;
+            }
         }
 
         capsule->PageTableInfo.Ptr = pml4Phys;
