@@ -155,6 +155,7 @@ SRCS_KERNEL_C := \
     src/drivers/video/efi/video_efi.c                   \
     src/drivers/serial/serial.c                         \
     src/lib/tui/bitmap_font.c                           \
+    src/lib/common/linked_list.c                        \
     src/assets/fonts/font8x16.c
 
 SRCS_KERNEL_ASM := \

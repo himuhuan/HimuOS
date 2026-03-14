@@ -106,3 +106,6 @@ typedef int HO_STATUS;
 #define HO_ALIGN_UP(value, alignment)   (((value) + ((alignment)-1)) & ~((alignment)-1))
 #define HO_ALIGN_DOWN(value, alignment) ((value) & ~((alignment)-1))
 #define HO_IS_ALIGNED(addr, align)      (((addr) & ((align)-1)) == 0)
+
+#define OFFSET_OF(type, member)                 __builtin_offsetof(type, member)
+#define CONTAINING_RECORD(address, type, field) ((type *)((char *)(address) - OFFSET_OF(type, field)))

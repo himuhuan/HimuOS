@@ -318,7 +318,7 @@ typedef struct
         }                                                                                                              \
     }
 
-#define OFFSET_OF(s, m) (size_t)((char *)(&((s *)0)->m))
+/* OFFSET_OF is now defined in _hobase.h */
 
 typedef struct
 {
