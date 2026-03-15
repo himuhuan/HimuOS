@@ -13,8 +13,8 @@
 
 #include "_hobase.h"
 
-// CPU General Purpose Registers (GPR) context structure
-// Sorted in the order of PUSH operations in the ISR prologue
+// CPU General Purpose Registers (GPR) context structure.
+// This matches the memory layout seen from RSP after the ISR prologue finishes.
 typedef struct X64_GPR
 {
     uint64_t R15;

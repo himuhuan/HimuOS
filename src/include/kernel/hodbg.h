@@ -82,8 +82,7 @@ typedef struct HO_PANIC_CONTEXT
  * @param dump Pointer to a CPU dump context.
  * @remarks dump can be varied based on the value of ec:
  * - If ec > 0, dump is expected to be `HO_PANIC_CONTEXT`.
- * - If ec <= 0 and dump->CS indicates a user mode segment, dump is expected to be `USR_INTERRUPT_FRAME`.
- * - If ec <= 0 and dump->CS indicates a kernel mode segment, dump is expected to be `KRNL_INTERRUPT_FRAME`.
+ * - If ec <= 0, dump is expected to be `INTERRUPT_FRAME`.
  */
 HO_PUBLIC_API HO_NORETURN void KernelHalt(int64_t ec, void *dump);
 

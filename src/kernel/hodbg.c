@@ -31,7 +31,7 @@ KrGetStatusMessage(HO_STATUS status)
 }
 
 static void
-ShowCpuExceptionInfo(int64_t vc, KRNL_INTERRUPT_FRAME *frame)
+ShowCpuExceptionInfo(int64_t vc, INTERRUPT_FRAME *frame)
 {
     const char *msg = IdtGetExceptionMessage(vc);
     kprintf(ANSI_BG_BLUE ANSI_FG_WHITE "A fatal error has occurred, and the HimuOS kernel must stop.\n\n");
@@ -50,7 +50,8 @@ ShowCpuExceptionInfo(int64_t vc, KRNL_INTERRUPT_FRAME *frame)
     kprintf("RBP: %p R8:  %p R9:  %p\n", frame->Context.RBP, frame->Context.R8, frame->Context.R9);
     kprintf("R10: %p R11: %p R12: %p\n", frame->Context.R10, frame->Context.R11, frame->Context.R12);
     kprintf("R13: %p R14: %p R15: %p\n", frame->Context.R13, frame->Context.R14, frame->Context.R15);
-    kprintf("RIP: %p RFL: %p CS:  %p \n", frame->RIP, frame->RFLAGS, frame->CS);
+    kprintf("RIP: %p RSP: %p RFL: %p\n", frame->RIP, frame->RSP, frame->RFLAGS);
+    kprintf("CS:  %p SS:  %p\n", frame->CS, frame->SS);
 }
 
 static void

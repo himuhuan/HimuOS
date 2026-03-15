@@ -56,7 +56,7 @@ OVMF_CODE ?= $(shell \
 CFLAGS := -Wall -Wextra -Wmissing-prototypes -Wstrict-prototypes -Werror \
           -fno-stack-protector -nostdlib -fno-builtin -nostartfiles \
           -nodefaultlibs -nostdinc -ffreestanding -fdiagnostics-color \
-          -c -m64 -g -mcmodel=large \
+          -c -m64 -g -mcmodel=large -mno-red-zone -mgeneral-regs-only \
           -Isrc -Isrc/include -Isrc/include/libc \
           -DKRNL_VERSTR=\"$(KRNL_VERSTR)\" \
           -D__HO_DEBUG_BUILD__=$(HO_DEBUG_BUILD) \

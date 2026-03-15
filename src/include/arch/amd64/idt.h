@@ -33,7 +33,7 @@ struct IDT_PTR
     uint64_t Base;  // Base address of the IDT
 } __attribute__((packed));
 
-typedef struct KRNL_INTERRUPT_FRAME
+typedef struct X64_INTERRUPT_FRAME
 {
     X64_GPR Context;
     uint64_t VectorNumber;
@@ -41,20 +41,14 @@ typedef struct KRNL_INTERRUPT_FRAME
     uint64_t RIP;
     uint64_t CS;
     uint64_t RFLAGS;
-} __attribute__((packed)) KRNL_INTERRUPT_FRAME;
-
-typedef struct USR_INTERRUPT_FRAME
-{
-    X64_GPR GPR;
-    uint64_t VectorNumber;
-    uint64_t RIP;
-    uint64_t CS;
-    uint64_t RFLAGS;
     uint64_t RSP;
     uint64_t SS;
-} __attribute__((packed)) USR_INTERRUPT_FRAME;
+} __attribute__((packed)) X64_INTERRUPT_FRAME;
 
-typedef struct INTERRUPT_FRAME INTERRUPT_FRAME, CPU_DUMP_CONTEXT;
+typedef X64_INTERRUPT_FRAME INTERRUPT_FRAME;
+typedef X64_INTERRUPT_FRAME KRNL_INTERRUPT_FRAME;
+typedef X64_INTERRUPT_FRAME USR_INTERRUPT_FRAME;
+typedef X64_INTERRUPT_FRAME CPU_DUMP_CONTEXT;
 
 typedef struct IDT_PTR IDT_PTR;
 typedef void (*IDT_INTERRUPT_HANDLER)(void *frame, void *context);

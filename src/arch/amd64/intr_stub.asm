@@ -19,6 +19,8 @@ IsrStub%1:
 %endmacro
 
 CommonIsrStub:
+    ; After the prologue, RSP points at the saved R15 slot.
+    ; X64_GPR and INTERRUPT_FRAME must match this exact layout.
     push rax
     push rbx
     push rcx

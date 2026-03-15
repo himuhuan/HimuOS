@@ -16,6 +16,9 @@ static IDT_IRQ_HANDLER_ENTRY kInterruptHandlers[256];
 
 extern void *gIsrStubTable[];
 
+static uint8_t GetVectorGateType(uint8_t vectorNumber);
+static uint8_t GetVectorIstIndex(uint8_t vectorNumber);
+
 static inline void
 LoadIdt(IDT_PTR *pIdtPtr)
 {
@@ -23,7 +26,7 @@ LoadIdt(IDT_PTR *pIdtPtr)
 }
 
 static void
-HandleExternalInterrupt(KRNL_INTERRUPT_FRAME *frame)
+HandleExternalInterrupt(INTERRUPT_FRAME *frame)
 {
     uint8_t vectorNumber = (uint8_t)frame->VectorNumber;
     IDT_IRQ_HANDLER_ENTRY *entry = &kInterruptHandlers[vectorNumber];
@@ -35,6 +38,31 @@ HandleExternalInterrupt(KRNL_INTERRUPT_FRAME *frame)
     }
 
     entry->Handler(frame, entry->Context);
+}
+
+static uint8_t
+GetVectorGateType(uint8_t vectorNumber)
+{
+    switch (vectorNumber)
+    {
+    case 3: // #BP Breakpoint
+    case 4: // #OF Overflow
+        return IDT_FLAG_TRAP_GATE;
+    default:
+        return IDT_FLAG_INTERRUPT_GATE;
+    }
+}
+
+static uint8_t
+GetVectorIstIndex(uint8_t vectorNumber)
+{
+    switch (vectorNumber)
+    {
+    case 8: // #DF Double Fault
+        return 1;
+    default:
+        return 0;
+    }
 }
 
 void
@@ -53,7 +81,7 @@ IdtSetEntry(int vn, uint64_t isrAddr, uint16_t selector, uint8_t attributes, uin
 HO_PUBLIC_API void
 IdtExceptionHandler(void *frame)
 {
-    KRNL_INTERRUPT_FRAME *dump = (KRNL_INTERRUPT_FRAME *)frame;
+    INTERRUPT_FRAME *dump = (INTERRUPT_FRAME *)frame;
     uint8_t vectorNumber = (uint8_t)dump->VectorNumber;
 
     if (vectorNumber < 32)
@@ -128,11 +156,12 @@ IdtInit(void)
 {
     memset(kInterruptHandlers, 0, sizeof(kInterruptHandlers));
 
-    // All vectors use IST1 currently. Exceptions are trap gates, external vectors are interrupt gates.
     for (int i = 0; i < 256; i++)
     {
-        uint8_t attributes = (i < 32) ? IDT_FLAG_TRAP_GATE : IDT_FLAG_INTERRUPT_GATE;
-        IdtSetEntry(i, (uint64_t)gIsrStubTable[i], GDT_KRNL_CODE_SEL, attributes, 1);
+        uint8_t vectorNumber = (uint8_t)i;
+        uint8_t attributes = GetVectorGateType(vectorNumber);
+        uint8_t istIndex = GetVectorIstIndex(vectorNumber);
+        IdtSetEntry(i, (uint64_t)gIsrStubTable[i], GDT_KRNL_CODE_SEL, attributes, istIndex);
     }
 
     kIdtPtr.Limit = sizeof(kInterruptDescriptorTable) - 1;
