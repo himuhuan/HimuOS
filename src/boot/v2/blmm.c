@@ -7,16 +7,20 @@
 #include "io.h"
 
 #define MIN_MEMMAP_PAGES          3  // 12KB for memory map at least
-#define MAX_PAGE_TABLE_POOL_PAGES 64 // 512KB for page table
+#define MAX_PAGE_TABLE_POOL_PAGES 256 // 1MB for page table
 #define IA32_APIC_BASE_MSR        0x1BU
 #define IA32_APIC_BASE_ADDR_MASK  0x00000000FFFFF000ULL
 
 static EFI_MEMORY_MAP *InitMemoryMap(void *base, size_t size);
 static EFI_STATUS FillMemoryMap(EFI_MEMORY_MAP *map);
+static EFI_STATUS
+MapFullHhdmFromMemoryMap(HOB_BALLOC *allocator, UINT64 pml4BasePhys, EFI_MEMORY_MAP *memoryMap, UINT64 nxFlag,
+                         UINT64 *mappedDescCount, UINT64 *highestPhysExclusive);
 static EFI_STATUS MapAcpiTables(HOB_BALLOC *allocator, UINT64 pml4BasePhys, HO_PHYSICAL_ADDRESS rsdpPhys);
 static EFI_STATUS MapAcpiRange(HOB_BALLOC *allocator, UINT64 pml4BasePhys, UINT64 tablePhys, UINT32 length);
 static BOOL IsSameMapping(UINT64 existingEntry, UINT64 targetPhys, UINT64 flags, UINT64 isPresent);
 static UINT64 GetNxFlag(void);
+static UINT64 GetHhdmMapFlags(EFI_MEMORY_TYPE type, UINT64 nxFlag);
 
 EFI_MEMORY_MAP *
 GetLoaderRuntimeMemoryMap()
@@ -122,15 +126,23 @@ CreateCapsule(const BOOT_CAPSULE_LAYOUT *layout)
 }
 
 UINT64
-CreateInitialMapping(BOOT_CAPSULE *capsule)
+CreateInitialMapping(BOOT_CAPSULE *capsule, EFI_MEMORY_MAP *memoryMap)
 {
     EFI_PHYSICAL_ADDRESS poolBase = 0;
     HOB_BALLOC pageTableAlloc;
     EFI_STATUS status;
     UINT64 nxFlag = GetNxFlag();
+    UINT64 mappedDescCount = 0;
+    UINT64 highestPhysExclusive = 0;
 
     do
     {
+        if (!capsule || !memoryMap)
+        {
+            LOG_ERROR("CreateInitialMapping: invalid arguments\r\n");
+            break;
+        }
+
         status =
             g_ST->BootServices->AllocatePages(AllocateAnyPages, EfiLoaderData, MAX_PAGE_TABLE_POOL_PAGES, &poolBase);
         if (EFI_ERROR(status))
@@ -159,6 +171,17 @@ CreateInitialMapping(BOOT_CAPSULE *capsule)
             LOG_ERROR("Failed to map lower 2GB memory: %k (0x%x)\r\n", status, status);
             break;
         }
+
+        // B. FULL HHDM from current EFI memory map
+        status = MapFullHhdmFromMemoryMap(&pageTableAlloc, pml4Phys, memoryMap, nxFlag, &mappedDescCount,
+                                          &highestPhysExclusive);
+        if (EFI_ERROR(status))
+        {
+            LOG_ERROR("Failed to map FULL HHDM: %k (0x%x)\r\n", status, status);
+            break;
+        }
+        LOG_INFO("FULL HHDM mapped %u descriptors, highest PA=%p\r\n",
+                 mappedDescCount, (void *)(UINTN)(highestPhysExclusive ? (highestPhysExclusive - 1ULL) : 0ULL));
 
         // B. BOOT_CAPSULE @ HHDM
         if (capsule->PageLayout.TotalPages > 0)
@@ -304,7 +327,15 @@ MapPage(MAP_PAGE_PARAMS *params)
         return EFI_SUCCESS;
     }
 
-    if (!(pdpt[pdptIndex] & PTE_PRESENT))
+    if (pdpt[pdptIndex] & PTE_PRESENT)
+    {
+        if (pdpt[pdptIndex] & PTE_PAGE_SIZE)
+        {
+            LOG_ERROR(L"Virtual address already mapped by 1GB entry: 0x%x\r\n", alignedAddrVirt);
+            return EFI_INVALID_PARAMETER;
+        }
+    }
+    else
     {
         UINT64 pdPhys = (UINT64)HobAlloc(allocator, PAGE_4KB, PAGE_4KB);
         if (pdPhys == 0)
@@ -335,7 +366,15 @@ MapPage(MAP_PAGE_PARAMS *params)
         return EFI_SUCCESS;
     }
 
-    if (!(pd[pdIndex] & PTE_PRESENT))
+    if (pd[pdIndex] & PTE_PRESENT)
+    {
+        if (pd[pdIndex] & PTE_PAGE_SIZE)
+        {
+            LOG_ERROR(L"Virtual address already mapped by 2MB entry: 0x%x\r\n", alignedAddrVirt);
+            return EFI_INVALID_PARAMETER;
+        }
+    }
+    else
     {
         UINT64 ptPhys = (UINT64)HobAlloc(allocator, PAGE_4KB, PAGE_4KB);
         if (ptPhys == 0)
@@ -436,8 +475,59 @@ FillMemoryMap(EFI_MEMORY_MAP *map)
     if (expectedMapSize > map->DescriptorTotalSize)
         return EFI_BUFFER_TOO_SMALL;
 
-    return g_ST->BootServices->GetMemoryMap(&map->DescriptorTotalSize, map->Segs, &map->MemoryMapKey,
-                                            &map->DescriptorSize, &map->DescriptorVersion);
+    status = g_ST->BootServices->GetMemoryMap(&map->DescriptorTotalSize, map->Segs, &map->MemoryMapKey,
+                                              &map->DescriptorSize, &map->DescriptorVersion);
+    if (EFI_ERROR(status))
+        return status;
+
+    map->DescriptorCount = (map->DescriptorSize == 0) ? 0 : (map->DescriptorTotalSize / map->DescriptorSize);
+    return EFI_SUCCESS;
+}
+
+static EFI_STATUS
+MapFullHhdmFromMemoryMap(HOB_BALLOC *allocator, UINT64 pml4BasePhys, EFI_MEMORY_MAP *memoryMap, UINT64 nxFlag,
+                         UINT64 *mappedDescCount, UINT64 *highestPhysExclusive)
+{
+    if (!allocator || !memoryMap || !mappedDescCount || !highestPhysExclusive)
+        return EFI_INVALID_PARAMETER;
+
+    if (memoryMap->DescriptorSize < sizeof(EFI_MEMORY_DESCRIPTOR) || memoryMap->DescriptorSize == 0)
+        return EFI_INVALID_PARAMETER;
+
+    *mappedDescCount = 0;
+    *highestPhysExclusive = 0;
+
+    UINT64 descCount = memoryMap->DescriptorTotalSize / memoryMap->DescriptorSize;
+    for (UINT64 idx = 0; idx < descCount; ++idx)
+    {
+        UINT8 *descAddr = (UINT8 *)memoryMap->Segs + idx * memoryMap->DescriptorSize;
+        EFI_MEMORY_DESCRIPTOR *desc = (EFI_MEMORY_DESCRIPTOR *)descAddr;
+
+        if (!desc || desc->NumberOfPages == 0)
+            continue;
+
+        UINT64 mapSize = desc->NumberOfPages << PAGE_SHIFT;
+        UINT64 mapPhysStart = desc->PhysicalStart;
+        UINT64 mapPhysEndExclusive = mapPhysStart + mapSize;
+        if (mapPhysEndExclusive < mapPhysStart)
+            return EFI_INVALID_PARAMETER;
+
+        UINT64 flags = GetHhdmMapFlags((EFI_MEMORY_TYPE)desc->Type, nxFlag);
+        EFI_STATUS status =
+            MapRegion(allocator, pml4BasePhys, mapPhysStart, HHDM_BASE_VA + mapPhysStart, mapSize, flags);
+        if (EFI_ERROR(status))
+        {
+            LOG_ERROR("Map FULL HHDM failed at descriptor=%u type=%u phys=%p pages=%u: %k\r\n",
+                      idx, desc->Type, (void *)(UINTN)mapPhysStart, desc->NumberOfPages, status);
+            return status;
+        }
+
+        if (mapPhysEndExclusive > *highestPhysExclusive)
+            *highestPhysExclusive = mapPhysEndExclusive;
+        (*mappedDescCount)++;
+    }
+
+    return EFI_SUCCESS;
 }
 
 // WARNING: this function only maps first level table
@@ -541,6 +631,18 @@ static UINT64
 GetNxFlag(void)
 {
     return BootUseNx() ? PTE_NO_EXECUTE : 0;
+}
+
+static UINT64
+GetHhdmMapFlags(EFI_MEMORY_TYPE type, UINT64 nxFlag)
+{
+    if (type == EfiMemoryMappedIO || type == EfiMemoryMappedIOPortSpace)
+        return PTE_CACHE_DISABLE | PTE_WRITABLE | nxFlag;
+
+    if (type == EfiACPIReclaimMemory || type == EfiACPIMemoryNVS)
+        return nxFlag;
+
+    return PTE_WRITABLE | nxFlag;
 }
 
 static BOOL

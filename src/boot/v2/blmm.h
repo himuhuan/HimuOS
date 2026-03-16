@@ -19,7 +19,7 @@ EFI_STATUS LoadMemoryMap(HO_PHYSICAL_ADDRESS mapBasePhys, UINT64 maxSize, OUT UI
 UINT64 GetCapsulePhysPages(const BOOT_CAPSULE_LAYOUT *block, BOOT_CAPSULE_PAGE_LAYOUT *pageLayout);
 BOOT_CAPSULE *CreateCapsule(const BOOT_CAPSULE_LAYOUT *layout);
 
-UINT64 CreateInitialMapping(BOOT_CAPSULE *capsule);
+UINT64 CreateInitialMapping(BOOT_CAPSULE *capsule, EFI_MEMORY_MAP *memoryMap);
 
 typedef struct
 {
@@ -34,4 +34,3 @@ typedef struct
 EFI_STATUS MapPage(MAP_PAGE_PARAMS *request);
 EFI_STATUS
 MapRegion(HOB_BALLOC *allocator, UINT64 pml4BasePhys, UINT64 physStart, UINT64 virtStart, UINT64 size, UINT64 flags);
-
