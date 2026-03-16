@@ -131,7 +131,7 @@ StagingKernel(const CHAR16 *path)
     if (!kBootUseNx)
         LOG_WARNING(L"CPU does not support NX bit; boot mappings will be executable\r\n");
 
-    size_t remain = CreateInitialMapping(capsule);
+    size_t remain = CreateInitialMapping(capsule, memoryMap);
     if (!remain)
     {
         LOG_ERROR(L"Failed to create initial page table mappings\r\n");
@@ -139,7 +139,12 @@ StagingKernel(const CHAR16 *path)
         goto handle_error;
     }
 
-    (void)InitCpuCoreLocalData(&capsule->CpuInfo, sizeof(capsule->CpuInfo));
+    if (!InitCpuCoreLocalData(&capsule->CpuInfo, sizeof(capsule->CpuInfo)))
+    {
+        LOG_ERROR(L"Failed to initialize CPU core local data\r\n");
+        status = EFI_OUT_OF_RESOURCES;
+        goto handle_error;
+    }
 
     if (!LoadKernel(image, imageSize, capsule))
     {
@@ -168,7 +173,6 @@ StagingKernel(const CHAR16 *path)
 
     if (kBootUseNx && !EnableNxe())
     {
-        LOG_ERROR(L"Failed to enable IA32_EFER.NXE\r\n");
         return EFI_DEVICE_ERROR;
     }
     __asm__ __volatile__("cli" ::: "memory");
