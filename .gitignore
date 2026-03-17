@@ -12,5 +12,10 @@ vmbox/
 himu_os.iso
 compile_commands.json
 agents/
+agents.md
+claude.md
+CLAUDE.md
+.*/
+openspec/
 
 esp/
