@@ -6,13 +6,11 @@
 .DS_Store
 
 build/
-doc/
 
 vmbox/
 
 himu_os.iso
 compile_commands.json
-agents.md
 agents/
 
 esp/
