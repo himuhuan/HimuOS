@@ -215,3 +215,27 @@ KeClockEventOnInterrupt(void)
 
     KeLapicClockEventSinkSendEoi(&gLapicClockEventSink);
 }
+
+HO_KERNEL_API uint64_t
+KeClockEventGetFrequency(void)
+{
+    if (!gClockEventDevice.Initialized)
+        return 0;
+    return gClockEventDevice.FreqHz;
+}
+
+HO_KERNEL_API uint8_t
+KeClockEventGetVector(void)
+{
+    if (!gClockEventDevice.Initialized)
+        return 0;
+    return gClockEventDevice.VectorNumber;
+}
+
+HO_KERNEL_API const char *
+KeClockEventGetSourceName(void)
+{
+    if (!gClockEventDevice.Initialized || !gClockEventDevice.ActiveSink)
+        return NULL;
+    return gClockEventDevice.ActiveSink->GetName(gClockEventDevice.ActiveSinkContext);
+}

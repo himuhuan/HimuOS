@@ -50,3 +50,21 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS KeClockEventSetNextEvent(uint64_t deltaNs);
 HO_KERNEL_API BOOL KeClockEventIsReady(void);
 HO_KERNEL_API uint64_t KeClockEventGetInterruptCount(void);
 HO_KERNEL_API void KeClockEventOnInterrupt(void);
+
+/**
+ * @brief Get the frequency of the clock event device.
+ * @return Frequency in Hz, or 0 if not initialized.
+ */
+HO_KERNEL_API uint64_t KeClockEventGetFrequency(void);
+
+/**
+ * @brief Get the interrupt vector number of the clock event device.
+ * @return Vector number, or 0 if not initialized.
+ */
+HO_KERNEL_API uint8_t KeClockEventGetVector(void);
+
+/**
+ * @brief Get the name of the clock event source.
+ * @return Source name string, or NULL if not initialized.
+ */
+HO_KERNEL_API const char *KeClockEventGetSourceName(void);

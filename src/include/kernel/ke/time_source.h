@@ -65,3 +65,9 @@ HO_KERNEL_API TIME_SOURCE_KIND KeGetTimeSourceKind(void);
  * @param us Microseconds to wait.
  */
 HO_KERNEL_API void KeBusyWaitUs(uint64_t us);
+
+/**
+ * @brief Get the frequency of the active time source.
+ * @return Frequency in Hz, or 0 if not initialized.
+ */
+HO_KERNEL_API uint64_t KeGetTimeSourceFrequency(void);

@@ -19,5 +19,10 @@ extern KE_VIDEO_DRIVER gVideoDriver;
 extern ARCH_BASIC_CPU_INFO gBasicCpuInfo;
 extern BITMAP_FONT_INFO gSystemFont;
 
-
 void InitKernel(BOOT_CAPSULE *block);
+
+/**
+ * @brief Get the boot capsule pointer.
+ * @return Pointer to the boot capsule, or NULL if not initialized.
+ */
+HO_KERNEL_API BOOT_CAPSULE *KeGetBootCapsule(void);

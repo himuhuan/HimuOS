@@ -15,6 +15,7 @@
 KE_VIDEO_DRIVER gVideoDriver;
 ARCH_BASIC_CPU_INFO gBasicCpuInfo;
 BITMAP_FONT_INFO gSystemFont;
+static BOOT_CAPSULE *gBootCapsule;
 
 static void InitBitmapFont(void);
 static void InitCpuState(STAGING_BLOCK *block);
@@ -29,6 +30,7 @@ static void AssertRsdp(HO_VIRTUAL_ADDRESS rsdpVirt);
 void
 InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
 {
+    gBootCapsule = block;
     InitCpuState(block);
     InitBitmapFont();
     VdInit(&gVideoDriver, block);
@@ -275,4 +277,10 @@ AssertRsdp(HO_VIRTUAL_ADDRESS rsdpVirt)
     {
         HO_KPANIC(EC_NOT_SUPPORTED, "ACPI Revision not supported (only v2.0+ supported)");
     }
+}
+
+HO_KERNEL_API BOOT_CAPSULE *
+KeGetBootCapsule(void)
+{
+    return gBootCapsule;
 }

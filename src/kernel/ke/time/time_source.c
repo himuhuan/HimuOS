@@ -190,3 +190,11 @@ KeBusyWaitUs(uint64_t microsec)
         __asm__ __volatile__("pause");
     }
 }
+
+HO_KERNEL_API uint64_t
+KeGetTimeSourceFrequency(void)
+{
+    if (!gTimeDevice.Initialized)
+        return 0;
+    return gTimeDevice.FreqHz;
+}
