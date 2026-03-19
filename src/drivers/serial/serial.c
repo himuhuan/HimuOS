@@ -2,7 +2,6 @@
 #include <arch/amd64/asm.h>
 #include <kernel/ke/console.h>
 
-
 void
 SerialInit(uint16_t port)
 {

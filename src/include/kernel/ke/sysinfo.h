@@ -142,5 +142,7 @@ typedef struct SYSINFO_CLOCK_EVENT
  * @return EC_NOT_ENOUGH_MEMORY if BufferSize is too small (RequiredSize will contain needed size).
  * @return EC_NOT_SUPPORTED if the class is not available in current build configuration.
  */
-HO_STATUS HO_KERNEL_API KeQuerySystemInformation(KE_SYSINFO_CLASS Class, void *Buffer, size_t BufferSize,
+HO_STATUS HO_KERNEL_API KeQuerySystemInformation(KE_SYSINFO_CLASS Class,
+                                                 void *Buffer,
+                                                 size_t BufferSize,
                                                  size_t *RequiredSize);

@@ -12,7 +12,7 @@
 #pragma once
 
 #define NULL ((void *)0)
-#define EOF (-1)
+#define EOF  (-1)
 
 typedef char int8_t;
 typedef unsigned short uint16_t;

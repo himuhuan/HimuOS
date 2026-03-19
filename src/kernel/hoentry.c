@@ -55,22 +55,24 @@ PrintBootBanner(void)
     ARCH_BASIC_CPU_INFO cpu;
     SYSINFO_SYSTEM_VERSION ver;
 
+    kprintf("  %-24s %s\n", "------------------------", "------------------------------------------");
     if (KeQuerySystemInformation(KE_SYSINFO_CPU_BASIC, &cpu, sizeof(cpu), NULL) == EC_SUCCESS)
     {
-        kprintf("CPU:                     %s (x86_64)\n", cpu.ModelName);
-        kprintf("Timer Features\n");
-        kprintf(" * Counter:              %s\n", cpu.TimerFeatures & ARCH_TIMER_FEAT_COUNTER ? "YES" : "NOT SUPPORTED");
-        kprintf(" * Invariant counter:    %s\n",
-                cpu.TimerFeatures & ARCH_TIMER_FEAT_INVARIANT ? "YES" : "NOT SUPPORTED");
-        kprintf(" * Deadline mode:        %s\n\n",
-                cpu.TimerFeatures & ARCH_TIMER_FEAT_ONE_SHOT ? "YES" : "NOT SUPPORTED");
+        kprintf("  %-24s %s (x86_64)\n", "CPU", cpu.ModelName);
+        kprintf("  %-24s %s\n", "TSC Counter",
+                cpu.TimerFeatures & ARCH_TIMER_FEAT_COUNTER ? "Supported" : "Not Supported");
+        kprintf("  %-24s %s\n", "Invariant TSC",
+                cpu.TimerFeatures & ARCH_TIMER_FEAT_INVARIANT ? "Supported" : "Not Supported");
+        kprintf("  %-24s %s\n", "TSC Deadline Mode",
+                cpu.TimerFeatures & ARCH_TIMER_FEAT_ONE_SHOT ? "Supported" : "Not Supported");
     }
 
     if (KeQuerySystemInformation(KE_SYSINFO_SYSTEM_VERSION, &ver, sizeof(ver), NULL) == EC_SUCCESS)
     {
-        kprintf("Himu Operating System VERSION %u.%u.%u %s %s\n", ver.Major, ver.Minor, ver.Patch, ver.BuildDate,
-                ver.BuildTime);
+        kprintf("  %-24s %u.%u.%u\n", "Version", ver.Major, ver.Minor, ver.Patch);
+        kprintf("  %-24s %s %s\n", "Build", ver.BuildDate, ver.BuildTime);
     }
+    kprintf("  %-24s %s\n", "------------------------", "------------------------------------------");
 
     kprintf("Copyright(c) 2024-2025 Himu, ONLY FOR EDUCATIONAL PURPOSES.\n\n");
 }

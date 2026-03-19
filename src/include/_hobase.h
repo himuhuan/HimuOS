@@ -72,14 +72,14 @@ typedef uint64_t HO_VIRTUAL_ADDRESS;
 
 enum _HIMUOS_ERROR_CODE
 {
-    EC_SUCCESS = 0,       // Operation successful
-    EC_FAILURE,           // General failure
-    EC_ILLEGAL_ARGUMENT,  // Illegal argument
-    EC_NOT_ENOUGH_MEMORY, // Not enough memory
-    EC_UNREACHABLE,       // Should never reach here
-    EC_NOT_SUPPORTED,     // Operation not supported
-    EC_OUT_OF_RESOURCE,   // Out of resource
-    EC_INVALID_STATE, // Operation cannot be performed in the current state
+    EC_SUCCESS = 0,         // Operation successful
+    EC_FAILURE,             // General failure
+    EC_ILLEGAL_ARGUMENT,    // Illegal argument
+    EC_NOT_ENOUGH_MEMORY,   // Not enough memory
+    EC_UNREACHABLE,         // Should never reach here
+    EC_NOT_SUPPORTED,       // Operation not supported
+    EC_OUT_OF_RESOURCE,     // Out of resource
+    EC_INVALID_STATE,       // Operation cannot be performed in the current state
     EC_UNSUPPORTED_MACHINE, // The machine architecture is not supported
 };
 
@@ -103,9 +103,9 @@ typedef int HO_STATUS;
     type name;                                                                                                         \
     memset(&name, 0, sizeof(type))
 
-#define HO_ALIGN_UP(value, alignment)   (((value) + ((alignment)-1)) & ~((alignment)-1))
-#define HO_ALIGN_DOWN(value, alignment) ((value) & ~((alignment)-1))
-#define HO_IS_ALIGNED(addr, align)      (((addr) & ((align)-1)) == 0)
+#define HO_ALIGN_UP(value, alignment)           (((value) + ((alignment) - 1)) & ~((alignment) - 1))
+#define HO_ALIGN_DOWN(value, alignment)         ((value) & ~((alignment) - 1))
+#define HO_IS_ALIGNED(addr, align)              (((addr) & ((align) - 1)) == 0)
 
 #define OFFSET_OF(type, member)                 __builtin_offsetof(type, member)
 #define CONTAINING_RECORD(address, type, field) ((type *)((char *)(address) - OFFSET_OF(type, field)))

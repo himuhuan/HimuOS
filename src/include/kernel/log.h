@@ -10,7 +10,8 @@
 
 #include "_hobase.h"
 
-enum KE_LOG_LEVEL {
+enum KE_LOG_LEVEL
+{
     KLOG_LEVEL_DEBUG = 0,
     KLOG_LEVEL_INFO,
     KLOG_LEVEL_WARNING,

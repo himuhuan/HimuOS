@@ -8,13 +8,15 @@
 
 #include <lib/common/linked_list.h>
 
-void LinkedListInit(IN OUT LINKED_LIST_TAG *head)
+void
+LinkedListInit(IN OUT LINKED_LIST_TAG *head)
 {
     head->Flink = head;
     head->Blink = head;
 }
 
-void LinkedListInsertHead(IN OUT LINKED_LIST_TAG *head, IN OUT LINKED_LIST_TAG *entry)
+void
+LinkedListInsertHead(IN OUT LINKED_LIST_TAG *head, IN OUT LINKED_LIST_TAG *entry)
 {
     entry->Flink = head->Flink;
     entry->Blink = head;
@@ -22,7 +24,8 @@ void LinkedListInsertHead(IN OUT LINKED_LIST_TAG *head, IN OUT LINKED_LIST_TAG *
     head->Flink = entry;
 }
 
-void LinkedListInsertTail(IN OUT LINKED_LIST_TAG *head, IN OUT LINKED_LIST_TAG *entry)
+void
+LinkedListInsertTail(IN OUT LINKED_LIST_TAG *head, IN OUT LINKED_LIST_TAG *entry)
 {
     entry->Flink = head;
     entry->Blink = head->Blink;
@@ -30,7 +33,8 @@ void LinkedListInsertTail(IN OUT LINKED_LIST_TAG *head, IN OUT LINKED_LIST_TAG *
     head->Blink = entry;
 }
 
-void LinkedListRemove(IN OUT LINKED_LIST_TAG *entry)
+void
+LinkedListRemove(IN OUT LINKED_LIST_TAG *entry)
 {
     entry->Blink->Flink = entry->Flink;
     entry->Flink->Blink = entry->Blink;
@@ -38,7 +42,8 @@ void LinkedListRemove(IN OUT LINKED_LIST_TAG *entry)
     entry->Blink = entry;
 }
 
-BOOL LinkedListIsEmpty(IN LINKED_LIST_TAG *head)
+BOOL
+LinkedListIsEmpty(IN LINKED_LIST_TAG *head)
 {
     return head->Flink == head;
 }

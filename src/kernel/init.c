@@ -20,11 +20,18 @@ static BOOT_CAPSULE *gBootCapsule;
 static void InitBitmapFont(void);
 static void InitCpuState(STAGING_BLOCK *block);
 static void VerifyHhdm(STAGING_BLOCK *block);
-static BOOL FindFirstSafeProbePage(UINT64 descStart, UINT64 descEndExclusive, UINT64 capsuleBase,
-                                   UINT64 capsuleEndExclusive, UINT64 pageTableBase, UINT64 pageTableEndExclusive,
+static BOOL FindFirstSafeProbePage(UINT64 descStart,
+                                   UINT64 descEndExclusive,
+                                   UINT64 capsuleBase,
+                                   UINT64 capsuleEndExclusive,
+                                   UINT64 pageTableBase,
+                                   UINT64 pageTableEndExclusive,
                                    UINT64 *probePhysOut);
-static void DumpHhdmProbeDiagnostics(const EFI_MEMORY_MAP *map, UINT64 capsuleBase, UINT64 capsuleEndExclusive,
-                                     UINT64 pageTableBase, UINT64 pageTableEndExclusive);
+static void DumpHhdmProbeDiagnostics(const EFI_MEMORY_MAP *map,
+                                     UINT64 capsuleBase,
+                                     UINT64 capsuleEndExclusive,
+                                     UINT64 pageTableBase,
+                                     UINT64 pageTableEndExclusive);
 static void AssertRsdp(HO_VIRTUAL_ADDRESS rsdpVirt);
 
 void
@@ -158,13 +165,18 @@ VerifyHhdm(STAGING_BLOCK *block)
         HO_KPANIC(EC_INVALID_STATE, "HHDM verification failed");
     }
 
-    klog(KLOG_LEVEL_INFO, "[MM] FULL HHDM smoke test OK: PA=%p VA=%p\n",
-         (void *)(UINTN)probePhys, (void *)(UINTN)HHDM_PHYS2VIRT(probePhys));
+    klog(KLOG_LEVEL_INFO, "[MM] FULL HHDM smoke test OK: PA=%p VA=%p\n", (void *)(UINTN)probePhys,
+         (void *)(UINTN)HHDM_PHYS2VIRT(probePhys));
 }
 
 static BOOL
-FindFirstSafeProbePage(UINT64 descStart, UINT64 descEndExclusive, UINT64 capsuleBase, UINT64 capsuleEndExclusive,
-                       UINT64 pageTableBase, UINT64 pageTableEndExclusive, UINT64 *probePhysOut)
+FindFirstSafeProbePage(UINT64 descStart,
+                       UINT64 descEndExclusive,
+                       UINT64 capsuleBase,
+                       UINT64 capsuleEndExclusive,
+                       UINT64 pageTableBase,
+                       UINT64 pageTableEndExclusive,
+                       UINT64 *probePhysOut)
 {
     typedef struct HHDM_EXCLUDE_RANGE
     {
@@ -218,8 +230,11 @@ FindFirstSafeProbePage(UINT64 descStart, UINT64 descEndExclusive, UINT64 capsule
 }
 
 static void
-DumpHhdmProbeDiagnostics(const EFI_MEMORY_MAP *map, UINT64 capsuleBase, UINT64 capsuleEndExclusive,
-                         UINT64 pageTableBase, UINT64 pageTableEndExclusive)
+DumpHhdmProbeDiagnostics(const EFI_MEMORY_MAP *map,
+                         UINT64 capsuleBase,
+                         UINT64 capsuleEndExclusive,
+                         UINT64 pageTableBase,
+                         UINT64 pageTableEndExclusive)
 {
     if (!map || map->DescriptorSize < sizeof(EFI_MEMORY_DESCRIPTOR) || map->DescriptorSize == 0)
         return;
@@ -227,12 +242,8 @@ DumpHhdmProbeDiagnostics(const EFI_MEMORY_MAP *map, UINT64 capsuleBase, UINT64 c
     UINT64 descCount = map->DescriptorTotalSize / map->DescriptorSize;
     klog(KLOG_LEVEL_INFO,
          "[MM] probe filter ranges: capsule=[%p,%p) page_tables=[%p,%p) recorded_pt_bytes=%u desc_count=%u\n",
-         (void *)(UINTN)capsuleBase,
-         (void *)(UINTN)capsuleEndExclusive,
-         (void *)(UINTN)pageTableBase,
-         (void *)(UINTN)pageTableEndExclusive,
-         pageTableEndExclusive - pageTableBase,
-         descCount);
+         (void *)(UINTN)capsuleBase, (void *)(UINTN)capsuleEndExclusive, (void *)(UINTN)pageTableBase,
+         (void *)(UINTN)pageTableEndExclusive, pageTableEndExclusive - pageTableBase, descCount);
 
     for (UINT64 idx = 0; idx < descCount; ++idx)
     {
@@ -250,15 +261,9 @@ DumpHhdmProbeDiagnostics(const EFI_MEMORY_MAP *map, UINT64 capsuleBase, UINT64 c
                                                    pageTableBase, pageTableEndExclusive, &firstSafeProbe);
 
         klog(KLOG_LEVEL_INFO,
-             "[MM] reclaimable desc[%u]: type=%u phys=[%p,%p) pages=%u overlap(capsule=%u,pt=%u) first_safe=%p\n",
-             idx,
-             desc->Type,
-             (void *)(UINTN)descStart,
-             (void *)(UINTN)descEndExclusive,
-             desc->NumberOfPages,
-             overlapsCapsule,
-             overlapsPageTables,
-             (void *)(UINTN)(hasSafeProbe ? firstSafeProbe : 0));
+             "[MM] reclaimable desc[%u]: type=%u phys=[%p,%p) pages=%u overlap(capsule=%u,pt=%u) first_safe=%p\n", idx,
+             desc->Type, (void *)(UINTN)descStart, (void *)(UINTN)descEndExclusive, desc->NumberOfPages,
+             overlapsCapsule, overlapsPageTables, (void *)(UINTN)(hasSafeProbe ? firstSafeProbe : 0));
     }
 }
 

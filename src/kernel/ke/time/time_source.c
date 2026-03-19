@@ -95,13 +95,14 @@ KeTimeSourceInit(HO_PHYSICAL_ADDRESS acpiRsdpPhys)
             {
                 gTscSink.FreqHz = oldFreqHz;
                 gTscSink.Calibrated = TRUE;
-                klog(KLOG_LEVEL_ERROR, "[TIME] TSC calibration by %s failed, fallback to %lu Hz\n", refSink->GetName(refSink),
-                        oldFreqHz);
+                klog(KLOG_LEVEL_ERROR, "[TIME] TSC calibration by %s failed, fallback to %lu Hz\n",
+                     refSink->GetName(refSink), oldFreqHz);
             }
             else
             {
                 gTscSink.Calibrated = FALSE;
-                klog(KLOG_LEVEL_ERROR, "[TIME] TSC calibration by %s failed and no fallback freq\n", refSink->GetName(refSink));
+                klog(KLOG_LEVEL_ERROR, "[TIME] TSC calibration by %s failed and no fallback freq\n",
+                     refSink->GetName(refSink));
             }
         }
         else if (!gTscSink.Calibrated)

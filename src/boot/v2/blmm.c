@@ -6,16 +6,19 @@
 #include "ho_balloc.h"
 #include "io.h"
 
-#define MIN_MEMMAP_PAGES          3  // 12KB for memory map at least
+#define MIN_MEMMAP_PAGES          3   // 12KB for memory map at least
 #define MAX_PAGE_TABLE_POOL_PAGES 256 // 1MB for page table
 #define IA32_APIC_BASE_MSR        0x1BU
 #define IA32_APIC_BASE_ADDR_MASK  0x00000000FFFFF000ULL
 
 static EFI_MEMORY_MAP *InitMemoryMap(void *base, size_t size);
 static EFI_STATUS FillMemoryMap(EFI_MEMORY_MAP *map);
-static EFI_STATUS
-MapFullHhdmFromMemoryMap(HOB_BALLOC *allocator, UINT64 pml4BasePhys, EFI_MEMORY_MAP *memoryMap, UINT64 nxFlag,
-                         UINT64 *mappedDescCount, UINT64 *highestPhysExclusive);
+static EFI_STATUS MapFullHhdmFromMemoryMap(HOB_BALLOC *allocator,
+                                           UINT64 pml4BasePhys,
+                                           EFI_MEMORY_MAP *memoryMap,
+                                           UINT64 nxFlag,
+                                           UINT64 *mappedDescCount,
+                                           UINT64 *highestPhysExclusive);
 static EFI_STATUS MapAcpiTables(HOB_BALLOC *allocator, UINT64 pml4BasePhys, HO_PHYSICAL_ADDRESS rsdpPhys);
 static EFI_STATUS MapAcpiRange(HOB_BALLOC *allocator, UINT64 pml4BasePhys, UINT64 tablePhys, UINT32 length);
 static BOOL IsSameMapping(UINT64 existingEntry, UINT64 targetPhys, UINT64 flags, UINT64 isPresent);
@@ -180,8 +183,8 @@ CreateInitialMapping(BOOT_CAPSULE *capsule, EFI_MEMORY_MAP *memoryMap)
             LOG_ERROR("Failed to map FULL HHDM: %k (0x%x)\r\n", status, status);
             break;
         }
-        LOG_INFO("FULL HHDM mapped %u descriptors, highest PA=%p\r\n",
-                 mappedDescCount, (void *)(UINTN)(highestPhysExclusive ? (highestPhysExclusive - 1ULL) : 0ULL));
+        LOG_INFO("FULL HHDM mapped %u descriptors, highest PA=%p\r\n", mappedDescCount,
+                 (void *)(UINTN)(highestPhysExclusive ? (highestPhysExclusive - 1ULL) : 0ULL));
 
         // B. BOOT_CAPSULE @ HHDM
         if (capsule->PageLayout.TotalPages > 0)
@@ -485,8 +488,12 @@ FillMemoryMap(EFI_MEMORY_MAP *map)
 }
 
 static EFI_STATUS
-MapFullHhdmFromMemoryMap(HOB_BALLOC *allocator, UINT64 pml4BasePhys, EFI_MEMORY_MAP *memoryMap, UINT64 nxFlag,
-                         UINT64 *mappedDescCount, UINT64 *highestPhysExclusive)
+MapFullHhdmFromMemoryMap(HOB_BALLOC *allocator,
+                         UINT64 pml4BasePhys,
+                         EFI_MEMORY_MAP *memoryMap,
+                         UINT64 nxFlag,
+                         UINT64 *mappedDescCount,
+                         UINT64 *highestPhysExclusive)
 {
     if (!allocator || !memoryMap || !mappedDescCount || !highestPhysExclusive)
         return EFI_INVALID_PARAMETER;
@@ -517,8 +524,8 @@ MapFullHhdmFromMemoryMap(HOB_BALLOC *allocator, UINT64 pml4BasePhys, EFI_MEMORY_
             MapRegion(allocator, pml4BasePhys, mapPhysStart, HHDM_BASE_VA + mapPhysStart, mapSize, flags);
         if (EFI_ERROR(status))
         {
-            LOG_ERROR("Map FULL HHDM failed at descriptor=%u type=%u phys=%p pages=%u: %k\r\n",
-                      idx, desc->Type, (void *)(UINTN)mapPhysStart, desc->NumberOfPages, status);
+            LOG_ERROR("Map FULL HHDM failed at descriptor=%u type=%u phys=%p pages=%u: %k\r\n", idx, desc->Type,
+                      (void *)(UINTN)mapPhysStart, desc->NumberOfPages, status);
             return status;
         }
 
@@ -593,16 +600,15 @@ MapAcpiTables(HOB_BALLOC *allocator, UINT64 pml4BasePhys, HO_PHYSICAL_ADDRESS rs
             return status;
 
         // If this is HPET table, also map the HPET MMIO region
-        if (tableHeader->Signature[0] == 'H' && tableHeader->Signature[1] == 'P' &&
-            tableHeader->Signature[2] == 'E' && tableHeader->Signature[3] == 'T')
+        if (tableHeader->Signature[0] == 'H' && tableHeader->Signature[1] == 'P' && tableHeader->Signature[2] == 'E' &&
+            tableHeader->Signature[3] == 'T')
         {
             ACPI_HPET *hpet = (ACPI_HPET *)tableHeader;
             if (hpet->AddressSpaceId == 0 && hpet->BaseAddressPhys != 0)
             {
                 // Map HPET MMIO region (typically 1KB, map 4KB to be safe)
-                status = MapRegion(allocator, pml4BasePhys, hpet->BaseAddressPhys,
-                                   HHDM_BASE_VA + hpet->BaseAddressPhys, PAGE_4KB,
-                                   PTE_CACHE_DISABLE | PTE_WRITABLE | GetNxFlag());
+                status = MapRegion(allocator, pml4BasePhys, hpet->BaseAddressPhys, HHDM_BASE_VA + hpet->BaseAddressPhys,
+                                   PAGE_4KB, PTE_CACHE_DISABLE | PTE_WRITABLE | GetNxFlag());
                 if (EFI_ERROR(status))
                 {
                     LOG_WARNING("Failed to map HPET MMIO at %p\r\n", hpet->BaseAddressPhys);

@@ -39,8 +39,7 @@ typedef struct KE_TIME_DEVICE
  * @param acpiRsdpPhys Address of ACPI RSDP table.
  * @return Status code.
  */
-HO_KERNEL_API HO_NODISCARD HO_STATUS
-KeTimeSourceInit(HO_PHYSICAL_ADDRESS acpiRsdpPhys);
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeTimeSourceInit(HO_PHYSICAL_ADDRESS acpiRsdpPhys);
 
 /**
  * @brief Get system uptime in microseconds.

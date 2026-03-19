@@ -62,7 +62,7 @@ enum
     EFI_NOT_FOUND = 14         /* The item was not found. */
 };
 
-#define EFI_ERROR(code) ((code) != EFI_SUCCESS)
+#define EFI_ERROR(code)           ((code) != EFI_SUCCESS)
 #define EFI_STATUS_CODE_LOW(code) (code & 0x1FFFFFFFFFFFFFFFULL)
 
 /**
@@ -75,7 +75,7 @@ enum
  * @param i The unique index to differentiate multiple reserved fields.
  * @param n The number of bytes to reserve.
  */
-#define STRUCT_RESERVED(i, n) BYTE __reserved_bytes##i[n];
+#define STRUCT_RESERVED(i, n)     BYTE __reserved_bytes##i[n];
 
 struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL
 {
@@ -123,31 +123,31 @@ enum EFI_ALLOCATE_TYPE
 
 typedef enum
 {
-	EfiReservedMemoryType      = 0,
-	EfiLoaderCode              = 1,
-	EfiLoaderData              = 2,
-	EfiBootServicesCode        = 3,
-	EfiBootServicesData        = 4,
-	EfiRuntimeServicesCode     = 5,
-	EfiRuntimeServicesData     = 6,
-	EfiConventionalMemory      = 7,
-	EfiUnusableMemory          = 8,
-	EfiACPIReclaimMemory       = 9,
-	EfiACPIMemoryNVS           = 10,
-	EfiMemoryMappedIO          = 11,
-	EfiMemoryMappedIOPortSpace = 12,
-	EfiPalCode                 = 13,
-	EfiPersistentMemory        = 14,
-	EfiMaxMemoryType
+    EfiReservedMemoryType = 0,
+    EfiLoaderCode = 1,
+    EfiLoaderData = 2,
+    EfiBootServicesCode = 3,
+    EfiBootServicesData = 4,
+    EfiRuntimeServicesCode = 5,
+    EfiRuntimeServicesData = 6,
+    EfiConventionalMemory = 7,
+    EfiUnusableMemory = 8,
+    EfiACPIReclaimMemory = 9,
+    EfiACPIMemoryNVS = 10,
+    EfiMemoryMappedIO = 11,
+    EfiMemoryMappedIOPortSpace = 12,
+    EfiPalCode = 13,
+    EfiPersistentMemory = 14,
+    EfiMaxMemoryType
 } EFI_MEMORY_TYPE;
 
 typedef struct _EFI_MEMORY_DESCRIPTOR
 {
-	uint32_t Type;
-	uint64_t PhysicalStart;
-	uint64_t VirtualStart;
-	uint64_t NumberOfPages;
-	uint64_t Attribute;
+    uint32_t Type;
+    uint64_t PhysicalStart;
+    uint64_t VirtualStart;
+    uint64_t NumberOfPages;
+    uint64_t Attribute;
 } EFI_MEMORY_DESCRIPTOR;
 
 typedef uint64_t EFI_PHYSICAL_ADDRESS;
@@ -268,9 +268,9 @@ typedef struct _EFI_FILE_PROTOCOL
     EFI_STATUS (*Write)(struct _EFI_FILE_PROTOCOL *This, UINT64 *BufferSize, void *Buffer);
     EFI_STATUS (*GetPosition)(struct _EFI_FILE_PROTOCOL *This, UINT64 *Position);
     EFI_STATUS (*SetPosition)(struct _EFI_FILE_PROTOCOL *This, UINT64 Position);
-    EFI_STATUS (*GetInfo)
+    EFI_STATUS(*GetInfo)
     (struct _EFI_FILE_PROTOCOL *This, struct EFI_GUID *InformationType, UINT64 *BufferSize, void *Buffer);
-    EFI_STATUS (*SetInfo)
+    EFI_STATUS(*SetInfo)
     (struct _EFI_FILE_PROTOCOL *This, struct EFI_GUID *InformationType, UINT64 BufferSize, void *Buffer);
     EFI_STATUS (*Flush)(struct _EFI_FILE_PROTOCOL *This);
     STRUCT_RESERVED(4, 8);
@@ -310,13 +310,7 @@ typedef struct
 #define MAX_FILEINFO_SIZ     1024
 
 // EFI File Info GUID: 09576e92-6d3f-11d2-8e39-00a0c969723b
-#define EFI_FILE_INFO_GUID                                                                                             \
-    {                                                                                                                  \
-        0x09576e92, 0x6d3f, 0x11d2,                                                                                    \
-        {                                                                                                              \
-            0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b                                                             \
-        }                                                                                                              \
-    }
+#define EFI_FILE_INFO_GUID   {0x09576e92, 0x6d3f, 0x11d2, {0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b}}
 
 /* OFFSET_OF is now defined in _hobase.h */
 
@@ -375,4 +369,3 @@ enum PIXEL_FORMAT
     PIXEL_FORMAT_RGB, // RGB pixel format
     PIXEL_FORMAT_BGR, // BGR pixel format
 };
-

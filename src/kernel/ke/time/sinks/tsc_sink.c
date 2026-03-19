@@ -59,7 +59,7 @@ KeTscTimeSinkInit(KE_TSC_TIME_SINK *sink)
     }
 
     sink->FreqHz = TscGetFreqFromCpuid(&cpuInfo);
-    
+
     // Set up interface
     sink->Base.ReadCounter = TscSinkReadCounter;
     sink->Base.GetFrequency = TscSinkGetFrequency;

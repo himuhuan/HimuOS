@@ -200,40 +200,22 @@ PrintCapsule(const BOOT_CAPSULE *capsule, const CHAR16 *tag)
     ConsoleFormatWrite(L"| Label : %s\r\n", name);
     ConsoleFormatWrite(L"| Magic : 0x%x (%s)\r\n", capsule->Magic, magicOk ? L"valid" : L"INVALID");
     ConsoleFormatWrite(L"| Base  : %p\r\n", capsule->BasePhys);
-    ConsoleFormatWrite(L"| Video : %s %ux%u stride=%u fmt=%s\r\n",
-                       mode,
-                       capsule->HorizontalResolution,
-                       capsule->VerticalResolution,
-                       capsule->PixelsPerScanLine,
-                       pixelFmt);
+    ConsoleFormatWrite(L"| Video : %s %ux%u stride=%u fmt=%s\r\n", mode, capsule->HorizontalResolution,
+                       capsule->VerticalResolution, capsule->PixelsPerScanLine, pixelFmt);
     ConsoleFormatWrite(L"| Framebuffer : %p (%u bytes)\r\n", capsule->FramebufferPhys, capsule->FramebufferSize);
     ConsoleFormatWrite(L"| Layout (bytes): hdr=%u map=%u code=%u data=%u stack=%u ist1=%u\r\n",
-                       capsule->Layout.HeaderSize,
-                       capsule->Layout.MemoryMapSize,
-                       capsule->Layout.KrnlCodeSize,
-                       capsule->Layout.KrnlDataSize,
-                       capsule->Layout.KrnlStackSize,
-                       capsule->Layout.IST1StackSize);
+                       capsule->Layout.HeaderSize, capsule->Layout.MemoryMapSize, capsule->Layout.KrnlCodeSize,
+                       capsule->Layout.KrnlDataSize, capsule->Layout.KrnlStackSize, capsule->Layout.IST1StackSize);
     ConsoleFormatWrite(L"| Pages  (4K) : hdr+map=%u kernel=%u stack=%u ist1=%u total=%u\r\n",
-                       capsule->PageLayout.HeaderWithMapPages,
-                       capsule->PageLayout.KrnlPages,
-                       capsule->PageLayout.KrnlStackPages,
-                       capsule->PageLayout.IST1StackPages,
+                       capsule->PageLayout.HeaderWithMapPages, capsule->PageLayout.KrnlPages,
+                       capsule->PageLayout.KrnlStackPages, capsule->PageLayout.IST1StackPages,
                        capsule->PageLayout.TotalPages);
-    ConsoleFormatWrite(L"| Phys map: mmap=%p entry=%p stack=%p ist1=%p\r\n",
-                       capsule->MemoryMapPhys,
-                       capsule->KrnlEntryPhys,
-                       capsule->KrnlStackPhys,
-                       capsule->KrnlIST1StackPhys);
+    ConsoleFormatWrite(L"| Phys map: mmap=%p entry=%p stack=%p ist1=%p\r\n", capsule->MemoryMapPhys,
+                       capsule->KrnlEntryPhys, capsule->KrnlStackPhys, capsule->KrnlIST1StackPhys);
     ConsoleFormatWrite(L"| ACPI: rsdp=%p (HHDM)\r\n", capsule->AcpiRsdpPhys);
-    ConsoleFormatWrite(L"| Paging: pml4=%p size=%u bytes\r\n",
-                       capsule->PageTableInfo.Ptr,
-                       capsule->PageTableInfo.Size);
-    ConsoleFormatWrite(L"| CPU: GDT.base=%p limit=%u TSS.rsp0=%p ist1=%p\r\n",
-                       capsule->CpuInfo.GdtPtr.Base,
-                       capsule->CpuInfo.GdtPtr.Limit,
-                       capsule->CpuInfo.Tss.RSP0,
-                       capsule->CpuInfo.Tss.IST1);
+    ConsoleFormatWrite(L"| Paging: pml4=%p size=%u bytes\r\n", capsule->PageTableInfo.Ptr, capsule->PageTableInfo.Size);
+    ConsoleFormatWrite(L"| CPU: GDT.base=%p limit=%u TSS.rsp0=%p ist1=%p\r\n", capsule->CpuInfo.GdtPtr.Base,
+                       capsule->CpuInfo.GdtPtr.Limit, capsule->CpuInfo.Tss.RSP0, capsule->CpuInfo.Tss.IST1);
     ConsoleFormatWrite(L"+======================================================+\r\n\r\n");
 }
 
@@ -455,7 +437,8 @@ GetFileSize(EFI_FILE_PROTOCOL *file, UINT64 *outSize)
     return status;
 }
 
-EFI_STATUS ReadKernelImage(IN const CHAR16 *path, OUT void **outImage, OUT UINT64 *outSize)
+EFI_STATUS
+ReadKernelImage(IN const CHAR16 *path, OUT void **outImage, OUT UINT64 *outSize)
 {
     EFI_STATUS status;
     EFI_FILE_PROTOCOL *rootDir = NULL;

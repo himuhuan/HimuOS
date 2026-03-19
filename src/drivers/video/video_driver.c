@@ -26,7 +26,7 @@ VdInit(KE_VIDEO_DRIVER *pd, STAGING_BLOCK *info)
     pd->HorizontalResolution = info->HorizontalResolution;
     pd->VerticalResolution = info->VerticalResolution;
     pd->PixelsPerScanLine = info->PixelsPerScanLine;
-    pd->FrameBuffer = (void *) MMIO_BASE_VA;
+    pd->FrameBuffer = (void *)MMIO_BASE_VA;
     pd->FrameBufferSize = info->FramebufferSize;
     pd->Methods = VdEfiGetVTable();
 }

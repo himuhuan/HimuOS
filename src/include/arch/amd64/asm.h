@@ -36,19 +36,13 @@ inl(uint16_t port)
 MAYBE_UNUSED static inline void
 cpuid(uint32_t leaf, uint32_t *a, uint32_t *b, uint32_t *c, uint32_t *d)
 {
-    asm volatile("cpuid"
-                 : "=a"(*a), "=b"(*b), "=c"(*c), "=d"(*d)
-                 : "a"(leaf), "c"(0)
-    );
+    asm volatile("cpuid" : "=a"(*a), "=b"(*b), "=c"(*c), "=d"(*d) : "a"(leaf), "c"(0));
 }
 
 MAYBE_UNUSED static inline void
 cpuidex(uint32_t leaf, uint32_t subleaf, uint32_t *a, uint32_t *b, uint32_t *c, uint32_t *d)
 {
-    asm volatile("cpuid"
-                 : "=a"(*a), "=b"(*b), "=c"(*c), "=d"(*d)
-                 : "a"(leaf), "c"(subleaf)
-    );
+    asm volatile("cpuid" : "=a"(*a), "=b"(*b), "=c"(*c), "=d"(*d) : "a"(leaf), "c"(subleaf));
 }
 
 MAYBE_UNUSED static inline uint64_t

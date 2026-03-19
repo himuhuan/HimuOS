@@ -20,7 +20,8 @@ typedef struct KE_CONSOLE_DEVICE
     uint16_t CursorX, CursorY; // in CHARACTERS unit
     COLOR32 Foreground, Background;
     KE_CONSOLE_SINK *Sink;
-    HO_PRIVATE_FIELD struct {
+    HO_PRIVATE_FIELD struct
+    {
         uint8_t EscSeqState;
         BOOL AnsiHasCode;
         int AnsiCurrentCode;

@@ -13,7 +13,7 @@
 #include <kernel/ke/mm.h>
 #include <libc/string.h>
 
-#define ACPI_GAS_SPACE_SYSTEM_IO 0x01
+#define ACPI_GAS_SPACE_SYSTEM_IO   0x01
 #define ACPI_FADT_FLAG_TMR_VAL_EXT (1u << 8)
 
 static ACPI_FADT *

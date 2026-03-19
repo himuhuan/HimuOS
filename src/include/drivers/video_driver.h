@@ -50,7 +50,7 @@ typedef struct _VIDEO_DRIVER
     uint32_t VerticalResolution;   // Vertical resolution in pixels
     uint32_t PixelsPerScanLine;    // Number of pixels per scan line
     void *FrameBuffer;
-    uint64_t FrameBufferSize;  // Size of the framebuffer in bytes
+    uint64_t FrameBufferSize; // Size of the framebuffer in bytes
     const VD_VTABLE *Methods;
 } KE_VIDEO_DRIVER;
 

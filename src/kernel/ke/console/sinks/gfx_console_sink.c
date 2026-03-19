@@ -135,7 +135,8 @@ GfxConSinkClear(void *self, COLOR32 fillColor)
     return EC_SUCCESS;
 }
 
-void KeGfxConSinkInit(GFX_CONSOLE_SINK *sink, KE_VIDEO_DRIVER *driver, BITMAP_FONT_INFO *font, uint8_t scale)
+void
+KeGfxConSinkInit(GFX_CONSOLE_SINK *sink, KE_VIDEO_DRIVER *driver, BITMAP_FONT_INFO *font, uint8_t scale)
 {
     sink->Base.GetInfo = GfxConSinkGetInfo;
     sink->Base.PutChar = GfxConSinkPutChar;
