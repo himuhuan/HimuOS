@@ -41,8 +41,22 @@ BitmapSetState(KE_PMM_BITMAP_CONTEXT *ctx, uint64_t pageIndex, KE_PMM_PAGE_STATE
     ctx->Bitmap[byteIdx] = (uint8_t)((ctx->Bitmap[byteIdx] & ~(0x3 << bitOff)) | ((uint8_t)state << bitOff));
 }
 
+typedef struct _BOOT_RESERVED_RANGE
+{
+    HO_PHYSICAL_ADDRESS Start;
+    uint64_t Pages;
+} BOOT_RESERVED_RANGE;
+
+static inline BOOL
+PhysRangesOverlap(HO_PHYSICAL_ADDRESS aStart,
+                  HO_PHYSICAL_ADDRESS aEnd,
+                  HO_PHYSICAL_ADDRESS bStart,
+                  HO_PHYSICAL_ADDRESS bEnd)
+{
+    return (aStart < bEnd) && (bStart < aEnd);
+}
+
 // Insertion sort helper
-// most descriptors are already sorted in ascending order by physical address.
 static void
 SortDescriptorsByPhysAddr(EFI_MEMORY_DESCRIPTOR *descs, size_t count, size_t descSize)
 {
@@ -211,28 +225,76 @@ KePmmInitFromBootMemoryMap(BOOT_CAPSULE *capsule)
     uint64_t bitmapBytes = (totalManagedPages + 3) / 4;
     uint64_t bitmapPages = (bitmapBytes + PAGE_4KB - 1) / PAGE_4KB;
 
-    // Find first reclaimable region large enough for bitmap
+    uint64_t ptPages = (capsule->PageTableInfo.Size + PAGE_4KB - 1) / PAGE_4KB;
+    uint64_t fbPages = (capsule->FramebufferSize + PAGE_4KB - 1) / PAGE_4KB;
+
+    BOOT_RESERVED_RANGE bootRanges[] = {
+        {capsule->KrnlEntryPhys, capsule->PageLayout.KrnlPages},
+        {capsule->KrnlStackPhys, capsule->PageLayout.KrnlStackPages},
+        {capsule->KrnlIST1StackPhys, capsule->PageLayout.IST1StackPages},
+        {capsule->BasePhys, capsule->PageLayout.HeaderWithMapPages},
+        {capsule->PageTableInfo.Ptr, ptPages},
+        {capsule->FramebufferPhys, fbPages},
+    };
+
+    // Find first reclaimable region large enough for bitmap and not overlapping boot-owned ranges
     HO_PHYSICAL_ADDRESS bitmapPhys = 0;
     BOOL bitmapPlaced = FALSE;
 
-    for (size_t i = 0; i < descCount; i++)
+    for (size_t i = 0; i < descCount && !bitmapPlaced; i++)
     {
         EFI_MEMORY_DESCRIPTOR *d = (EFI_MEMORY_DESCRIPTOR *)((uint8_t *)descs + i * descSize);
 
-        if (d->NumberOfPages == 0 || !IS_RECLAIMABLE_MEMORY(d->Type))
+        if (d->NumberOfPages == 0 || !IS_RECLAIMABLE_MEMORY(d->Type) || d->NumberOfPages < bitmapPages)
             continue;
 
-        if (d->NumberOfPages >= bitmapPages)
+        HO_PHYSICAL_ADDRESS descStart = d->PhysicalStart;
+        HO_PHYSICAL_ADDRESS descEnd = descStart + d->NumberOfPages * PAGE_4KB;
+        if (descEnd < descStart)
+            continue;
+
+        uint64_t maxOffsetPages = d->NumberOfPages - bitmapPages;
+        for (uint64_t off = 0; off <= maxOffsetPages; off++)
         {
-            bitmapPhys = d->PhysicalStart;
-            bitmapPlaced = TRUE;
-            break;
+            HO_PHYSICAL_ADDRESS candidateStart = descStart + off * PAGE_4KB;
+            HO_PHYSICAL_ADDRESS candidateEnd = candidateStart + bitmapPages * PAGE_4KB;
+
+            if (candidateEnd < candidateStart || candidateEnd > descEnd)
+                break;
+
+            BOOL overlapsBootOwned = FALSE;
+            for (size_t r = 0; r < sizeof(bootRanges) / sizeof(bootRanges[0]); r++)
+            {
+                if (bootRanges[r].Pages == 0)
+                    continue;
+
+                HO_PHYSICAL_ADDRESS rangeStart = bootRanges[r].Start;
+                HO_PHYSICAL_ADDRESS rangeEnd = rangeStart + bootRanges[r].Pages * PAGE_4KB;
+                if (rangeEnd < rangeStart)
+                {
+                    overlapsBootOwned = TRUE;
+                    break;
+                }
+
+                if (PhysRangesOverlap(candidateStart, candidateEnd, rangeStart, rangeEnd))
+                {
+                    overlapsBootOwned = TRUE;
+                    break;
+                }
+            }
+
+            if (!overlapsBootOwned)
+            {
+                bitmapPhys = candidateStart;
+                bitmapPlaced = TRUE;
+                break;
+            }
         }
     }
 
     if (!bitmapPlaced)
     {
-        klog(KLOG_LEVEL_ERROR, "PMM: no region large enough for bitmap (%lu pages)\n", bitmapPages);
+        klog(KLOG_LEVEL_ERROR, "PMM: no safe region large enough for bitmap (%lu pages)\n", bitmapPages);
         return EC_NOT_ENOUGH_MEMORY;
     }
 
@@ -305,11 +367,9 @@ KePmmInitFromBootMemoryMap(BOOT_CAPSULE *capsule)
     ReserveBootRange(&gBitmapCtx, capsule->BasePhys, capsule->PageLayout.HeaderWithMapPages);
 
     // Page tables
-    uint64_t ptPages = (capsule->PageTableInfo.Size + PAGE_4KB - 1) / PAGE_4KB;
     ReserveBootRange(&gBitmapCtx, capsule->PageTableInfo.Ptr, ptPages);
 
     // Framebuffer
-    uint64_t fbPages = (capsule->FramebufferSize + PAGE_4KB - 1) / PAGE_4KB;
     ReserveBootRange(&gBitmapCtx, capsule->FramebufferPhys, fbPages);
 
     // ---- Step 9: Activate device ----
