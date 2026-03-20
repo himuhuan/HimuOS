@@ -9,7 +9,8 @@
 
 #include "mux_console_sink.h"
 
-static HO_STATUS MuxConSinkGetInfo(void *self, CONSOLE_SINK_INFO *info)
+static HO_STATUS
+MuxConSinkGetInfo(void *self, CONSOLE_SINK_INFO *info)
 {
     MUX_CONSOLE_SINK *sink = (MUX_CONSOLE_SINK *)self;
     if (!sink || !info)
@@ -18,7 +19,8 @@ static HO_STATUS MuxConSinkGetInfo(void *self, CONSOLE_SINK_INFO *info)
     return sink->Sinks[0]->GetInfo(sink->Sinks[0], info);
 }
 
-static int MuxConSinkPutChar(void *self, uint16_t gx, uint16_t gy, char c, COLOR32 fg, COLOR32 bg)
+static int
+MuxConSinkPutChar(void *self, uint16_t gx, uint16_t gy, char c, COLOR32 fg, COLOR32 bg)
 {
     MUX_CONSOLE_SINK *sink = (MUX_CONSOLE_SINK *)self;
     if (!sink)
@@ -34,7 +36,8 @@ static int MuxConSinkPutChar(void *self, uint16_t gx, uint16_t gy, char c, COLOR
     return result;
 }
 
-static HO_STATUS MuxConSinkScroll(void *self, uint16_t count, COLOR32 fillColor)
+static HO_STATUS
+MuxConSinkScroll(void *self, uint16_t count, COLOR32 fillColor)
 {
     MUX_CONSOLE_SINK *sink = (MUX_CONSOLE_SINK *)self;
     if (!sink)
@@ -50,7 +53,8 @@ static HO_STATUS MuxConSinkScroll(void *self, uint16_t count, COLOR32 fillColor)
     return status;
 }
 
-static HO_STATUS MuxConSinkClear(void *self, COLOR32 fillColor)
+static HO_STATUS
+MuxConSinkClear(void *self, COLOR32 fillColor)
 {
     MUX_CONSOLE_SINK *sink = (MUX_CONSOLE_SINK *)self;
     if (!sink)

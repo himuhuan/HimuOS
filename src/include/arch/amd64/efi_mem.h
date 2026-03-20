@@ -27,5 +27,3 @@ typedef struct EFI_MEMORY_MAP
 #define IS_RECLAIMABLE_MEMORY(type)                                                                                    \
     ((type) == EfiLoaderCode || (type) == EfiLoaderData || (type) == EfiBootServicesCode ||                            \
      (type) == EfiBootServicesData || (type) == EfiConventionalMemory)
-
-

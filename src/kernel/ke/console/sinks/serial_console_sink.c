@@ -21,8 +21,7 @@ SerialConSinkGetInfo(MAYBE_UNUSED void *self, CONSOLE_SINK_INFO *info)
 
 static HO_STATUS
 SerialConSinkPutChar(
-    void *self, MAYBE_UNUSED uint16_t x, uint16_t y, char c,
-    MAYBE_UNUSED COLOR32 fg, MAYBE_UNUSED COLOR32 bg)
+    void *self, MAYBE_UNUSED uint16_t x, uint16_t y, char c, MAYBE_UNUSED COLOR32 fg, MAYBE_UNUSED COLOR32 bg)
 {
     SERIAL_CONSOLE_SINK *sink = (SERIAL_CONSOLE_SINK *)self;
 
@@ -36,8 +35,7 @@ SerialConSinkPutChar(
 }
 
 static HO_STATUS
-SerialConSinkScroll(MAYBE_UNUSED void *self, MAYBE_UNUSED uint16_t count,
-                    MAYBE_UNUSED COLOR32 fill)
+SerialConSinkScroll(MAYBE_UNUSED void *self, MAYBE_UNUSED uint16_t count, MAYBE_UNUSED COLOR32 fill)
 {
     SERIAL_CONSOLE_SINK *s = (SERIAL_CONSOLE_SINK *)self;
     while (count-- > 0)

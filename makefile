@@ -143,6 +143,10 @@ SRCS_KERNEL_C := \
     src/kernel/ke/time/sinks/hpet_sink.c                \
     src/kernel/ke/time/sinks/lapic_clockevent_sink.c    \
     src/kernel/ke/log/log.c                             \
+    src/kernel/ke/sysinfo.c                             \
+    src/kernel/ke/pmm/pmm_device.c                      \
+    src/kernel/ke/pmm/bitmap_sink.c                     \
+    src/kernel/ke/pmm/pmm_boot_init.c                   \
     src/arch/arch.c                                     \
     src/arch/amd64/idt.c                                \
     src/arch/amd64/cpu.c                                \

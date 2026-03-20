@@ -48,12 +48,25 @@ ConsoleWriteVFmtInternal(const char *fmt, VA_LIST args)
             continue;
         }
 
-        // Parse padding
+        // Parse flags and padding
+        BOOL leftAlign = FALSE;
         char pc = 0;
 
-        if (*p == '0')
+        // Check for left-align flag '-'
+        if (*p == '-')
+        {
+            leftAlign = TRUE;
+            ++p;
+        }
+
+        if (*p == '0' && !leftAlign)
         {
             pc = '0';
+            ++p;
+        }
+        else if (*p == '0')
+        {
+            // Skip '0' when left-aligned (use space padding)
             ++p;
         }
 
@@ -63,6 +76,9 @@ ConsoleWriteVFmtInternal(const char *fmt, VA_LIST args)
             width = width * 10 + (*p - '0');
             p++;
         }
+        // Clamp width to prevent buffer overflow
+        if (width >= MAX_FORMAT_BUFFER)
+            width = MAX_FORMAT_BUFFER - 1;
         if (width > 0 && !pc)
             pc = ' ';
 
@@ -78,49 +94,109 @@ ConsoleWriteVFmtInternal(const char *fmt, VA_LIST args)
             const char *s = VA_ARG(args, const char *);
             if (s == NULL)
                 s = "(null)";
-            if (width)
+            size_t len = strlen(s);
+            size_t padLen = (width > len) ? width - len : 0;
+            if (!leftAlign && padLen > 0)
             {
-                size_t len = strlen(s);
-                if (len < width)
+                for (uint32_t i = 0; i < padLen; ++i)
                 {
-                    for (uint32_t i = 0; i < width - len; ++i)
-                    {
-                        (void)ConsoleWriteChar(pc);
-                        written++;
-                    }
+                    (void)ConsoleWriteChar(pc);
+                    written++;
                 }
             }
             written += ConsoleWrite(s);
+            if (leftAlign && padLen > 0)
+            {
+                for (uint32_t i = 0; i < padLen; ++i)
+                {
+                    (void)ConsoleWriteChar(' ');
+                    written++;
+                }
+            }
             break;
         }
         case 'd':
         case 'i': {
             int64_t val = VA_ARG(args, int);
-            (void)Int64ToStringEx(val, buf, width, pc);
-            written += ConsoleWrite(buf);
+            uint64_t numLen;
+            if (leftAlign)
+            {
+                numLen = Int64ToStringEx(val, buf, 0, 0);
+                written += ConsoleWrite(buf);
+                for (uint32_t i = numLen; i < width; ++i)
+                {
+                    (void)ConsoleWriteChar(' ');
+                    written++;
+                }
+            }
+            else
+            {
+                (void)Int64ToStringEx(val, buf, width, pc);
+                written += ConsoleWrite(buf);
+            }
             break;
         }
         case 'l': {
+            uint64_t numLen;
             if (*(p + 1) == 'd' || *(p + 1) == 'i') // long decimal
             {
                 ++p;
                 int64_t val = VA_ARG(args, long);
-                (void)Int64ToStringEx(val, buf, width, pc);
-                written += ConsoleWrite(buf);
+                if (leftAlign)
+                {
+                    numLen = Int64ToStringEx(val, buf, 0, 0);
+                    written += ConsoleWrite(buf);
+                    for (uint32_t i = numLen; i < width; ++i)
+                    {
+                        (void)ConsoleWriteChar(' ');
+                        written++;
+                    }
+                }
+                else
+                {
+                    (void)Int64ToStringEx(val, buf, width, pc);
+                    written += ConsoleWrite(buf);
+                }
             }
             else if (*(p + 1) == 'u') // long unsigned
             {
                 ++p;
                 uint64_t val = VA_ARG(args, unsigned long);
-                (void)UInt64ToStringEx(val, buf, 10, width, pc);
-                written += ConsoleWrite(buf);
+                if (leftAlign)
+                {
+                    numLen = UInt64ToStringEx(val, buf, 10, 0, 0);
+                    written += ConsoleWrite(buf);
+                    for (uint32_t i = numLen; i < width; ++i)
+                    {
+                        (void)ConsoleWriteChar(' ');
+                        written++;
+                    }
+                }
+                else
+                {
+                    (void)UInt64ToStringEx(val, buf, 10, width, pc);
+                    written += ConsoleWrite(buf);
+                }
             }
             else if (*(p + 1) == 'x' || *(p + 1) == 'X') // long hex
             {
                 ++p;
                 uint64_t val = VA_ARG(args, unsigned long);
-                (void)UInt64ToStringEx(val, buf, 16, width, pc);
-                written += ConsoleWrite(buf);
+                if (leftAlign)
+                {
+                    numLen = UInt64ToStringEx(val, buf, 16, 0, 0);
+                    written += ConsoleWrite(buf);
+                    for (uint32_t i = numLen; i < width; ++i)
+                    {
+                        (void)ConsoleWriteChar(' ');
+                        written++;
+                    }
+                }
+                else
+                {
+                    (void)UInt64ToStringEx(val, buf, 16, width, pc);
+                    written += ConsoleWrite(buf);
+                }
             }
             else
             {
@@ -130,15 +206,43 @@ ConsoleWriteVFmtInternal(const char *fmt, VA_LIST args)
         }
         case 'u': {
             uint64_t val = VA_ARG(args, unsigned int);
-            (void)UInt64ToString(val, buf, 10, FALSE);
-            written += ConsoleWrite(buf);
+            uint64_t numLen;
+            if (leftAlign)
+            {
+                numLen = UInt64ToStringEx(val, buf, 10, 0, 0);
+                written += ConsoleWrite(buf);
+                for (uint32_t i = numLen; i < width; ++i)
+                {
+                    (void)ConsoleWriteChar(' ');
+                    written++;
+                }
+            }
+            else
+            {
+                (void)UInt64ToStringEx(val, buf, 10, width, pc);
+                written += ConsoleWrite(buf);
+            }
             break;
         }
         case 'x':
         case 'X': {
             uint64_t val = VA_ARG(args, uint64_t);
-            (void)UInt64ToString(val, buf, 16, FALSE);
-            written += ConsoleWrite(buf);
+            uint64_t numLen;
+            if (leftAlign)
+            {
+                numLen = UInt64ToStringEx(val, buf, 16, 0, 0);
+                written += ConsoleWrite(buf);
+                for (uint32_t i = numLen; i < width; ++i)
+                {
+                    (void)ConsoleWriteChar(' ');
+                    written++;
+                }
+            }
+            else
+            {
+                (void)UInt64ToStringEx(val, buf, 16, width, pc);
+                written += ConsoleWrite(buf);
+            }
             break;
         }
         case 'p': {
@@ -242,7 +346,8 @@ ConsoleWriteVFmt(const char *fmt, VA_LIST args)
     return ConsoleWriteVFmtInternal(fmt, args);
 }
 
-HO_PUBLIC_API void ConsoleClearScreen(COLOR32 color)
+HO_PUBLIC_API void
+ConsoleClearScreen(COLOR32 color)
 {
     if (!gConsoleInitialized)
         return;

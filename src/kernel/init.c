@@ -4,6 +4,7 @@
 #include <arch/amd64/idt.h> // TODO: remove dependency on x86 arch
 #include <arch/amd64/acpi.h>
 #include <arch/amd64/efi_mem.h>
+#include <kernel/ke/mm.h>
 #include <kernel/ke/time_source.h>
 #include <kernel/ke/clock_event.h>
 #include "assets/fonts/font8x16.h"
@@ -15,20 +16,29 @@
 KE_VIDEO_DRIVER gVideoDriver;
 ARCH_BASIC_CPU_INFO gBasicCpuInfo;
 BITMAP_FONT_INFO gSystemFont;
+static BOOT_CAPSULE *gBootCapsule;
 
 static void InitBitmapFont(void);
 static void InitCpuState(STAGING_BLOCK *block);
 static void VerifyHhdm(STAGING_BLOCK *block);
-static BOOL FindFirstSafeProbePage(UINT64 descStart, UINT64 descEndExclusive, UINT64 capsuleBase,
-                                   UINT64 capsuleEndExclusive, UINT64 pageTableBase, UINT64 pageTableEndExclusive,
+static BOOL FindFirstSafeProbePage(UINT64 descStart,
+                                   UINT64 descEndExclusive,
+                                   UINT64 capsuleBase,
+                                   UINT64 capsuleEndExclusive,
+                                   UINT64 pageTableBase,
+                                   UINT64 pageTableEndExclusive,
                                    UINT64 *probePhysOut);
-static void DumpHhdmProbeDiagnostics(const EFI_MEMORY_MAP *map, UINT64 capsuleBase, UINT64 capsuleEndExclusive,
-                                     UINT64 pageTableBase, UINT64 pageTableEndExclusive);
+static void DumpHhdmProbeDiagnostics(const EFI_MEMORY_MAP *map,
+                                     UINT64 capsuleBase,
+                                     UINT64 capsuleEndExclusive,
+                                     UINT64 pageTableBase,
+                                     UINT64 pageTableEndExclusive);
 static void AssertRsdp(HO_VIRTUAL_ADDRESS rsdpVirt);
 
 void
 InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
 {
+    gBootCapsule = block;
     InitCpuState(block);
     InitBitmapFont();
     VdInit(&gVideoDriver, block);
@@ -46,6 +56,45 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
     VerifyHhdm(block);
     AssertRsdp(HHDM_PHYS2VIRT(block->AcpiRsdpPhys));
     GetBasicCpuInfo(&gBasicCpuInfo);
+
+    // ---- Physical Memory Manager ----
+    initStatus = KePmmInitFromBootMemoryMap(block);
+    if (initStatus != EC_SUCCESS)
+    {
+        HO_KPANIC(initStatus, "Failed to initialize PMM");
+    }
+
+    // PMM summary
+    KE_PMM_STATS pmmStats;
+    if (KePmmQueryStats(&pmmStats) == EC_SUCCESS)
+    {
+        klog(KLOG_LEVEL_INFO, "[PMM] total=%luKB free=%luKB reserved=%luKB\n", pmmStats.TotalBytes / 1024,
+             pmmStats.FreeBytes / 1024, pmmStats.ReservedBytes / 1024);
+    }
+
+    // Smoke test: single page alloc/write/read/free
+    {
+        HO_PHYSICAL_ADDRESS testPage;
+        initStatus = KePmmAllocPages(1, (void *)0, &testPage);
+        if (initStatus == EC_SUCCESS)
+        {
+            volatile uint64_t *va = (volatile uint64_t *)HHDM_PHYS2VIRT(testPage);
+            *va = 0xDEADBEEFCAFEBABEULL;
+            HO_KASSERT(*va == 0xDEADBEEFCAFEBABEULL, EC_INVALID_STATE);
+            KePmmFreePages(testPage, 1);
+            klog(KLOG_LEVEL_INFO, "[PMM] smoke: 1-page alloc/write/read/free OK\n");
+        }
+
+        // 4 contiguous pages
+        HO_PHYSICAL_ADDRESS testPages;
+        initStatus = KePmmAllocPages(4, (void *)0, &testPages);
+        if (initStatus == EC_SUCCESS)
+        {
+            HO_KASSERT(HO_IS_ALIGNED(testPages, PAGE_4KB), EC_INVALID_STATE);
+            KePmmFreePages(testPages, 4);
+            klog(KLOG_LEVEL_INFO, "[PMM] smoke: 4-page contiguous alloc/free OK\n");
+        }
+    }
 
     initStatus = KeTimeSourceInit(block->AcpiRsdpPhys);
     if (initStatus != EC_SUCCESS)
@@ -156,13 +205,18 @@ VerifyHhdm(STAGING_BLOCK *block)
         HO_KPANIC(EC_INVALID_STATE, "HHDM verification failed");
     }
 
-    klog(KLOG_LEVEL_INFO, "[MM] FULL HHDM smoke test OK: PA=%p VA=%p\n",
-         (void *)(UINTN)probePhys, (void *)(UINTN)HHDM_PHYS2VIRT(probePhys));
+    klog(KLOG_LEVEL_INFO, "[MM] FULL HHDM smoke test OK: PA=%p VA=%p\n", (void *)(UINTN)probePhys,
+         (void *)(UINTN)HHDM_PHYS2VIRT(probePhys));
 }
 
 static BOOL
-FindFirstSafeProbePage(UINT64 descStart, UINT64 descEndExclusive, UINT64 capsuleBase, UINT64 capsuleEndExclusive,
-                       UINT64 pageTableBase, UINT64 pageTableEndExclusive, UINT64 *probePhysOut)
+FindFirstSafeProbePage(UINT64 descStart,
+                       UINT64 descEndExclusive,
+                       UINT64 capsuleBase,
+                       UINT64 capsuleEndExclusive,
+                       UINT64 pageTableBase,
+                       UINT64 pageTableEndExclusive,
+                       UINT64 *probePhysOut)
 {
     typedef struct HHDM_EXCLUDE_RANGE
     {
@@ -216,8 +270,11 @@ FindFirstSafeProbePage(UINT64 descStart, UINT64 descEndExclusive, UINT64 capsule
 }
 
 static void
-DumpHhdmProbeDiagnostics(const EFI_MEMORY_MAP *map, UINT64 capsuleBase, UINT64 capsuleEndExclusive,
-                         UINT64 pageTableBase, UINT64 pageTableEndExclusive)
+DumpHhdmProbeDiagnostics(const EFI_MEMORY_MAP *map,
+                         UINT64 capsuleBase,
+                         UINT64 capsuleEndExclusive,
+                         UINT64 pageTableBase,
+                         UINT64 pageTableEndExclusive)
 {
     if (!map || map->DescriptorSize < sizeof(EFI_MEMORY_DESCRIPTOR) || map->DescriptorSize == 0)
         return;
@@ -225,12 +282,8 @@ DumpHhdmProbeDiagnostics(const EFI_MEMORY_MAP *map, UINT64 capsuleBase, UINT64 c
     UINT64 descCount = map->DescriptorTotalSize / map->DescriptorSize;
     klog(KLOG_LEVEL_INFO,
          "[MM] probe filter ranges: capsule=[%p,%p) page_tables=[%p,%p) recorded_pt_bytes=%u desc_count=%u\n",
-         (void *)(UINTN)capsuleBase,
-         (void *)(UINTN)capsuleEndExclusive,
-         (void *)(UINTN)pageTableBase,
-         (void *)(UINTN)pageTableEndExclusive,
-         pageTableEndExclusive - pageTableBase,
-         descCount);
+         (void *)(UINTN)capsuleBase, (void *)(UINTN)capsuleEndExclusive, (void *)(UINTN)pageTableBase,
+         (void *)(UINTN)pageTableEndExclusive, pageTableEndExclusive - pageTableBase, descCount);
 
     for (UINT64 idx = 0; idx < descCount; ++idx)
     {
@@ -248,15 +301,9 @@ DumpHhdmProbeDiagnostics(const EFI_MEMORY_MAP *map, UINT64 capsuleBase, UINT64 c
                                                    pageTableBase, pageTableEndExclusive, &firstSafeProbe);
 
         klog(KLOG_LEVEL_INFO,
-             "[MM] reclaimable desc[%u]: type=%u phys=[%p,%p) pages=%u overlap(capsule=%u,pt=%u) first_safe=%p\n",
-             idx,
-             desc->Type,
-             (void *)(UINTN)descStart,
-             (void *)(UINTN)descEndExclusive,
-             desc->NumberOfPages,
-             overlapsCapsule,
-             overlapsPageTables,
-             (void *)(UINTN)(hasSafeProbe ? firstSafeProbe : 0));
+             "[MM] reclaimable desc[%u]: type=%u phys=[%p,%p) pages=%u overlap(capsule=%u,pt=%u) first_safe=%p\n", idx,
+             desc->Type, (void *)(UINTN)descStart, (void *)(UINTN)descEndExclusive, desc->NumberOfPages,
+             overlapsCapsule, overlapsPageTables, (void *)(UINTN)(hasSafeProbe ? firstSafeProbe : 0));
     }
 }
 
@@ -275,4 +322,10 @@ AssertRsdp(HO_VIRTUAL_ADDRESS rsdpVirt)
     {
         HO_KPANIC(EC_NOT_SUPPORTED, "ACPI Revision not supported (only v2.0+ supported)");
     }
+}
+
+HO_KERNEL_API BOOT_CAPSULE *
+KeGetBootCapsule(void)
+{
+    return gBootCapsule;
 }

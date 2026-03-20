@@ -20,21 +20,21 @@ KLogWriteFmt(enum KE_LOG_LEVEL level, const char *fmt, ...)
     const char *levelStr = "";
     switch (level)
     {
-        case KLOG_LEVEL_DEBUG:
-            levelStr = "[DBG] ";
-            break;
-        case KLOG_LEVEL_INFO:
-            levelStr = "[INF] ";
-            break;
-        case KLOG_LEVEL_WARNING:
-            levelStr = "[WRN] ";
-            break;
-        case KLOG_LEVEL_ERROR:
-            levelStr = "[ERR] ";
-            break;
-        default:
-            levelStr = "[UNK] ";
-            break;
+    case KLOG_LEVEL_DEBUG:
+        levelStr = "[DBG] ";
+        break;
+    case KLOG_LEVEL_INFO:
+        levelStr = "[INF] ";
+        break;
+    case KLOG_LEVEL_WARNING:
+        levelStr = "[WRN] ";
+        break;
+    case KLOG_LEVEL_ERROR:
+        levelStr = "[ERR] ";
+        break;
+    default:
+        levelStr = "[UNK] ";
+        break;
     }
     written += ConsoleWrite(levelStr);
 

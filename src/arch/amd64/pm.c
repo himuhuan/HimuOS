@@ -79,7 +79,8 @@ InitCpuCoreLocalData(void *base, uint64_t size)
     return gdt;
 }
 
-HO_KERNEL_API void LoadGdtAndTss(CPU_CORE_LOCAL_DATA *data)
+HO_KERNEL_API void
+LoadGdtAndTss(CPU_CORE_LOCAL_DATA *data)
 {
     uint16_t kcode = GDT_KRNL_CODE_SEL;
     uint16_t kdata = GDT_KRNL_DATA_SEL;
@@ -105,7 +106,8 @@ HO_KERNEL_API void LoadGdtAndTss(CPU_CORE_LOCAL_DATA *data)
                  : "rax", "memory");
 }
 
-static void SetTssEntry(void *base, uint64_t tss)
+static void
+SetTssEntry(void *base, uint64_t tss)
 {
     TSS_DESCRIPTOR *desc = base;
     memset(desc, 0, sizeof(TSS_DESCRIPTOR));
@@ -113,11 +115,11 @@ static void SetTssEntry(void *base, uint64_t tss)
     const uint16_t kLimit = sizeof(TSS64) - 1;
     desc->LimitLow = kLimit & 0xFFFF;
     desc->BaseLow = tss & 0xFFFF;
-    desc->BaseMiddle = (uint8_t) ((tss >> 16) & 0xFF);
+    desc->BaseMiddle = (uint8_t)((tss >> 16) & 0xFF);
     desc->Attributes = 0x89; // P=1, DPL=0, Type=9 (Available 64-bit TSS)
     // G = 0, D/B = 0, L = 0, AVL = 0, LimitHigh = (kLimit >> 16) & 0x0F
     desc->LimitHighAndFlags = (kLimit >> 16) & 0x0F;
-    desc->BaseHigh = (uint8_t) ((tss >> 24) & 0xFF);
-    desc->BaseUpper = (uint32_t) (tss >> 32);
+    desc->BaseHigh = (uint8_t)((tss >> 24) & 0xFF);
+    desc->BaseUpper = (uint32_t)(tss >> 32);
     desc->Reserved = 0;
 }

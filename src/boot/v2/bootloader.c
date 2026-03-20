@@ -220,7 +220,6 @@ JumpToKernel(STAGING_BLOCK *block)
     __asm__ __volatile__("pushq $0" ::: "memory");
     __asm__ __volatile__("mov %0, %%rdi" ::"r"(blockVirt) : "rdi", "memory");
     __asm__ __volatile__("jmp *%0" ::"r"(entryVirt));
-
 }
 
 static BOOL
