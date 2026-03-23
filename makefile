@@ -147,6 +147,9 @@ SRCS_KERNEL_C := \
     src/kernel/ke/pmm/pmm_device.c                      \
     src/kernel/ke/pmm/bitmap_sink.c                     \
     src/kernel/ke/pmm/pmm_boot_init.c                   \
+    src/kernel/ke/mm/pool.c                             \
+    src/kernel/ke/thread/kthread.c                      \
+    src/kernel/ke/thread/scheduler.c                    \
     src/arch/arch.c                                     \
     src/arch/amd64/idt.c                                \
     src/arch/amd64/cpu.c                                \
@@ -163,7 +166,8 @@ SRCS_KERNEL_C := \
     src/assets/fonts/font8x16.c
 
 SRCS_KERNEL_ASM := \
-    src/arch/amd64/intr_stub.asm
+    src/arch/amd64/intr_stub.asm \
+    src/arch/amd64/context_switch.asm
 
 # Kernel target: kernel sources + full libc + elf
 SRCS_KERNEL_ALL := $(SRCS_KERNEL_C) $(SRCS_LIBC) $(SRCS_ELF) $(SRCS_KERNEL_ASM)

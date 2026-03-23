@@ -239,3 +239,19 @@ KeClockEventGetSourceName(void)
         return NULL;
     return gClockEventDevice.ActiveSink->GetName(gClockEventDevice.ActiveSinkContext);
 }
+
+HO_KERNEL_API uint64_t
+KeClockEventGetMinDeltaNs(void)
+{
+    if (!gClockEventDevice.Initialized || !gClockEventDevice.ActiveSink)
+        return 0;
+    return gClockEventDevice.ActiveSink->GetMinDeltaNs(gClockEventDevice.ActiveSinkContext);
+}
+
+HO_KERNEL_API uint64_t
+KeClockEventGetMaxDeltaNs(void)
+{
+    if (!gClockEventDevice.Initialized || !gClockEventDevice.ActiveSink)
+        return 0;
+    return gClockEventDevice.ActiveSink->GetMaxDeltaNs(gClockEventDevice.ActiveSinkContext);
+}

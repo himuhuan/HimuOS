@@ -10,6 +10,7 @@
 #include <kernel/ke/sysinfo.h>
 #include <kernel/ke/time_source.h>
 #include <kernel/ke/clock_event.h>
+#include <kernel/ke/scheduler.h>
 #include <kernel/hodefs.h>
 #include <kernel/init.h>
 #include <arch/arch.h>
@@ -431,6 +432,23 @@ QueryClockEvent(void *Buffer, size_t BufferSize, size_t *RequiredSize)
     return EC_SUCCESS;
 }
 
+static HO_STATUS
+QueryScheduler(void *Buffer, size_t BufferSize, size_t *RequiredSize)
+{
+    const size_t required = sizeof(KE_SYSINFO_SCHEDULER_DATA);
+
+    if (RequiredSize)
+        *RequiredSize = required;
+
+    if (!Buffer)
+        return EC_SUCCESS;
+
+    if (BufferSize < required)
+        return EC_NOT_ENOUGH_MEMORY;
+
+    return KeQuerySchedulerInfo((KE_SYSINFO_SCHEDULER_DATA *)Buffer);
+}
+
 // ─────────────────────────────────────────────────────────────
 // Main API
 // ─────────────────────────────────────────────────────────────
@@ -485,6 +503,9 @@ KeQuerySystemInformation(KE_SYSINFO_CLASS Class, void *Buffer, size_t BufferSize
 
     case KE_SYSINFO_CLOCK_EVENT:
         return QueryClockEvent(Buffer, BufferSize, RequiredSize);
+
+    case KE_SYSINFO_SCHEDULER:
+        return QueryScheduler(Buffer, BufferSize, RequiredSize);
 
     default:
         return EC_ILLEGAL_ARGUMENT;
