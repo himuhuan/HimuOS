@@ -10,6 +10,7 @@
 #include <kernel/ke/scheduler.h>
 #include <kernel/ke/kthread.h>
 #include <kernel/ke/clock_event.h>
+#include <kernel/ke/critical_section.h>
 #include <kernel/ke/time_source.h>
 #include <kernel/ke/mm.h>
 #include <kernel/hodefs.h>
@@ -63,7 +64,8 @@ KiNowNs(void)
 void
 KiThreadTrampoline(void)
 {
-    __asm__ __volatile__("sti" ::: "memory");
+    ARCH_INTERRUPT_STATE enabledState = {.MaskableInterruptEnabled = TRUE};
+    ArchRestoreInterruptState(enabledState);
 
     KTHREAD *self = KeGetCurrentThread();
     self->EntryPoint(self->EntryArg);
@@ -138,14 +140,13 @@ KeThreadStart(KTHREAD *thread)
     if (thread->State != KTHREAD_STATE_NEW)
         return EC_INVALID_STATE;
 
-    __asm__ __volatile__("cli" ::: "memory");
+    KE_CRITICAL_SECTION criticalSection = {0};
+    KeEnterCriticalSection(&criticalSection);
 
     thread->State = KTHREAD_STATE_READY;
     LinkedListInsertTail(&gReadyQueue, &thread->ReadyLink);
     gStats.TotalThreadsCreated++;
     gStats.ActiveThreadCount++;
-
-    klog(KLOG_LEVEL_INFO, "[SCHED] Thread %u started\n", thread->ThreadId);
 
     // If the CPU is idle, arm the timer with a minimal delta so the ISR
     // fires promptly and picks up the newly-ready thread.  This
@@ -155,7 +156,9 @@ KeThreadStart(KTHREAD *thread)
         KiArmClockEvent(KeClockEventGetMinDeltaNs());
     }
 
-    __asm__ __volatile__("sti" ::: "memory");
+    KeLeaveCriticalSection(&criticalSection);
+
+    klog(KLOG_LEVEL_INFO, "[SCHED] Thread %u started\n", thread->ThreadId);
     return EC_SUCCESS;
 }
 
@@ -166,21 +169,25 @@ KeThreadStart(KTHREAD *thread)
 HO_KERNEL_API void
 KeYield(void)
 {
-    __asm__ __volatile__("cli" ::: "memory");
+    ARCH_INTERRUPT_STATE savedInterruptState = ArchDisableInterrupts();
+    KE_CRITICAL_SECTION criticalSection = {0};
+    KeEnterCriticalSection(&criticalSection);
 
     gStats.YieldCount++;
 
     if (LinkedListIsEmpty(&gReadyQueue))
     {
-        __asm__ __volatile__("sti" ::: "memory");
+        KeLeaveCriticalSection(&criticalSection);
+        ArchRestoreInterruptState(savedInterruptState);
         return;
     }
 
     gCurrentThread->State = KTHREAD_STATE_READY;
     LinkedListInsertTail(&gReadyQueue, &gCurrentThread->ReadyLink);
 
+    KeLeaveCriticalSection(&criticalSection);
     KiSchedule();
-    __asm__ __volatile__("sti" ::: "memory");
+    ArchRestoreInterruptState(savedInterruptState);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -198,7 +205,9 @@ KeSleep(uint64_t durationNs)
 
     HO_KASSERT(gCurrentThread != gIdleThread, EC_INVALID_STATE);
 
-    __asm__ __volatile__("cli" ::: "memory");
+    ARCH_INTERRUPT_STATE savedInterruptState = ArchDisableInterrupts();
+    KE_CRITICAL_SECTION criticalSection = {0};
+    KeEnterCriticalSection(&criticalSection);
 
     uint64_t nowNs = KiNowNs();
     gCurrentThread->WakeDeadline = nowNs + durationNs;
@@ -220,8 +229,9 @@ KeSleep(uint64_t durationNs)
     pos->Blink->Flink = &gCurrentThread->SleepLink;
     pos->Blink = &gCurrentThread->SleepLink;
 
+    KeLeaveCriticalSection(&criticalSection);
     KiSchedule();
-    __asm__ __volatile__("sti" ::: "memory");
+    ArchRestoreInterruptState(savedInterruptState);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -231,7 +241,9 @@ KeSleep(uint64_t durationNs)
 HO_KERNEL_API HO_NORETURN void
 KeThreadExit(void)
 {
-    __asm__ __volatile__("cli" ::: "memory");
+    (void)ArchDisableInterrupts();
+    KE_CRITICAL_SECTION criticalSection = {0};
+    KeEnterCriticalSection(&criticalSection);
 
     HO_KASSERT(gCurrentThread != gIdleThread, EC_INVALID_STATE);
 
@@ -243,6 +255,7 @@ KeThreadExit(void)
     // Park on terminated list for IdleThread reaper (reuse ReadyLink)
     LinkedListInsertTail(&gTerminatedList, &gCurrentThread->ReadyLink);
 
+    KeLeaveCriticalSection(&criticalSection);
     KiSchedule();
     __builtin_unreachable();
 }
@@ -461,16 +474,19 @@ KiReapTerminatedThreads(void)
 {
     while (TRUE)
     {
-        __asm__ __volatile__("cli" ::: "memory");
-        if (LinkedListIsEmpty(&gTerminatedList))
+        LINKED_LIST_TAG *entry = NULL;
+        KE_CRITICAL_SECTION criticalSection = {0};
+        KeEnterCriticalSection(&criticalSection);
+
+        if (!LinkedListIsEmpty(&gTerminatedList))
         {
-            __asm__ __volatile__("sti" ::: "memory");
-            return;
+            entry = gTerminatedList.Flink;
+            LinkedListRemove(entry);
         }
 
-        LINKED_LIST_TAG *entry = gTerminatedList.Flink;
-        LinkedListRemove(entry);
-        __asm__ __volatile__("sti" ::: "memory");
+        KeLeaveCriticalSection(&criticalSection);
+        if (!entry)
+            return;
 
         KTHREAD *thread = CONTAINING_RECORD(entry, KTHREAD, ReadyLink);
 
