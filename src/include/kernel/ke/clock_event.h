@@ -68,3 +68,13 @@ HO_KERNEL_API uint8_t KeClockEventGetVector(void);
  * @return Source name string, or NULL if not initialized.
  */
 HO_KERNEL_API const char *KeClockEventGetSourceName(void);
+
+/**
+ * @brief Get minimum programmable delta in nanoseconds.
+ */
+HO_KERNEL_API uint64_t KeClockEventGetMinDeltaNs(void);
+
+/**
+ * @brief Get maximum programmable delta in nanoseconds.
+ */
+HO_KERNEL_API uint64_t KeClockEventGetMaxDeltaNs(void);

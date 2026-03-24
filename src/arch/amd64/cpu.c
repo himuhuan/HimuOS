@@ -3,12 +3,37 @@
 #include <arch/amd64/asm.h>
 #include <libc/string.h>
 
+#define X64_RFLAGS_IF (1ULL << 9)
+
 HO_KERNEL_API void
 x64_Halt(void)
 {
-    asm volatile("cli");
+    x64_Cli();
     while (TRUE)
         asm volatile("hlt");
+}
+
+HO_KERNEL_API BOOL
+x64_GetInterruptEnabledState(void)
+{
+    return (x64_ReadRflags() & X64_RFLAGS_IF) != 0;
+}
+
+HO_KERNEL_API BOOL
+x64_DisableInterruptsSave(void)
+{
+    BOOL interruptEnabled = x64_GetInterruptEnabledState();
+    x64_Cli();
+    return interruptEnabled;
+}
+
+HO_KERNEL_API void
+x64_RestoreInterruptState(BOOL interruptEnabled)
+{
+    if (interruptEnabled)
+        x64_Sti();
+    else
+        x64_Cli();
 }
 
 HO_KERNEL_API void

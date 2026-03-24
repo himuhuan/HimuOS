@@ -7,6 +7,9 @@
 #include <kernel/ke/mm.h>
 #include <kernel/ke/time_source.h>
 #include <kernel/ke/clock_event.h>
+#include <kernel/ke/pool.h>
+#include <kernel/ke/kthread.h>
+#include <kernel/ke/scheduler.h>
 #include "assets/fonts/font8x16.h"
 
 //
@@ -106,6 +109,38 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
     if (initStatus != EC_SUCCESS)
     {
         HO_KPANIC(initStatus, "Failed to initialize clock event");
+    }
+
+    // ---- KTHREAD Object Pool ----
+    initStatus = KeKThreadPoolInit();
+    if (initStatus != EC_SUCCESS)
+    {
+        HO_KPANIC(initStatus, "Failed to initialize KTHREAD pool");
+    }
+
+    // Pool smoke test: alloc/free/realloc
+    {
+        KE_POOL testPool;
+        initStatus = KePoolInit(&testPool, 64, 8, "smoke-test");
+        if (initStatus == EC_SUCCESS)
+        {
+            void *a = KePoolAlloc(&testPool);
+            void *b = KePoolAlloc(&testPool);
+            HO_KASSERT(a != NULL && b != NULL && a != b, EC_INVALID_STATE);
+            KePoolFree(&testPool, a);
+            void *c = KePoolAlloc(&testPool);
+            HO_KASSERT(c == a, EC_INVALID_STATE);
+            KePoolFree(&testPool, b);
+            KePoolFree(&testPool, c);
+            klog(KLOG_LEVEL_INFO, "[POOL] smoke: alloc/free/realloc OK\n");
+        }
+    }
+
+    // ---- Scheduler ----
+    initStatus = KeSchedulerInit();
+    if (initStatus != EC_SUCCESS)
+    {
+        HO_KPANIC(initStatus, "Failed to initialize scheduler");
     }
 }
 

@@ -9,6 +9,14 @@
 
 #include "serial_console_sink.h"
 
+static inline void
+SerialConSinkEmitCrlf(SERIAL_CONSOLE_SINK *sink)
+{
+    SerialWriteByte(sink->Port, '\r');
+    SerialWriteByte(sink->Port, '\n');
+    sink->CurrentColumn = 0;
+}
+
 static HO_STATUS
 SerialConSinkGetInfo(MAYBE_UNUSED void *self, CONSOLE_SINK_INFO *info)
 {
@@ -27,10 +35,24 @@ SerialConSinkPutChar(
 
     while (sink->CurrentRow < y)
     {
-        SerialWriteByte(sink->Port, '\n');
+        SerialConSinkEmitCrlf(sink);
         sink->CurrentRow++;
     }
+
+    if (x < sink->CurrentColumn)
+    {
+        SerialWriteByte(sink->Port, '\r');
+        sink->CurrentColumn = 0;
+    }
+
+    while (sink->CurrentColumn < x)
+    {
+        SerialWriteByte(sink->Port, ' ');
+        sink->CurrentColumn++;
+    }
+
     SerialWriteByte(sink->Port, c);
+    sink->CurrentColumn++;
     return EC_SUCCESS;
 }
 
@@ -40,7 +62,7 @@ SerialConSinkScroll(MAYBE_UNUSED void *self, MAYBE_UNUSED uint16_t count, MAYBE_
     SERIAL_CONSOLE_SINK *s = (SERIAL_CONSOLE_SINK *)self;
     while (count-- > 0)
     {
-        SerialWriteByte(s->Port, '\n');
+        SerialConSinkEmitCrlf(s);
         s->CurrentRow++;
     }
     return EC_SUCCESS;
@@ -54,4 +76,5 @@ KeSerialConSinkInit(SERIAL_CONSOLE_SINK *sink, uint16_t port)
     sink->Base.Scroll = SerialConSinkScroll;
     sink->Port = port;
     sink->CurrentRow = 0;
+    sink->CurrentColumn = 0;
 }

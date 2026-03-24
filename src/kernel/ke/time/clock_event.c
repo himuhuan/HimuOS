@@ -8,6 +8,7 @@
  */
 
 #include <kernel/ke/clock_event.h>
+#include <arch/arch.h>
 #include <arch/amd64/idt.h>
 #include <kernel/hodbg.h>
 #include <kernel/ke/time_source.h>
@@ -67,28 +68,30 @@ static HO_STATUS
 ClockEventSelfTest(void)
 {
     uint64_t startCount = gClockEventDevice.PerCpu[0].InterruptCount;
-
-    __asm__ __volatile__("sti" ::: "memory");
+    HO_STATUS testStatus = EC_SUCCESS;
+    ARCH_INTERRUPT_STATE savedInterruptState = ArchDisableInterrupts();
+    ARCH_INTERRUPT_STATE enabledInterruptState = {.MaskableInterruptEnabled = TRUE};
+    ArchRestoreInterruptState(enabledInterruptState);
 
     for (uint32_t i = 0; i < 2; ++i)
     {
         uint64_t beforeCount = gClockEventDevice.PerCpu[0].InterruptCount;
-        HO_STATUS status = KeClockEventSetNextEvent(LAPIC_SELFTEST_DELTA_NS);
-        if (status != EC_SUCCESS)
+        testStatus = KeClockEventSetNextEvent(LAPIC_SELFTEST_DELTA_NS);
+        if (testStatus != EC_SUCCESS)
         {
-            __asm__ __volatile__("cli" ::: "memory");
-            return status;
+            break;
         }
 
-        status = WaitForTickAdvance(beforeCount, 1, LAPIC_SELFTEST_TIMEOUT_US);
-        if (status != EC_SUCCESS)
+        testStatus = WaitForTickAdvance(beforeCount, 1, LAPIC_SELFTEST_TIMEOUT_US);
+        if (testStatus != EC_SUCCESS)
         {
-            __asm__ __volatile__("cli" ::: "memory");
-            return status;
+            break;
         }
     }
 
-    __asm__ __volatile__("cli" ::: "memory");
+    ArchRestoreInterruptState(savedInterruptState);
+    if (testStatus != EC_SUCCESS)
+        return testStatus;
 
     uint64_t totalFired = gClockEventDevice.PerCpu[0].InterruptCount - startCount;
     if (totalFired != 2)
@@ -238,4 +241,20 @@ KeClockEventGetSourceName(void)
     if (!gClockEventDevice.Initialized || !gClockEventDevice.ActiveSink)
         return NULL;
     return gClockEventDevice.ActiveSink->GetName(gClockEventDevice.ActiveSinkContext);
+}
+
+HO_KERNEL_API uint64_t
+KeClockEventGetMinDeltaNs(void)
+{
+    if (!gClockEventDevice.Initialized || !gClockEventDevice.ActiveSink)
+        return 0;
+    return gClockEventDevice.ActiveSink->GetMinDeltaNs(gClockEventDevice.ActiveSinkContext);
+}
+
+HO_KERNEL_API uint64_t
+KeClockEventGetMaxDeltaNs(void)
+{
+    if (!gClockEventDevice.Initialized || !gClockEventDevice.ActiveSink)
+        return 0;
+    return gClockEventDevice.ActiveSink->GetMaxDeltaNs(gClockEventDevice.ActiveSinkContext);
 }

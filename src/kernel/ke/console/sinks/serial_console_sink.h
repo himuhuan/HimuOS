@@ -17,7 +17,8 @@ HO_INTERNAL_STRUCT typedef struct
 {
     KE_CONSOLE_SINK Base;
     uint16_t Port;
-    uint16_t CurrentRow; // for scroll tracking
+    uint16_t CurrentRow;
+    uint16_t CurrentColumn;
 } SERIAL_CONSOLE_SINK;
 
 HO_KERNEL_API void KeSerialConSinkInit(SERIAL_CONSOLE_SINK *sink, uint16_t port);

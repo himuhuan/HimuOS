@@ -78,3 +78,23 @@ wrmsr(uint32_t msr, uint64_t value)
     uint32_t hi = (uint32_t)(value >> 32);
     __asm__ __volatile__("wrmsr" : : "c"(msr), "a"(lo), "d"(hi));
 }
+
+MAYBE_UNUSED static inline uint64_t
+x64_ReadRflags(void)
+{
+    uint64_t flags;
+    __asm__ __volatile__("pushfq; popq %0" : "=r"(flags) : : "memory");
+    return flags;
+}
+
+MAYBE_UNUSED static inline void
+x64_Cli(void)
+{
+    __asm__ __volatile__("cli" : : : "memory");
+}
+
+MAYBE_UNUSED static inline void
+x64_Sti(void)
+{
+    __asm__ __volatile__("sti" : : : "memory");
+}

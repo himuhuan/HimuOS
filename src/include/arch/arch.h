@@ -34,9 +34,18 @@ typedef struct ARCH_BASIC_CPU_INFO
     } SpecificInfo;
 } ARCH_BASIC_CPU_INFO;
 
+typedef struct ARCH_INTERRUPT_STATE
+{
+    BOOL MaskableInterruptEnabled;
+} ARCH_INTERRUPT_STATE;
+
 /**
  * Halt the CPU indefinitely.
  */
 HO_NORETURN void HO_KERNEL_API Halt(void);
+
+HO_KERNEL_API ARCH_INTERRUPT_STATE ArchGetInterruptState(void);
+HO_KERNEL_API ARCH_INTERRUPT_STATE ArchDisableInterrupts(void);
+HO_KERNEL_API void ArchRestoreInterruptState(ARCH_INTERRUPT_STATE state);
 
 void HO_PUBLIC_API GetBasicCpuInfo(ARCH_BASIC_CPU_INFO *info);

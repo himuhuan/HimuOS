@@ -1,4 +1,5 @@
 #include <kernel/ke/console.h>
+#include <kernel/ke/critical_section.h>
 #include <string.h>
 #include <stdarg.h>
 #include <kernel/hodbg.h>
@@ -22,6 +23,18 @@ static MUX_CONSOLE_SINK gMuxConsoleSink;
 #endif
 static BOOL gConsoleInitialized = FALSE;
 
+static inline int
+ConsoleWriteCharUnlocked(char c)
+{
+    return KeConDevPutChar(&gConsoleDevice, c);
+}
+
+static inline uint64_t
+ConsoleWriteUnlocked(const char *str)
+{
+    return KeConDevPutStr(&gConsoleDevice, str);
+}
+
 static uint64_t
 ConsoleWriteVFmtInternal(const char *fmt, VA_LIST args)
 {
@@ -33,7 +46,7 @@ ConsoleWriteVFmtInternal(const char *fmt, VA_LIST args)
     {
         if (*p != '%')
         {
-            (void)ConsoleWriteChar(*p);
+            (void)ConsoleWriteCharUnlocked(*p);
             written++;
             continue;
         }
@@ -42,7 +55,7 @@ ConsoleWriteVFmtInternal(const char *fmt, VA_LIST args)
 
         if (*p == '%')
         {
-            (void)ConsoleWriteChar(*p);
+            (void)ConsoleWriteCharUnlocked(*p);
             written++;
             ++p;
             continue;
@@ -86,7 +99,7 @@ ConsoleWriteVFmtInternal(const char *fmt, VA_LIST args)
         {
         case 'c': {
             char c = (char)VA_ARG(args, int);
-            (void)ConsoleWriteChar(c);
+            (void)ConsoleWriteCharUnlocked(c);
             written++;
             break;
         }
@@ -100,16 +113,16 @@ ConsoleWriteVFmtInternal(const char *fmt, VA_LIST args)
             {
                 for (uint32_t i = 0; i < padLen; ++i)
                 {
-                    (void)ConsoleWriteChar(pc);
+                    (void)ConsoleWriteCharUnlocked(pc);
                     written++;
                 }
             }
-            written += ConsoleWrite(s);
+            written += ConsoleWriteUnlocked(s);
             if (leftAlign && padLen > 0)
             {
                 for (uint32_t i = 0; i < padLen; ++i)
                 {
-                    (void)ConsoleWriteChar(' ');
+                    (void)ConsoleWriteCharUnlocked(' ');
                     written++;
                 }
             }
@@ -122,17 +135,17 @@ ConsoleWriteVFmtInternal(const char *fmt, VA_LIST args)
             if (leftAlign)
             {
                 numLen = Int64ToStringEx(val, buf, 0, 0);
-                written += ConsoleWrite(buf);
+                written += ConsoleWriteUnlocked(buf);
                 for (uint32_t i = numLen; i < width; ++i)
                 {
-                    (void)ConsoleWriteChar(' ');
+                    (void)ConsoleWriteCharUnlocked(' ');
                     written++;
                 }
             }
             else
             {
                 (void)Int64ToStringEx(val, buf, width, pc);
-                written += ConsoleWrite(buf);
+                written += ConsoleWriteUnlocked(buf);
             }
             break;
         }
@@ -145,17 +158,17 @@ ConsoleWriteVFmtInternal(const char *fmt, VA_LIST args)
                 if (leftAlign)
                 {
                     numLen = Int64ToStringEx(val, buf, 0, 0);
-                    written += ConsoleWrite(buf);
+                    written += ConsoleWriteUnlocked(buf);
                     for (uint32_t i = numLen; i < width; ++i)
                     {
-                        (void)ConsoleWriteChar(' ');
+                        (void)ConsoleWriteCharUnlocked(' ');
                         written++;
                     }
                 }
                 else
                 {
                     (void)Int64ToStringEx(val, buf, width, pc);
-                    written += ConsoleWrite(buf);
+                    written += ConsoleWriteUnlocked(buf);
                 }
             }
             else if (*(p + 1) == 'u') // long unsigned
@@ -165,17 +178,17 @@ ConsoleWriteVFmtInternal(const char *fmt, VA_LIST args)
                 if (leftAlign)
                 {
                     numLen = UInt64ToStringEx(val, buf, 10, 0, 0);
-                    written += ConsoleWrite(buf);
+                    written += ConsoleWriteUnlocked(buf);
                     for (uint32_t i = numLen; i < width; ++i)
                     {
-                        (void)ConsoleWriteChar(' ');
+                        (void)ConsoleWriteCharUnlocked(' ');
                         written++;
                     }
                 }
                 else
                 {
                     (void)UInt64ToStringEx(val, buf, 10, width, pc);
-                    written += ConsoleWrite(buf);
+                    written += ConsoleWriteUnlocked(buf);
                 }
             }
             else if (*(p + 1) == 'x' || *(p + 1) == 'X') // long hex
@@ -185,17 +198,17 @@ ConsoleWriteVFmtInternal(const char *fmt, VA_LIST args)
                 if (leftAlign)
                 {
                     numLen = UInt64ToStringEx(val, buf, 16, 0, 0);
-                    written += ConsoleWrite(buf);
+                    written += ConsoleWriteUnlocked(buf);
                     for (uint32_t i = numLen; i < width; ++i)
                     {
-                        (void)ConsoleWriteChar(' ');
+                        (void)ConsoleWriteCharUnlocked(' ');
                         written++;
                     }
                 }
                 else
                 {
                     (void)UInt64ToStringEx(val, buf, 16, width, pc);
-                    written += ConsoleWrite(buf);
+                    written += ConsoleWriteUnlocked(buf);
                 }
             }
             else
@@ -210,17 +223,17 @@ ConsoleWriteVFmtInternal(const char *fmt, VA_LIST args)
             if (leftAlign)
             {
                 numLen = UInt64ToStringEx(val, buf, 10, 0, 0);
-                written += ConsoleWrite(buf);
+                written += ConsoleWriteUnlocked(buf);
                 for (uint32_t i = numLen; i < width; ++i)
                 {
-                    (void)ConsoleWriteChar(' ');
+                    (void)ConsoleWriteCharUnlocked(' ');
                     written++;
                 }
             }
             else
             {
                 (void)UInt64ToStringEx(val, buf, 10, width, pc);
-                written += ConsoleWrite(buf);
+                written += ConsoleWriteUnlocked(buf);
             }
             break;
         }
@@ -231,25 +244,25 @@ ConsoleWriteVFmtInternal(const char *fmt, VA_LIST args)
             if (leftAlign)
             {
                 numLen = UInt64ToStringEx(val, buf, 16, 0, 0);
-                written += ConsoleWrite(buf);
+                written += ConsoleWriteUnlocked(buf);
                 for (uint32_t i = numLen; i < width; ++i)
                 {
-                    (void)ConsoleWriteChar(' ');
+                    (void)ConsoleWriteCharUnlocked(' ');
                     written++;
                 }
             }
             else
             {
                 (void)UInt64ToStringEx(val, buf, 16, width, pc);
-                written += ConsoleWrite(buf);
+                written += ConsoleWriteUnlocked(buf);
             }
             break;
         }
         case 'p': {
             uint64_t val = (uint64_t)VA_ARG(args, void *);
-            written += ConsoleWrite("0X");
+            written += ConsoleWriteUnlocked("0X");
             (void)UInt64ToString(val, buf, 16, TRUE);
-            written += ConsoleWrite(buf);
+            written += ConsoleWriteUnlocked(buf);
             break;
         }
         // HimuOS kernel specific placeholders
@@ -259,14 +272,14 @@ ConsoleWriteVFmtInternal(const char *fmt, VA_LIST args)
                 ++p;
                 HO_STATUS val = VA_ARG(args, HO_STATUS);
                 const char *msg = KrGetStatusMessage(val);
-                written += ConsoleWrite(msg);
+                written += ConsoleWriteUnlocked(msg);
             }
             else if (*(p + 1) == 's') // error codes status (FAIL or SUCCESS)
             {
                 ++p;
                 HO_STATUS val = VA_ARG(args, HO_STATUS);
                 const char *msg = HO_LIKELY(!val) ? "OK" : "FAILED";
-                written += ConsoleWrite(msg);
+                written += ConsoleWriteUnlocked(msg);
             }
             else
             {
@@ -317,7 +330,11 @@ ConsoleWriteChar(char c)
     if (!gConsoleInitialized)
         return -1;
 
-    return KeConDevPutChar(&gConsoleDevice, c);
+    KE_CRITICAL_SECTION criticalSection = {0};
+    KeEnterCriticalSection(&criticalSection);
+    int status = ConsoleWriteCharUnlocked(c);
+    KeLeaveCriticalSection(&criticalSection);
+    return status;
 }
 
 HO_PUBLIC_API uint64_t
@@ -326,24 +343,42 @@ ConsoleWrite(const char *str)
     if (!gConsoleInitialized)
         return 0;
 
-    return KeConDevPutStr(&gConsoleDevice, str);
+    KE_CRITICAL_SECTION criticalSection = {0};
+    KeEnterCriticalSection(&criticalSection);
+    uint64_t written = ConsoleWriteUnlocked(str);
+    KeLeaveCriticalSection(&criticalSection);
+    return written;
 }
 
 HO_PUBLIC_API uint64_t
 ConsoleWriteFmt(const char *fmt, ...)
 {
+    if (!gConsoleInitialized)
+        return 0;
+
+    KE_CRITICAL_SECTION criticalSection = {0};
+    KeEnterCriticalSection(&criticalSection);
+
     VA_LIST args;
     VA_START(args, fmt);
     uint64_t written = ConsoleWriteVFmtInternal(fmt, args);
     VA_END(args);
 
+    KeLeaveCriticalSection(&criticalSection);
     return written;
 }
 
 HO_PUBLIC_API uint64_t
 ConsoleWriteVFmt(const char *fmt, VA_LIST args)
 {
-    return ConsoleWriteVFmtInternal(fmt, args);
+    if (!gConsoleInitialized)
+        return 0;
+
+    KE_CRITICAL_SECTION criticalSection = {0};
+    KeEnterCriticalSection(&criticalSection);
+    uint64_t written = ConsoleWriteVFmtInternal(fmt, args);
+    KeLeaveCriticalSection(&criticalSection);
+    return written;
 }
 
 HO_PUBLIC_API void
@@ -352,5 +387,8 @@ ConsoleClearScreen(COLOR32 color)
     if (!gConsoleInitialized)
         return;
 
+    KE_CRITICAL_SECTION criticalSection = {0};
+    KeEnterCriticalSection(&criticalSection);
     KeConDevClearScreen(&gConsoleDevice, color);
+    KeLeaveCriticalSection(&criticalSection);
 }

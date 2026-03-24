@@ -1,0 +1,196 @@
+<mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="1100" pageHeight="1060" math="0" shadow="0" adaptiveColors="auto">
+  <root>
+    <mxCell id="0" />
+    <mxCell id="1" parent="0" />
+
+    <mxCell id="title" value="HBL Memory &amp; Stack Layout — Kernel Entry Moment" style="text;html=1;fontStyle=1;fontSize=16;align=center;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+      <mxGeometry x="20" y="10" width="1060" height="36" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="lbl_va" value="Virtual Address Space (Higher Half)" style="text;html=1;fontStyle=1;fontSize=12;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+      <mxGeometry x="30" y="55" width="270" height="22" as="geometry"/>
+    </mxCell>
+    <mxCell id="lbl_stk" value="Kernel Stack Detail" style="text;html=1;fontStyle=1;fontSize=12;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+      <mxGeometry x="330" y="55" width="220" height="22" as="geometry"/>
+    </mxCell>
+    <mxCell id="lbl_cap" value="Boot Capsule (Physical Layout)" style="text;html=1;fontStyle=1;fontSize=12;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+      <mxGeometry x="600" y="55" width="270" height="22" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="va1" value="Framebuffer MMIO&#xa;0xFFFFC00000000000 (MMIO_BASE_VA)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="30" y="82" width="270" height="55" as="geometry"/>
+    </mxCell>
+    <mxCell id="va_gap1" value="···" style="text;html=1;align=center;fontSize=14;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+      <mxGeometry x="30" y="145" width="270" height="22" as="geometry"/>
+    </mxCell>
+    <mxCell id="va2" value="HHDM Base  0xFFFF900000000000&#xa;Full physical memory direct-mapped here&#xa;BOOT_CAPSULE @ HHDM + BasePhys  &#8592; RDI" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="30" y="175" width="270" height="68" as="geometry"/>
+    </mxCell>
+    <mxCell id="va_gap2" value="···" style="text;html=1;align=center;fontSize=14;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+      <mxGeometry x="30" y="251" width="270" height="22" as="geometry"/>
+    </mxCell>
+    <mxCell id="va3" value="IST1 Stack (16KB)&#xa;0xFFFF808000005000 &#8594; 0xFFFF808000009000" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="30" y="281" width="270" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="va4" value="Guard Page (4KB, NOT mapped)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0e0e0;strokeColor=#999999;dashed=1;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="30" y="339" width="270" height="26" as="geometry"/>
+    </mxCell>
+    <mxCell id="va5" value="Kernel Stack (16KB)  &#8592; RSP at entry&#xa;0xFFFF808000000000 &#8594; 0xFFFF808000004000" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="30" y="373" width="270" height="55" as="geometry"/>
+    </mxCell>
+    <mxCell id="va_gap3" value="···" style="text;html=1;align=center;fontSize=14;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+      <mxGeometry x="30" y="436" width="270" height="22" as="geometry"/>
+    </mxCell>
+    <mxCell id="va6" value="Kernel Code  &#8592; RIP (KRNL_BASE_VA)&#xa;0xFFFF800000000000  [entry: kmain]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="30" y="466" width="270" height="55" as="geometry"/>
+    </mxCell>
+    <mxCell id="va_gap4" value="···" style="text;html=1;align=center;fontSize=14;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+      <mxGeometry x="30" y="529" width="270" height="22" as="geometry"/>
+    </mxCell>
+    <mxCell id="va7" value="Identity-mapped Lower 2GB&#xa;0x0000000000000000 &#8594; 0x0000000080000000" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="30" y="559" width="270" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="va_note" value="(Non-canonical addresses 0x0001000000000000&#xa;  &#8211; 0xFFFF000000000000 are invalid / unmapped)" style="text;html=1;align=left;fontSize=9;strokeColor=none;fillColor=none;fontColor=#888888;" vertex="1" parent="1">
+      <mxGeometry x="30" y="617" width="270" height="35" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="stk_top" value="Stack Top Boundary&#xa;0xFFFF808000004000" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#cccccc;strokeColor=#666666;fontStyle=1;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="330" y="82" width="220" height="36" as="geometry"/>
+    </mxCell>
+    <mxCell id="stk_dir" value="&#8595;  Stack grows downward  &#8595;" style="text;html=1;align=center;fontSize=10;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+      <mxGeometry x="330" y="124" width="220" height="20" as="geometry"/>
+    </mxCell>
+    <mxCell id="stk_rsp" value="&#8592; RSP = 0xFFFF808000003FF8&#xa;[RSP + 0] = 0x0000000000000000&#xa;(null return address, pushed by bootloader)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="330" y="150" width="220" height="60" as="geometry"/>
+    </mxCell>
+    <mxCell id="stk_unused" value="&#8597; Unused stack space&#xa;(~16 KB - 8 bytes)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#aaaaaa;dashed=1;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="330" y="218" width="220" height="240" as="geometry"/>
+    </mxCell>
+    <mxCell id="stk_bot" value="Stack Bottom&#xa;0xFFFF808000000000" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#cccccc;strokeColor=#666666;fontStyle=1;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="330" y="466" width="220" height="36" as="geometry"/>
+    </mxCell>
+    <mxCell id="stk_gp" value="[ Guard Page 4KB — NOT MAPPED ]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eeeeee;strokeColor=#999999;dashed=1;fontSize=9;fontColor=#888888;" vertex="1" parent="1">
+      <mxGeometry x="330" y="510" width="220" height="26" as="geometry"/>
+    </mxCell>
+    <mxCell id="stk_ist1" value="IST1 Stack Bottom: 0xFFFF808000005000&#xa;(+16KB to 0xFFFF808000009000)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="330" y="544" width="220" height="44" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="cap_base" value="Physical Base: capsule-&gt;BasePhys" style="text;html=1;align=center;fontStyle=2;fontSize=10;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+      <mxGeometry x="600" y="82" width="260" height="20" as="geometry"/>
+    </mxCell>
+    <mxCell id="cap1" value="BOOT_CAPSULE header&#xa;Magic + GOP info + Layout + PageLayout&#xa;+ Phys addresses + PageTableInfo + CpuInfo&#xa;[sizeof = ~512 bytes]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="600" y="107" width="260" height="72" as="geometry"/>
+    </mxCell>
+    <mxCell id="cap2" value="EFI Memory Map&#xa;(fills rest of headerWithMapPages * 4KB)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;dashed=1;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="600" y="185" width="260" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="cap_off1" value="+ headerWithMapPages * 4KB  &#8595;" style="text;html=1;align=center;fontSize=9;fontColor=#666666;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+      <mxGeometry x="600" y="241" width="260" height="18" as="geometry"/>
+    </mxCell>
+    <mxCell id="cap3" value="Kernel ELF Code (.text, .rodata)&#xa;= KrnlCodeSize bytes" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="600" y="265" width="260" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="cap4" value="Kernel ELF Data (.data, .bss)&#xa;= KrnlDataSize bytes" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;dashed=1;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="600" y="321" width="260" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="cap_off2" value="+ KrnlPages * 4KB  &#8595;" style="text;html=1;align=center;fontSize=9;fontColor=#666666;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+      <mxGeometry x="600" y="377" width="260" height="18" as="geometry"/>
+    </mxCell>
+    <mxCell id="cap5" value="Kernel Stack (16KB = 4 pages)&#xa;KrnlStackPages * 4KB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="600" y="401" width="260" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="cap6" value="IST1 Stack (16KB = 4 pages)&#xa;IST1StackPages * 4KB" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=10;" vertex="1" parent="1">
+      <mxGeometry x="600" y="457" width="260" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="cap_end" value="[ Total = TotalPages * 4KB ]" style="text;html=1;align=center;fontStyle=2;fontSize=9;fontColor=#666666;strokeColor=none;fillColor=none;" vertex="1" parent="1">
+      <mxGeometry x="600" y="513" width="260" height="18" as="geometry"/>
+    </mxCell>
+    <mxCell id="cap_va_note" value="Virtual mappings (set by bootloader):&#xa;code/data &#8594; KRNL_BASE_VA  |  stack &#8594; KRNL_STACK_VA&#xa;IST1 &#8594; KRNL_IST1_STACK_VA  |  capsule &#8594; HHDM+phys" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fafafa;strokeColor=#aaaaaa;fontSize=9;align=left;spacingLeft=5;" vertex="1" parent="1">
+      <mxGeometry x="600" y="538" width="260" height="58" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="tbl_hdr" value="CPU State at Kernel Entry" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#666666;fontColor=#ffffff;fontStyle=1;fontSize=12;strokeColor=#333333;" vertex="1" parent="1">
+      <mxGeometry x="30" y="770" width="870" height="28" as="geometry"/>
+    </mxCell>
+    <mxCell id="tbl_ch1" value="Register" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dddddd;fontStyle=1;fontSize=10;strokeColor=#666666;" vertex="1" parent="1">
+      <mxGeometry x="30" y="798" width="110" height="26" as="geometry"/>
+    </mxCell>
+    <mxCell id="tbl_ch2" value="Value" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dddddd;fontStyle=1;fontSize=10;strokeColor=#666666;" vertex="1" parent="1">
+      <mxGeometry x="140" y="798" width="280" height="26" as="geometry"/>
+    </mxCell>
+    <mxCell id="tbl_ch3" value="Description" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dddddd;fontStyle=1;fontSize=10;strokeColor=#666666;" vertex="1" parent="1">
+      <mxGeometry x="420" y="798" width="480" height="26" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="r1c1" value="RIP" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eeeeee;fontStyle=1;fontSize=10;strokeColor=#999999;" vertex="1" parent="1">
+      <mxGeometry x="30" y="824" width="110" height="26" as="geometry"/>
+    </mxCell>
+    <mxCell id="r1c2" value="0xFFFF800000000000" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;fontSize=10;strokeColor=#999999;fontFamily=Courier New;" vertex="1" parent="1">
+      <mxGeometry x="140" y="824" width="280" height="26" as="geometry"/>
+    </mxCell>
+    <mxCell id="r1c3" value="KRNL_BASE_VA — kernel entry point (jmp target)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;fontSize=10;strokeColor=#999999;" vertex="1" parent="1">
+      <mxGeometry x="420" y="824" width="480" height="26" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="r2c1" value="RDI" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eeeeee;fontStyle=1;fontSize=10;strokeColor=#999999;" vertex="1" parent="1">
+      <mxGeometry x="30" y="850" width="110" height="26" as="geometry"/>
+    </mxCell>
+    <mxCell id="r2c2" value="HHDM_BASE_VA + capsule-&gt;BasePhys" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;fontSize=10;strokeColor=#999999;fontFamily=Courier New;" vertex="1" parent="1">
+      <mxGeometry x="140" y="850" width="280" height="26" as="geometry"/>
+    </mxCell>
+    <mxCell id="r2c3" value="BOOT_CAPSULE virtual address — first argument to kmain()" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;fontSize=10;strokeColor=#999999;" vertex="1" parent="1">
+      <mxGeometry x="420" y="850" width="480" height="26" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="r3c1" value="RSP" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eeeeee;fontStyle=1;fontSize=10;strokeColor=#999999;" vertex="1" parent="1">
+      <mxGeometry x="30" y="876" width="110" height="26" as="geometry"/>
+    </mxCell>
+    <mxCell id="r3c2" value="0xFFFF808000003FF8  [RSP+0]=0x0" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;fontSize=10;strokeColor=#999999;fontFamily=Courier New;" vertex="1" parent="1">
+      <mxGeometry x="140" y="876" width="280" height="26" as="geometry"/>
+    </mxCell>
+    <mxCell id="r3c3" value="Stack top - 8; [RSP] = null sentinel return address (kernel must not return)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;fontSize=10;strokeColor=#999999;" vertex="1" parent="1">
+      <mxGeometry x="420" y="876" width="480" height="26" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="r4c1" value="CR3" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eeeeee;fontStyle=1;fontSize=10;strokeColor=#999999;" vertex="1" parent="1">
+      <mxGeometry x="30" y="902" width="110" height="26" as="geometry"/>
+    </mxCell>
+    <mxCell id="r4c2" value="capsule-&gt;PageTableInfo.Ptr" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;fontSize=10;strokeColor=#999999;fontFamily=Courier New;" vertex="1" parent="1">
+      <mxGeometry x="140" y="902" width="280" height="26" as="geometry"/>
+    </mxCell>
+    <mxCell id="r4c3" value="PML4 root — bootloader-built page table (loaded by LoadCR3)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;fontSize=10;strokeColor=#999999;" vertex="1" parent="1">
+      <mxGeometry x="420" y="902" width="480" height="26" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="r5c1" value="RFLAGS.IF" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eeeeee;fontStyle=1;fontSize=10;strokeColor=#999999;" vertex="1" parent="1">
+      <mxGeometry x="30" y="928" width="110" height="26" as="geometry"/>
+    </mxCell>
+    <mxCell id="r5c2" value="0  (cleared by CLI)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;fontSize=10;strokeColor=#999999;fontFamily=Courier New;" vertex="1" parent="1">
+      <mxGeometry x="140" y="928" width="280" height="26" as="geometry"/>
+    </mxCell>
+    <mxCell id="r5c3" value="Interrupts disabled — kernel must set up IDT before sti" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;fontSize=10;strokeColor=#999999;" vertex="1" parent="1">
+      <mxGeometry x="420" y="928" width="480" height="26" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="r6c1" value="IA32_EFER.NXE" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eeeeee;fontStyle=1;fontSize=10;strokeColor=#999999;" vertex="1" parent="1">
+      <mxGeometry x="30" y="954" width="110" height="26" as="geometry"/>
+    </mxCell>
+    <mxCell id="r6c2" value="1  (if NX supported by CPU)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;fontSize=10;strokeColor=#999999;fontFamily=Courier New;" vertex="1" parent="1">
+      <mxGeometry x="140" y="954" width="280" height="26" as="geometry"/>
+    </mxCell>
+    <mxCell id="r6c3" value="No-Execute bit enabled in EFER — data pages are non-executable" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;fontSize=10;strokeColor=#999999;" vertex="1" parent="1">
+      <mxGeometry x="420" y="954" width="480" height="26" as="geometry"/>
+    </mxCell>
+
+    <mxCell id="r7c1" value="CS / SS" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#eeeeee;fontStyle=1;fontSize=10;strokeColor=#999999;" vertex="1" parent="1">
+      <mxGeometry x="30" y="980" width="110" height="26" as="geometry"/>
+    </mxCell>
+    <mxCell id="r7c2" value="CS=0x0008  SS=0x0010" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;fontSize=10;strokeColor=#999999;fontFamily=Courier New;" vertex="1" parent="1">
+      <mxGeometry x="140" y="980" width="280" height="26" as="geometry"/>
+    </mxCell>
+    <mxCell id="r7c3" value="GDT index 1 (Kernel Code, RPL=0) / index 2 (Kernel Data, RPL=0); TSS loaded at 0x0028" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;fontSize=10;strokeColor=#999999;" vertex="1" parent="1">
+      <mxGeometry x="420" y="980" width="480" height="26" as="geometry"/>
+    </mxCell>
+  </root>
+</mxGraphModel>

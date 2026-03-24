@@ -13,40 +13,56 @@
 #include <kernel/ke/time_source.h>
 #include <kernel/ke/clock_event.h>
 #include <kernel/ke/sysinfo.h>
+#include <kernel/ke/scheduler.h>
+
+static void PrintBootBanner(void);
+static void TestThreadA(void *arg);
+static void TestThreadB(void *arg);
 
 void kmain(BOOT_CAPSULE *capsule);
 
-static void PrintBootBanner(void);
+// ─────────────────────────────────────────────────────────────
+// Kernel entry point (MUST be the first function in this file)
+// ─────────────────────────────────────────────────────────────
+
 void
 kmain(BOOT_CAPSULE *capsule)
 {
     InitKernel(capsule);
     PrintBootBanner();
 
-    HO_STATUS status = KeClockEventSetNextEvent(1000000000ULL);
+    // Create test kernel threads
+    KTHREAD *threadA = NULL;
+    KTHREAD *threadB = NULL;
+
+    HO_STATUS status;
+    status = KeThreadCreate(&threadA, TestThreadA, (void *)0xAAAA);
     if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to create thread A");
+
+    status = KeThreadCreate(&threadB, TestThreadB, (void *)0xBBBB);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to create thread B");
+
+    status = KeThreadStart(threadA);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to start thread A");
+
+    status = KeThreadStart(threadB);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to start thread B");
+
+    // Query & print initial scheduler state
+    KE_SYSINFO_SCHEDULER_DATA schedInfo;
+    if (KeQuerySchedulerInfo(&schedInfo) == EC_SUCCESS)
     {
-        HO_KPANIC(status, "Failed to arm first clock event");
+        klog(KLOG_LEVEL_INFO, "[SCHED] enabled=%u idle=%u active=%u ready=%u\n", schedInfo.SchedulerEnabled,
+             schedInfo.IdleThreadId, schedInfo.ActiveThreadCount, schedInfo.ReadyQueueDepth);
     }
 
-    uint64_t printedSeconds = 0;
-    while (TRUE)
-    {
-        __asm__ __volatile__("sti; hlt" ::: "memory");
-
-        uint64_t interruptCount = KeClockEventGetInterruptCount();
-        while (printedSeconds < interruptCount)
-        {
-            printedSeconds++;
-            klog(KLOG_LEVEL_INFO, "[TICK] %lu sec passed!\n", printedSeconds);
-
-            status = KeClockEventSetNextEvent(1000000000ULL);
-            if (status != EC_SUCCESS)
-            {
-                HO_KPANIC(status, "Failed to arm next clock event");
-            }
-        }
-    }
+    // Current execution flow IS the IdleThread — enter idle loop
+    KeIdleLoop();
+    // Never reached
 }
 
 static void
@@ -75,4 +91,33 @@ PrintBootBanner(void)
     kprintf("  %-24s %s\n", "------------------------", "------------------------------------------");
 
     kprintf("Copyright(c) 2024-2025 Himu, ONLY FOR EDUCATIONAL PURPOSES.\n\n");
+}
+
+// ─────────────────────────────────────────────────────────────
+// Test kernel threads
+// ─────────────────────────────────────────────────────────────
+
+static void
+TestThreadA(void *arg)
+{
+    uint32_t id = KeGetCurrentThread()->ThreadId;
+    for (uint32_t i = 0; i < 5; i++)
+    {
+        klog(KLOG_LEVEL_INFO, "[THREAD-%u] tick %u (arg=%p)\n", id, i, arg);
+        KeSleep(50000000ULL); // 50 ms
+    }
+    klog(KLOG_LEVEL_INFO, "[THREAD-%u] done, exiting\n", id);
+}
+
+static void
+TestThreadB(void *arg)
+{
+    uint32_t id = KeGetCurrentThread()->ThreadId;
+    for (uint32_t i = 0; i < 5; i++)
+    {
+        klog(KLOG_LEVEL_INFO, "[THREAD-%u] tick %u (arg=%p)\n", id, i, arg);
+        KeYield();
+        KeSleep(30000000ULL); // 30 ms
+    }
+    klog(KLOG_LEVEL_INFO, "[THREAD-%u] done, exiting\n", id);
 }

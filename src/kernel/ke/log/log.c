@@ -9,6 +9,7 @@
 #include <kernel/log.h>
 
 #include <kernel/ke/console.h>
+#include <kernel/ke/critical_section.h>
 #include <kernel/ke/time_source.h>
 #include <stdarg.h>
 
@@ -16,6 +17,8 @@ HO_KERNEL_API uint64_t
 KLogWriteFmt(enum KE_LOG_LEVEL level, const char *fmt, ...)
 {
     uint64_t written = 0;
+    KE_CRITICAL_SECTION criticalSection = {0};
+    KeEnterCriticalSection(&criticalSection);
 
     const char *levelStr = "";
     switch (level)
@@ -55,5 +58,6 @@ KLogWriteFmt(enum KE_LOG_LEVEL level, const char *fmt, ...)
     written += ConsoleWriteVFmt(fmt, args);
     VA_END(args);
 
+    KeLeaveCriticalSection(&criticalSection);
     return written;
 }
