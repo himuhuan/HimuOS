@@ -10,6 +10,7 @@
 #include <kernel/ke/scheduler.h>
 #include <kernel/ke/kthread.h>
 #include <kernel/ke/event.h>
+#include <kernel/ke/semaphore.h>
 #include <kernel/ke/clock_event.h>
 #include <kernel/ke/critical_section.h>
 #include <kernel/ke/time_source.h>
@@ -53,6 +54,8 @@ static void KiCompleteWait(KWAIT_BLOCK *block, HO_STATUS status);
 static void KiInsertTimeoutQueue(KWAIT_BLOCK *block);
 static void KiInitWaitBlock(KWAIT_BLOCK *block);
 static HO_STATUS KiValidateDispatcherHeader(const KDISPATCHER_HEADER *header);
+static void KiAssertSemaphoreState(const KSEMAPHORE *semaphore);
+static BOOL KiTryAcquireDispatcherObject(KDISPATCHER_HEADER *header);
 
 void KiThreadTrampoline(void);
 
@@ -394,10 +397,50 @@ KiValidateDispatcherHeader(const KDISPATCHER_HEADER *header)
 
     switch (header->Type)
     {
-        case DISPATCHER_TYPE_EVENT:
-            return EC_SUCCESS;
-        default:
-            return EC_NOT_SUPPORTED;
+    case DISPATCHER_TYPE_EVENT:
+    case DISPATCHER_TYPE_SEMAPHORE:
+        return EC_SUCCESS;
+    default:
+        return EC_NOT_SUPPORTED;
+    }
+}
+
+// Internal: validate runtime semaphore invariants
+static void
+KiAssertSemaphoreState(const KSEMAPHORE *semaphore)
+{
+    HO_KASSERT(semaphore != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(semaphore->Header.Signature == KDISPATCHER_SIGNATURE, EC_INVALID_STATE);
+    HO_KASSERT(semaphore->Header.Type == DISPATCHER_TYPE_SEMAPHORE, EC_NOT_SUPPORTED);
+    HO_KASSERT(semaphore->Limit > 0, EC_INVALID_STATE);
+    HO_KASSERT(semaphore->Header.SignalState >= 0, EC_INVALID_STATE);
+    HO_KASSERT(semaphore->Header.SignalState <= semaphore->Limit, EC_INVALID_STATE);
+}
+
+// Internal: test whether a dispatcher object can satisfy immediately.
+// For counted objects, this helper also consumes the permit atomically.
+static BOOL
+KiTryAcquireDispatcherObject(KDISPATCHER_HEADER *header)
+{
+    switch (header->Type)
+    {
+    case DISPATCHER_TYPE_EVENT:
+        return header->SignalState != 0;
+
+    case DISPATCHER_TYPE_SEMAPHORE: {
+        KSEMAPHORE *semaphore = (KSEMAPHORE *)header;
+        KiAssertSemaphoreState(semaphore);
+
+        if (header->SignalState == 0)
+            return FALSE;
+
+        header->SignalState--;
+        HO_KASSERT(header->SignalState >= 0, EC_INVALID_STATE);
+        return TRUE;
+    }
+
+    default:
+        return FALSE;
     }
 }
 
@@ -546,11 +589,11 @@ KeWaitForSingleObject(void *object, uint64_t timeoutNs)
     KE_CRITICAL_SECTION criticalSection = {0};
     KeEnterCriticalSection(&criticalSection);
 
-    // Path 1: object already signaled — immediate success
-    if (header->SignalState)
+    // Path 1: object already signaled / has a permit — immediate success
+    if (KiTryAcquireDispatcherObject(header))
     {
-        klog(KLOG_LEVEL_DEBUG, "[WAIT] Thread %u immediate satisfy (type=%d)\n", gCurrentThread->ThreadId,
-             header->Type);
+        klog(KLOG_LEVEL_DEBUG, "[WAIT] Thread %u immediate satisfy (type=%d, state=%ld)\n", gCurrentThread->ThreadId,
+             header->Type, (long)header->SignalState);
         KeLeaveCriticalSection(&criticalSection);
         ArchRestoreInterruptState(savedInterruptState);
         return EC_SUCCESS;
@@ -559,8 +602,8 @@ KeWaitForSingleObject(void *object, uint64_t timeoutNs)
     // Path 2: zero-timeout poll — immediate timeout
     if (timeoutNs == 0)
     {
-        klog(KLOG_LEVEL_DEBUG, "[WAIT] Thread %u zero-timeout poll miss (type=%d)\n", gCurrentThread->ThreadId,
-             header->Type);
+        klog(KLOG_LEVEL_DEBUG, "[WAIT] Thread %u zero-timeout poll miss (type=%d, state=%ld)\n",
+             gCurrentThread->ThreadId, header->Type, (long)header->SignalState);
         KeLeaveCriticalSection(&criticalSection);
         ArchRestoreInterruptState(savedInterruptState);
         return EC_TIMEOUT;
@@ -677,6 +720,86 @@ KeResetEvent(KEVENT *event)
     klog(KLOG_LEVEL_DEBUG, "[EVENT] Reset\n");
 
     KeLeaveCriticalSection(&criticalSection);
+}
+
+// ─────────────────────────────────────────────────────────────
+// KeInitializeSemaphore
+// ─────────────────────────────────────────────────────────────
+
+HO_KERNEL_API HO_STATUS
+KeInitializeSemaphore(KSEMAPHORE *semaphore, int32_t initialCount, int32_t limit)
+{
+    if (semaphore == NULL || initialCount < 0 || limit <= 0 || initialCount > limit)
+        return EC_ILLEGAL_ARGUMENT;
+
+    semaphore->Header.Signature = KDISPATCHER_SIGNATURE;
+    semaphore->Header.Type = DISPATCHER_TYPE_SEMAPHORE;
+    semaphore->Header.SignalState = initialCount;
+    LinkedListInit(&semaphore->Header.WaitListHead);
+    semaphore->Limit = limit;
+
+    klog(KLOG_LEVEL_DEBUG, "[SEMAPHORE] Initialized (count=%ld, limit=%ld)\n", (long)initialCount, (long)limit);
+    return EC_SUCCESS;
+}
+
+// ─────────────────────────────────────────────────────────────
+// KeReleaseSemaphore
+// ─────────────────────────────────────────────────────────────
+
+HO_KERNEL_API HO_STATUS
+KeReleaseSemaphore(KSEMAPHORE *semaphore, int32_t releaseCount)
+{
+    if (semaphore == NULL || releaseCount <= 0)
+        return EC_ILLEGAL_ARGUMENT;
+
+    ARCH_INTERRUPT_STATE savedInterruptState = ArchDisableInterrupts();
+    KE_CRITICAL_SECTION criticalSection = {0};
+    KeEnterCriticalSection(&criticalSection);
+
+    KiAssertSemaphoreState(semaphore);
+
+    uint32_t waiterCount = KiCountQueueDepth(&semaphore->Header.WaitListHead);
+    int64_t remainingPermitCount =
+        releaseCount > (int32_t)waiterCount ? (int64_t)releaseCount - (int64_t)waiterCount : 0;
+    int64_t resultingCount = (int64_t)semaphore->Header.SignalState + remainingPermitCount;
+
+    if (resultingCount > semaphore->Limit)
+    {
+        KeLeaveCriticalSection(&criticalSection);
+        ArchRestoreInterruptState(savedInterruptState);
+        return EC_ILLEGAL_ARGUMENT;
+    }
+
+    int32_t permitsToDispatch = releaseCount;
+    uint32_t releasedWaiters = 0;
+
+    while (permitsToDispatch > 0 && !LinkedListIsEmpty(&semaphore->Header.WaitListHead))
+    {
+        LINKED_LIST_TAG *entry = semaphore->Header.WaitListHead.Flink;
+        KWAIT_BLOCK *block = CONTAINING_RECORD(entry, KWAIT_BLOCK, WaitListLink);
+        KiCompleteWait(block, EC_SUCCESS);
+        permitsToDispatch--;
+        releasedWaiters++;
+    }
+
+    semaphore->Header.SignalState += permitsToDispatch;
+    KiAssertSemaphoreState(semaphore);
+
+    BOOL needSchedule = (gCurrentThread == gIdleThread && !LinkedListIsEmpty(&gReadyQueue));
+
+    klog(KLOG_LEVEL_DEBUG, "[SEMAPHORE] Release(count=%ld, woke=%u, available=%ld)\n", (long)releaseCount,
+         releasedWaiters, (long)semaphore->Header.SignalState);
+
+    KeLeaveCriticalSection(&criticalSection);
+
+    if (needSchedule)
+    {
+        klog(KLOG_LEVEL_DEBUG, "[SEMAPHORE] Release during idle, triggering reschedule\n");
+        KiSchedule();
+    }
+
+    ArchRestoreInterruptState(savedInterruptState);
+    return EC_SUCCESS;
 }
 
 // ─────────────────────────────────────────────────────────────

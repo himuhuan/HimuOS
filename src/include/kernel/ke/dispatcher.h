@@ -20,6 +20,7 @@
 typedef enum KDISPATCHER_OBJECT_TYPE
 {
     DISPATCHER_TYPE_EVENT = 0,
+    DISPATCHER_TYPE_SEMAPHORE,
 } KDISPATCHER_OBJECT_TYPE;
 
 // ─────────────────────────────────────────────────────────────
@@ -53,4 +54,4 @@ typedef struct KWAIT_BLOCK
 // ─────────────────────────────────────────────────────────────
 
 #define KDISPATCHER_SIGNATURE 0x4B444953U // 'KDIS'
-#define KE_WAIT_INFINITE 0xFFFFFFFFFFFFFFFFULL
+#define KE_WAIT_INFINITE      0xFFFFFFFFFFFFFFFFULL
