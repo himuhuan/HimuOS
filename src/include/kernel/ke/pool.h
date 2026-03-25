@@ -5,21 +5,21 @@
  * Description:
  * Ke Layer - Fixed-size kernel object pool (slab-like bootstrap arena).
  * CHARACTERISTICS:
- * 1. Zero Per-Object Overhead: Instead of maintaining external metadata or 
- * object headers, this pool time-multiplexes the memory slots. When a slot 
- * is free, it is treated as a KE_POOL_FREE_NODE to store the 'Next' pointer. 
+ * 1. Zero Per-Object Overhead: Instead of maintaining external metadata or
+ * object headers, this pool time-multiplexes the memory slots. When a slot
+ * is free, it is treated as a KE_POOL_FREE_NODE to store the 'Next' pointer.
  * When allocated, the entire slot is handed over to the caller as raw data.
  *
- * 2. Minimum Slot Size: To ensure the 'Next' pointer always fits, the slot 
- * size is strictly enforced to be at least sizeof(void*), even if the 
+ * 2. Minimum Slot Size: To ensure the 'Next' pointer always fits, the slot
+ * size is strictly enforced to be at least sizeof(void*), even if the
  * requested object size is smaller.
  *
- * 3. O(1) Complexity: Both allocation and deallocation are constant-time 
+ * 3. O(1) Complexity: Both allocation and deallocation are constant-time
  * operations, involving only simple pointer swaps at the head of the list.
  *
- * 4. Safety Warning: Since the free-list pointers reside within the objects 
- * themselves, any Use-After-Free (UAF) or buffer overflow by the consumer 
- * will directly corrupt the pool's internal linkage, leading to system-wide 
+ * 4. Safety Warning: Since the free-list pointers reside within the objects
+ * themselves, any Use-After-Free (UAF) or buffer overflow by the consumer
+ * will directly corrupt the pool's internal linkage, leading to system-wide
  * instability.
  *
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.

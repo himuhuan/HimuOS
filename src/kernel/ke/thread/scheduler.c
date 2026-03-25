@@ -9,6 +9,7 @@
 
 #include <kernel/ke/scheduler.h>
 #include <kernel/ke/kthread.h>
+#include <kernel/ke/event.h>
 #include <kernel/ke/clock_event.h>
 #include <kernel/ke/critical_section.h>
 #include <kernel/ke/time_source.h>
@@ -25,7 +26,7 @@
 // ─────────────────────────────────────────────────────────────
 
 static LINKED_LIST_TAG gReadyQueue;
-static LINKED_LIST_TAG gSleepQueue;
+static LINKED_LIST_TAG gTimeoutQueue;
 static LINKED_LIST_TAG gTerminatedList;
 
 static KTHREAD *gCurrentThread;
@@ -43,11 +44,15 @@ static uint64_t gNextProgrammedDeadlineNs;
 
 static void KiSchedule(void);
 static void KiSchedulerTimerISR(void *frame, void *context);
-static void KiWakeSleepers(uint64_t nowNs);
+static void KiWakeTimeouts(uint64_t nowNs);
 static void KiArmClockEvent(uint64_t deltaNs);
 static void KiArmForNextEvent(uint64_t nowNs, KTHREAD *next);
 static void KiReapTerminatedThreads(void);
 static uint32_t KiCountQueueDepth(LINKED_LIST_TAG *head);
+static void KiCompleteWait(KWAIT_BLOCK *block, HO_STATUS status);
+static void KiInsertTimeoutQueue(KWAIT_BLOCK *block);
+static void KiInitWaitBlock(KWAIT_BLOCK *block);
+static HO_STATUS KiValidateDispatcherHeader(const KDISPATCHER_HEADER *header);
 
 void KiThreadTrampoline(void);
 
@@ -81,7 +86,7 @@ HO_KERNEL_API HO_STATUS
 KeSchedulerInit(void)
 {
     LinkedListInit(&gReadyQueue);
-    LinkedListInit(&gSleepQueue);
+    LinkedListInit(&gTimeoutQueue);
     LinkedListInit(&gTerminatedList);
     memset(&gStats, 0, sizeof(gStats));
 
@@ -101,9 +106,8 @@ KeSchedulerInit(void)
     gIdleThread->StackPhys = 0; // boot stack, not our allocation
     gIdleThread->Priority = 0;
     gIdleThread->Quantum = 0;
-    gIdleThread->WakeDeadline = 0;
+    KiInitWaitBlock(&gIdleThread->WaitBlock);
     LinkedListInit(&gIdleThread->ReadyLink);
-    LinkedListInit(&gIdleThread->SleepLink);
     gIdleThread->EntryPoint = NULL;
     gIdleThread->EntryArg = NULL;
     gIdleThread->Flags = KTHREAD_FLAG_IDLE;
@@ -210,24 +214,17 @@ KeSleep(uint64_t durationNs)
     KeEnterCriticalSection(&criticalSection);
 
     uint64_t nowNs = KiNowNs();
-    gCurrentThread->WakeDeadline = nowNs + durationNs;
+
+    // Set up timeout-only wait (Dispatcher = NULL)
+    KWAIT_BLOCK *wb = &gCurrentThread->WaitBlock;
+    KiInitWaitBlock(wb);
+    wb->DeadlineNs = nowNs + durationNs;
+
     gCurrentThread->State = KTHREAD_STATE_BLOCKED;
+    KiInsertTimeoutQueue(wb);
 
-    klog(KLOG_LEVEL_DEBUG, "[SCHED] Thread %u sleep %lu ns\n", gCurrentThread->ThreadId, (unsigned long)durationNs);
-
-    // Insert into sleep queue sorted by WakeDeadline (ascending)
-    LINKED_LIST_TAG *pos;
-    for (pos = gSleepQueue.Flink; pos != &gSleepQueue; pos = pos->Flink)
-    {
-        KTHREAD *t = CONTAINING_RECORD(pos, KTHREAD, SleepLink);
-        if (t->WakeDeadline > gCurrentThread->WakeDeadline)
-            break;
-    }
-    // Insert before pos (i.e., at the tail of all entries with earlier deadlines)
-    gCurrentThread->SleepLink.Flink = pos;
-    gCurrentThread->SleepLink.Blink = pos->Blink;
-    pos->Blink->Flink = &gCurrentThread->SleepLink;
-    pos->Blink = &gCurrentThread->SleepLink;
+    klog(KLOG_LEVEL_DEBUG, "[SCHED] Thread %u sleep %lu ns (deadline=%lu)\n", gCurrentThread->ThreadId,
+         (unsigned long)durationNs, (unsigned long)wb->DeadlineNs);
 
     KeLeaveCriticalSection(&criticalSection);
     KiSchedule();
@@ -343,8 +340,8 @@ KiSchedulerTimerISR(void *frame, void *context)
         return;
     }
 
-    // Wake sleeping threads whose deadlines have passed
-    KiWakeSleepers(nowNs);
+    // Wake timed-out wait blocks whose deadlines have passed
+    KiWakeTimeouts(nowNs);
 
     BOOL needReschedule = FALSE;
 
@@ -373,33 +370,102 @@ KiSchedulerTimerISR(void *frame, void *context)
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Internal: wake sleeping threads
-// ─────────────────────────────────────────────────────────────
-
+// Internal: initialize a wait block to clean state
 static void
-KiWakeSleepers(uint64_t nowNs)
+KiInitWaitBlock(KWAIT_BLOCK *block)
 {
-    while (!LinkedListIsEmpty(&gSleepQueue))
+    block->Dispatcher = NULL;
+    LinkedListInit(&block->WaitListLink);
+    LinkedListInit(&block->TimeoutLink);
+    block->DeadlineNs = 0;
+    block->CompletionStatus = EC_SUCCESS;
+    block->Completed = FALSE;
+}
+
+// Internal: validate dispatcher headers before generic wait logic
+static HO_STATUS
+KiValidateDispatcherHeader(const KDISPATCHER_HEADER *header)
+{
+    if (header == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (header->Signature != KDISPATCHER_SIGNATURE)
+        return EC_INVALID_STATE;
+
+    switch (header->Type)
     {
-        KTHREAD *sleeper = CONTAINING_RECORD(gSleepQueue.Flink, KTHREAD, SleepLink);
-        if (sleeper->WakeDeadline > nowNs)
-            break;
-
-        LinkedListRemove(&sleeper->SleepLink);
-        sleeper->WakeDeadline = 0;
-        sleeper->State = KTHREAD_STATE_READY;
-        LinkedListInsertTail(&gReadyQueue, &sleeper->ReadyLink);
-        gStats.SleepWakeCount++;
-
-        klog(KLOG_LEVEL_DEBUG, "[SCHED] Thread %u woke up\n", sleeper->ThreadId);
+        case DISPATCHER_TYPE_EVENT:
+            return EC_SUCCESS;
+        default:
+            return EC_NOT_SUPPORTED;
     }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Internal: arm clock event with clamping
-// ─────────────────────────────────────────────────────────────
+// Internal: insert wait block into timeout queue (sorted)
+static void
+KiInsertTimeoutQueue(KWAIT_BLOCK *block)
+{
+    LINKED_LIST_TAG *pos;
+    for (pos = gTimeoutQueue.Flink; pos != &gTimeoutQueue; pos = pos->Flink)
+    {
+        KWAIT_BLOCK *existing = CONTAINING_RECORD(pos, KWAIT_BLOCK, TimeoutLink);
+        if (existing->DeadlineNs > block->DeadlineNs)
+            break;
+    }
+    block->TimeoutLink.Flink = pos;
+    block->TimeoutLink.Blink = pos->Blink;
+    pos->Blink->Flink = &block->TimeoutLink;
+    pos->Blink = &block->TimeoutLink;
+}
 
+// Internal: unified wait completion — signal or timeout
+static void
+KiCompleteWait(KWAIT_BLOCK *block, HO_STATUS status)
+{
+    if (block->Completed)
+        return;
+
+    block->Completed = TRUE;
+    block->CompletionStatus = status;
+
+    // Remove from dispatcher wait list if attached
+    if (block->Dispatcher != NULL)
+    {
+        LinkedListRemove(&block->WaitListLink);
+        LinkedListInit(&block->WaitListLink);
+    }
+
+    // Remove from timeout queue if attached
+    if (block->DeadlineNs != 0)
+    {
+        LinkedListRemove(&block->TimeoutLink);
+        LinkedListInit(&block->TimeoutLink);
+    }
+
+    KTHREAD *thread = CONTAINING_RECORD(block, KTHREAD, WaitBlock);
+    thread->State = KTHREAD_STATE_READY;
+    LinkedListInsertTail(&gReadyQueue, &thread->ReadyLink);
+    gStats.SleepWakeCount++;
+
+    klog(KLOG_LEVEL_DEBUG, "[SCHED] Thread %u wait completed (%s)\n", thread->ThreadId,
+         status == EC_SUCCESS ? "signaled" : "timeout");
+}
+
+// Internal: process timed-out wait blocks
+static void
+KiWakeTimeouts(uint64_t nowNs)
+{
+    while (!LinkedListIsEmpty(&gTimeoutQueue))
+    {
+        KWAIT_BLOCK *block = CONTAINING_RECORD(gTimeoutQueue.Flink, KWAIT_BLOCK, TimeoutLink);
+        if (block->DeadlineNs > nowNs)
+            break;
+
+        KiCompleteWait(block, EC_TIMEOUT);
+    }
+}
+
+// Internal: arm clock event with clamping
 static void
 KiArmClockEvent(uint64_t deltaNs)
 {
@@ -421,21 +487,18 @@ KiArmClockEvent(uint64_t deltaNs)
     }
 }
 
-// ─────────────────────────────────────────────────────────────
 // Internal: compute and arm next event for a thread
-// ─────────────────────────────────────────────────────────────
-
 static void
 KiArmForNextEvent(uint64_t nowNs, KTHREAD *next)
 {
     if (next == gIdleThread)
     {
-        // IdleThread: arm for earliest sleep deadline only
-        if (!LinkedListIsEmpty(&gSleepQueue))
+        // IdleThread: arm for earliest timeout deadline only
+        if (!LinkedListIsEmpty(&gTimeoutQueue))
         {
-            KTHREAD *sleeper = CONTAINING_RECORD(gSleepQueue.Flink, KTHREAD, SleepLink);
-            uint64_t delta = sleeper->WakeDeadline > nowNs ? sleeper->WakeDeadline - nowNs : 1;
-            gNextProgrammedDeadlineNs = sleeper->WakeDeadline;
+            KWAIT_BLOCK *block = CONTAINING_RECORD(gTimeoutQueue.Flink, KWAIT_BLOCK, TimeoutLink);
+            uint64_t delta = block->DeadlineNs > nowNs ? block->DeadlineNs - nowNs : 1;
+            gNextProgrammedDeadlineNs = block->DeadlineNs;
             KiArmClockEvent(delta);
         }
         else
@@ -452,17 +515,168 @@ KiArmForNextEvent(uint64_t nowNs, KTHREAD *next)
 
         uint64_t targetDeadline = gQuantumDeadlineNs;
 
-        if (!LinkedListIsEmpty(&gSleepQueue))
+        if (!LinkedListIsEmpty(&gTimeoutQueue))
         {
-            KTHREAD *sleeper = CONTAINING_RECORD(gSleepQueue.Flink, KTHREAD, SleepLink);
-            if (sleeper->WakeDeadline < targetDeadline)
-                targetDeadline = sleeper->WakeDeadline;
+            KWAIT_BLOCK *block = CONTAINING_RECORD(gTimeoutQueue.Flink, KWAIT_BLOCK, TimeoutLink);
+            if (block->DeadlineNs < targetDeadline)
+                targetDeadline = block->DeadlineNs;
         }
 
         uint64_t delta = targetDeadline > nowNs ? targetDeadline - nowNs : 1;
         gNextProgrammedDeadlineNs = targetDeadline;
         KiArmClockEvent(delta);
     }
+}
+
+// KeWaitForSingleObject
+HO_KERNEL_API HO_STATUS
+KeWaitForSingleObject(void *object, uint64_t timeoutNs)
+{
+    if (object == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    HO_KASSERT(gCurrentThread != gIdleThread, EC_INVALID_STATE);
+
+    KDISPATCHER_HEADER *header = (KDISPATCHER_HEADER *)object;
+    HO_STATUS validationStatus = KiValidateDispatcherHeader(header);
+    if (validationStatus != EC_SUCCESS)
+        return validationStatus;
+
+    ARCH_INTERRUPT_STATE savedInterruptState = ArchDisableInterrupts();
+    KE_CRITICAL_SECTION criticalSection = {0};
+    KeEnterCriticalSection(&criticalSection);
+
+    // Path 1: object already signaled — immediate success
+    if (header->SignalState)
+    {
+        klog(KLOG_LEVEL_DEBUG, "[WAIT] Thread %u immediate satisfy (type=%d)\n", gCurrentThread->ThreadId,
+             header->Type);
+        KeLeaveCriticalSection(&criticalSection);
+        ArchRestoreInterruptState(savedInterruptState);
+        return EC_SUCCESS;
+    }
+
+    // Path 2: zero-timeout poll — immediate timeout
+    if (timeoutNs == 0)
+    {
+        klog(KLOG_LEVEL_DEBUG, "[WAIT] Thread %u zero-timeout poll miss (type=%d)\n", gCurrentThread->ThreadId,
+             header->Type);
+        KeLeaveCriticalSection(&criticalSection);
+        ArchRestoreInterruptState(savedInterruptState);
+        return EC_TIMEOUT;
+    }
+
+    // Path 3: blocking wait
+    KWAIT_BLOCK *wb = &gCurrentThread->WaitBlock;
+    KiInitWaitBlock(wb);
+    wb->Dispatcher = header;
+
+    // Attach to dispatcher's wait list
+    LinkedListInsertTail(&header->WaitListHead, &wb->WaitListLink);
+
+    // Set up timeout if not infinite
+    if (timeoutNs != KE_WAIT_INFINITE)
+    {
+        uint64_t nowNs = KiNowNs();
+        wb->DeadlineNs = nowNs + timeoutNs;
+        KiInsertTimeoutQueue(wb);
+    }
+
+    gCurrentThread->State = KTHREAD_STATE_BLOCKED;
+
+    klog(KLOG_LEVEL_DEBUG, "[WAIT] Thread %u blocking (type=%d, timeout=%lu)\n", gCurrentThread->ThreadId, header->Type,
+         (unsigned long)timeoutNs);
+
+    KeLeaveCriticalSection(&criticalSection);
+    KiSchedule();
+
+    HO_STATUS completionStatus = gCurrentThread->WaitBlock.CompletionStatus;
+    klog(KLOG_LEVEL_DEBUG, "[WAIT] Thread %u resumed (%s)\n", gCurrentThread->ThreadId,
+         completionStatus == EC_SUCCESS ? "signaled" : "timeout");
+    ArchRestoreInterruptState(savedInterruptState);
+
+    return completionStatus;
+}
+
+// ─────────────────────────────────────────────────────────────
+// KeInitializeEvent
+// ─────────────────────────────────────────────────────────────
+
+HO_KERNEL_API void
+KeInitializeEvent(KEVENT *event, BOOL initialState)
+{
+    HO_KASSERT(event != NULL, EC_ILLEGAL_ARGUMENT);
+
+    event->Header.Signature = KDISPATCHER_SIGNATURE;
+    event->Header.Type = DISPATCHER_TYPE_EVENT;
+    event->Header.SignalState = initialState ? 1 : 0;
+    LinkedListInit(&event->Header.WaitListHead);
+
+    klog(KLOG_LEVEL_DEBUG, "[EVENT] Initialized (signaled=%u)\n", (unsigned)initialState);
+}
+
+// ─────────────────────────────────────────────────────────────
+// KeSetEvent
+// ─────────────────────────────────────────────────────────────
+
+HO_KERNEL_API void
+KeSetEvent(KEVENT *event)
+{
+    HO_KASSERT(event != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(event->Header.Signature == KDISPATCHER_SIGNATURE, EC_INVALID_STATE);
+    HO_KASSERT(event->Header.Type == DISPATCHER_TYPE_EVENT, EC_NOT_SUPPORTED);
+
+    ARCH_INTERRUPT_STATE savedInterruptState = ArchDisableInterrupts();
+    KE_CRITICAL_SECTION criticalSection = {0};
+    KeEnterCriticalSection(&criticalSection);
+
+    event->Header.SignalState = 1;
+    uint32_t releasedCount = 0;
+
+    // Release all waiters (manual-reset: wake everyone)
+    while (!LinkedListIsEmpty(&event->Header.WaitListHead))
+    {
+        LINKED_LIST_TAG *entry = event->Header.WaitListHead.Flink;
+        KWAIT_BLOCK *block = CONTAINING_RECORD(entry, KWAIT_BLOCK, WaitListLink);
+        KiCompleteWait(block, EC_SUCCESS);
+        releasedCount++;
+    }
+
+    // If CPU is idle and threads became ready, trigger immediate reschedule
+    BOOL needSchedule = (gCurrentThread == gIdleThread && !LinkedListIsEmpty(&gReadyQueue));
+
+    klog(KLOG_LEVEL_DEBUG, "[EVENT] Set (released=%u)\n", releasedCount);
+
+    KeLeaveCriticalSection(&criticalSection);
+
+    if (needSchedule)
+    {
+        klog(KLOG_LEVEL_DEBUG, "[EVENT] Signal during idle, triggering reschedule\n");
+        KiSchedule();
+    }
+
+    ArchRestoreInterruptState(savedInterruptState);
+}
+
+// ─────────────────────────────────────────────────────────────
+// KeResetEvent
+// ─────────────────────────────────────────────────────────────
+
+HO_KERNEL_API void
+KeResetEvent(KEVENT *event)
+{
+    HO_KASSERT(event != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(event->Header.Signature == KDISPATCHER_SIGNATURE, EC_INVALID_STATE);
+    HO_KASSERT(event->Header.Type == DISPATCHER_TYPE_EVENT, EC_NOT_SUPPORTED);
+
+    KE_CRITICAL_SECTION criticalSection = {0};
+    KeEnterCriticalSection(&criticalSection);
+
+    event->Header.SignalState = 0;
+
+    klog(KLOG_LEVEL_DEBUG, "[EVENT] Reset\n");
+
+    KeLeaveCriticalSection(&criticalSection);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -548,12 +762,12 @@ KeQuerySchedulerInfo(KE_SYSINFO_SCHEDULER_DATA *out)
     out->CurrentThreadId = gCurrentThread ? gCurrentThread->ThreadId : 0;
     out->IdleThreadId = gIdleThread ? gIdleThread->ThreadId : 0;
     out->ReadyQueueDepth = KiCountQueueDepth(&gReadyQueue);
-    out->SleepQueueDepth = KiCountQueueDepth(&gSleepQueue);
+    out->SleepQueueDepth = KiCountQueueDepth(&gTimeoutQueue);
 
-    if (!LinkedListIsEmpty(&gSleepQueue))
+    if (!LinkedListIsEmpty(&gTimeoutQueue))
     {
-        KTHREAD *sleeper = CONTAINING_RECORD(gSleepQueue.Flink, KTHREAD, SleepLink);
-        out->EarliestWakeDeadline = sleeper->WakeDeadline;
+        KWAIT_BLOCK *block = CONTAINING_RECORD(gTimeoutQueue.Flink, KWAIT_BLOCK, TimeoutLink);
+        out->EarliestWakeDeadline = block->DeadlineNs;
     }
 
     out->NextProgrammedDeadline = gNextProgrammedDeadlineNs;

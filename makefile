@@ -131,6 +131,7 @@ SRCS_KERNEL_C := \
     src/kernel/hoentry.c                                \
     src/kernel/init.c                                   \
     src/kernel/hodbg.c                                  \
+    src/kernel/demo.c                                   \
     src/kernel/ke/critical_section.c                    \
     src/kernel/ke/console/console.c                     \
     src/kernel/ke/console/console_device.c              \

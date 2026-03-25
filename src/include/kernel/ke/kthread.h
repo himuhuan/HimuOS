@@ -12,6 +12,7 @@
 #include <_hobase.h>
 #include <lib/common/linked_list.h>
 #include <kernel/ke/pool.h>
+#include <kernel/ke/dispatcher.h>
 
 // ─────────────────────────────────────────────────────────────
 // Thread entry point
@@ -67,10 +68,9 @@ typedef struct KTHREAD
     uint8_t Priority; // Reserved for multi-priority extension
     uint64_t Quantum; // Time slice remaining (nanoseconds)
 
-    uint64_t WakeDeadline; // Absolute wake deadline (monotonic ns, 0 = none)
+    KWAIT_BLOCK WaitBlock; // Embedded wait record for unified wait model
 
     LINKED_LIST_TAG ReadyLink; // Ready queue / terminated list intrusive node
-    LINKED_LIST_TAG SleepLink; // Sleep queue intrusive node
 
     KTHREAD_ENTRY EntryPoint;
     void *EntryArg;

@@ -16,7 +16,7 @@
 #if HO_ENABLE_TIMESTAMP_LOG
 #define klog(level, fmt, ...) KLogWriteFmt(level, fmt, ##__VA_ARGS__)
 #else
-#define klog(fmt, ...)
+#define klog(level, fmt, ...)
 #endif
 
 #define kprintf(fmt, ...) ConsoleWriteFmt(fmt, ##__VA_ARGS__)

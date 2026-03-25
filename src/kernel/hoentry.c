@@ -14,10 +14,9 @@
 #include <kernel/ke/clock_event.h>
 #include <kernel/ke/sysinfo.h>
 #include <kernel/ke/scheduler.h>
+#include <kernel/demo.h>
 
 static void PrintBootBanner(void);
-static void TestThreadA(void *arg);
-static void TestThreadB(void *arg);
 
 void kmain(BOOT_CAPSULE *capsule);
 
@@ -31,26 +30,7 @@ kmain(BOOT_CAPSULE *capsule)
     InitKernel(capsule);
     PrintBootBanner();
 
-    // Create test kernel threads
-    KTHREAD *threadA = NULL;
-    KTHREAD *threadB = NULL;
-
-    HO_STATUS status;
-    status = KeThreadCreate(&threadA, TestThreadA, (void *)0xAAAA);
-    if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to create thread A");
-
-    status = KeThreadCreate(&threadB, TestThreadB, (void *)0xBBBB);
-    if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to create thread B");
-
-    status = KeThreadStart(threadA);
-    if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to start thread A");
-
-    status = KeThreadStart(threadB);
-    if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to start thread B");
+    RunKernelDemos();
 
     // Query & print initial scheduler state
     KE_SYSINFO_SCHEDULER_DATA schedInfo;
@@ -91,33 +71,4 @@ PrintBootBanner(void)
     kprintf("  %-24s %s\n", "------------------------", "------------------------------------------");
 
     kprintf("Copyright(c) 2024-2025 Himu, ONLY FOR EDUCATIONAL PURPOSES.\n\n");
-}
-
-// ─────────────────────────────────────────────────────────────
-// Test kernel threads
-// ─────────────────────────────────────────────────────────────
-
-static void
-TestThreadA(void *arg)
-{
-    uint32_t id = KeGetCurrentThread()->ThreadId;
-    for (uint32_t i = 0; i < 5; i++)
-    {
-        klog(KLOG_LEVEL_INFO, "[THREAD-%u] tick %u (arg=%p)\n", id, i, arg);
-        KeSleep(50000000ULL); // 50 ms
-    }
-    klog(KLOG_LEVEL_INFO, "[THREAD-%u] done, exiting\n", id);
-}
-
-static void
-TestThreadB(void *arg)
-{
-    uint32_t id = KeGetCurrentThread()->ThreadId;
-    for (uint32_t i = 0; i < 5; i++)
-    {
-        klog(KLOG_LEVEL_INFO, "[THREAD-%u] tick %u (arg=%p)\n", id, i, arg);
-        KeYield();
-        KeSleep(30000000ULL); // 30 ms
-    }
-    klog(KLOG_LEVEL_INFO, "[THREAD-%u] done, exiting\n", id);
 }

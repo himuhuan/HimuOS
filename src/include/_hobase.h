@@ -81,6 +81,7 @@ enum _HIMUOS_ERROR_CODE
     EC_OUT_OF_RESOURCE,     // Out of resource
     EC_INVALID_STATE,       // Operation cannot be performed in the current state
     EC_UNSUPPORTED_MACHINE, // The machine architecture is not supported
+    EC_TIMEOUT,             // Wait timed out before being satisfied
 };
 
 typedef int HO_STATUS;
