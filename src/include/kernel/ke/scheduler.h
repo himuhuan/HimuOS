@@ -11,6 +11,9 @@
 
 #include <_hobase.h>
 #include <kernel/ke/kthread.h>
+#include <kernel/ke/event.h>
+#include <kernel/ke/mutex.h>
+#include <kernel/ke/semaphore.h>
 
 // ─────────────────────────────────────────────────────────────
 // Constants
@@ -64,6 +67,15 @@ HO_KERNEL_API HO_STATUS KeThreadStart(KTHREAD *thread);
 HO_KERNEL_API void KeYield(void);
 HO_KERNEL_API void KeSleep(uint64_t durationNs);
 HO_KERNEL_API HO_NORETURN void KeThreadExit(void);
+
+/**
+ * @brief Wait for a single dispatcher object to become signaled.
+ * @param object    Pointer to a dispatcher object (KEVENT, KSEMAPHORE, KMUTEX, etc.).
+ * @param timeoutNs Timeout in nanoseconds. KE_WAIT_INFINITE = wait forever;
+ *                  0 = zero-timeout poll (never blocks).
+ * @return EC_SUCCESS if the object was signaled; EC_TIMEOUT if timed out.
+ */
+HO_KERNEL_API HO_STATUS KeWaitForSingleObject(void *object, uint64_t timeoutNs);
 
 HO_KERNEL_API KTHREAD *KeGetCurrentThread(void);
 

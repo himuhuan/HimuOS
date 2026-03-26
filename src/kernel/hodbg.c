@@ -21,7 +21,8 @@ KrGetStatusMessage(HO_STATUS status)
         "Operation not supported",
         "Out of resource",
         "Operation cannot be performed in the current state",
-        "The machine architecture is not supported"
+        "The machine architecture is not supported",
+        "Wait timed out before being satisfied"
     };
     // clang-format on
     uint64_t index = (uint64_t)status;

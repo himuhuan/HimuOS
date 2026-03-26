@@ -22,6 +22,8 @@ CC          := gcc
 LD          := ld
 ASFLAGS     := -f elf64 -g -F dwarf
 
+BUILD_FLAVOR ?=
+
 KRNL_VER_MAJOR  := 1
 KRNL_VER_MINOR  := 0
 KRNL_VER_PATCH  := 0
@@ -62,13 +64,37 @@ CFLAGS := -Wall -Wextra -Wmissing-prototypes -Wstrict-prototypes -Werror \
           -D__HO_DEBUG_BUILD__=$(HO_DEBUG_BUILD) \
           -DHO_ENABLE_TIMESTAMP_LOG=$(HO_ENABLE_TIMESTAMP_LOG)
 
-LDFLAGS := -T himuos.ld -nostdlib -static -e kmain -Map=build/kernel/bin/kernel.map
+ifneq ($(strip $(HO_DEMO_TEST_DEFINE)),)
+CFLAGS += -DHO_DEMO_TEST_SELECTION=$(HO_DEMO_TEST_DEFINE) \
+          -DHO_DEMO_TEST_SELECTION_NAME=\"$(HO_DEMO_TEST_NAME)\"
+endif
+
+LDFLAGS = -T himuos.ld -nostdlib -static -e kmain -Map=$(KRN_BINDIR)/kernel.map
 
 # Output directories (explicit per-target)
 EFI_OBJDIR    := build/efi/obj
 EFI_BINDIR    := build/efi/bin
-KRN_OBJDIR    := build/kernel/obj
-KRN_BINDIR    := build/kernel/bin
+KRN_BUILDROOT := build/kernel$(if $(strip $(BUILD_FLAVOR)),/$(BUILD_FLAVOR),)
+KRN_OBJDIR    := $(KRN_BUILDROOT)/obj
+KRN_BINDIR    := $(KRN_BUILDROOT)/bin
+
+VALID_TEST_MODULES := schedule list
+TEST_MODULE_GOALS  := $(filter-out test,$(MAKECMDGOALS))
+TEST_MODULE        := $(if $(strip $(TEST_MODULE_GOALS)),$(firstword $(TEST_MODULE_GOALS)),list)
+TEST_BUILD_FLAVOR  := test-$(TEST_MODULE)
+
+TEST_DEFINE_schedule := HO_DEMO_TEST_SCHEDULE
+
+ifneq ($(filter test,$(MAKECMDGOALS)),)
+ifneq ($(words $(TEST_MODULE_GOALS)),0)
+ifneq ($(words $(TEST_MODULE_GOALS)),1)
+$(error Usage: make test <module>. Available modules: schedule. Use `make test` or `make test list` to inspect supported modules)
+endif
+ifneq ($(filter $(TEST_MODULE),$(VALID_TEST_MODULES)), $(TEST_MODULE))
+$(error Unknown test module '$(TEST_MODULE)'. Available modules: schedule. Use `make test list` to inspect supported modules)
+endif
+endif
+endif
 
 # ==============================================================================
 # Source Files
@@ -131,6 +157,7 @@ SRCS_KERNEL_C := \
     src/kernel/hoentry.c                                \
     src/kernel/init.c                                   \
     src/kernel/hodbg.c                                  \
+    src/kernel/demo.c                                   \
     src/kernel/ke/critical_section.c                    \
     src/kernel/ke/console/console.c                     \
     src/kernel/ke/console/console_device.c              \
@@ -179,7 +206,7 @@ OBJS_KERNEL     := $(OBJS_KERNEL_C) $(OBJS_KERNEL_ASM)
 
 TARGET_KERNEL := $(KRN_BINDIR)/kernel.bin
 
-.PHONY: all clean run efi install clean_code vmware_img kernel debug run_iso
+.PHONY: all clean copy run efi install clean_code vmware_img kernel debug run_iso test schedule list
 
 all: efi kernel
 
@@ -215,23 +242,18 @@ $(KRN_OBJDIR)/%.o: src/%.asm
 	@nasm $(ASFLAGS) -o $@ $<
 
 # ------------------------------------------------------------------------------
-# Runtime artifacts for QEMU (vvfat): only refresh when binaries change
+# Runtime artifacts for QEMU (vvfat): always sync the current build flavor
 # ------------------------------------------------------------------------------
 ESP_BOOT_EFI   := esp/EFI/BOOT/BOOTX64.efi
 ESP_KERNEL_BIN := esp/kernel.bin
 
-copy: $(ESP_BOOT_EFI) $(ESP_KERNEL_BIN)
-	@echo "Copied EFI and kernel to esp/ directory."
+copy: $(TARGET_EFI) $(TARGET_KERNEL)
+	@mkdir -p $(dir $(ESP_BOOT_EFI)) $(dir $(ESP_KERNEL_BIN))
+	@cp $(TARGET_EFI) $(ESP_BOOT_EFI)
+	@cp $(TARGET_KERNEL) $(ESP_KERNEL_BIN)
+	@echo "Copied current build flavor to esp/ directory."
 
-$(ESP_BOOT_EFI): $(TARGET_EFI)
-	@mkdir -p $(dir $@)
-	@cp $< $@
-
-$(ESP_KERNEL_BIN): $(TARGET_KERNEL)
-	@mkdir -p $(dir $@)
-	@cp $< $@
-
-run: $(ESP_BOOT_EFI) $(ESP_KERNEL_BIN)
+run: copy
 	@if [ -z "$(OVMF_CODE)" ] || [ ! -r "$(OVMF_CODE)" ]; then \
 		echo "ERROR: OVMF firmware not found/readable."; \
 		echo "Set it explicitly, e.g. make run OVMF_CODE=/usr/share/edk2/x64/OVMF.4m.fd"; \
@@ -246,8 +268,23 @@ run: $(ESP_BOOT_EFI) $(ESP_KERNEL_BIN)
 		-enable-kvm \
 		-drive file=fat:rw:esp,index=0,format=vvfat \
 		-serial stdio
+
+test:
+ifeq ($(TEST_MODULE),list)
+	@echo "Available test modules:"
+	@echo "  schedule - scheduler demo suite (previous make run / make test all behavior)"
+	@echo "Usage:"
+	@echo "  make test schedule   # run the scheduler demo suite"
+	@echo "  make test            # list available test modules"
+else
+	@echo "Starting test module: $(TEST_MODULE)"
+	@$(MAKE) run BUILD_FLAVOR=$(TEST_BUILD_FLAVOR) HO_DEMO_TEST_NAME=$(TEST_MODULE) HO_DEMO_TEST_DEFINE=$(TEST_DEFINE_$(TEST_MODULE))
+endif
+
+schedule list:
+	@:
 		
-debug: $(ESP_BOOT_EFI) $(ESP_KERNEL_BIN)
+debug: copy
 	@if [ -z "$(OVMF_CODE)" ] || [ ! -r "$(OVMF_CODE)" ]; then \
 		echo "ERROR: OVMF firmware not found/readable."; \
 		echo "Set it explicitly, e.g. make debug OVMF_CODE=/usr/share/edk2/x64/OVMF.4m.fd"; \

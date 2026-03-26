@@ -83,10 +83,17 @@ KeThreadCreate(KTHREAD **outThread, KTHREAD_ENTRY entryPoint, void *arg)
 
     thread->Priority = 0;
     thread->Quantum = KE_DEFAULT_QUANTUM_NS;
-    thread->WakeDeadline = 0;
+    thread->OwnedMutexCount = 0;
+
+    // Initialize embedded wait block
+    thread->WaitBlock.Dispatcher = NULL;
+    LinkedListInit(&thread->WaitBlock.WaitListLink);
+    LinkedListInit(&thread->WaitBlock.TimeoutLink);
+    thread->WaitBlock.DeadlineNs = 0;
+    thread->WaitBlock.CompletionStatus = EC_SUCCESS;
+    thread->WaitBlock.Completed = FALSE;
 
     LinkedListInit(&thread->ReadyLink);
-    LinkedListInit(&thread->SleepLink);
 
     thread->EntryPoint = entryPoint;
     thread->EntryArg = arg;
