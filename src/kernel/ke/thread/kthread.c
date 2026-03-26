@@ -83,6 +83,7 @@ KeThreadCreate(KTHREAD **outThread, KTHREAD_ENTRY entryPoint, void *arg)
 
     thread->Priority = 0;
     thread->Quantum = KE_DEFAULT_QUANTUM_NS;
+    thread->OwnedMutexCount = 0;
 
     // Initialize embedded wait block
     thread->WaitBlock.Dispatcher = NULL;

@@ -10,6 +10,7 @@
 #include <kernel/ke/scheduler.h>
 #include <kernel/ke/kthread.h>
 #include <kernel/ke/event.h>
+#include <kernel/ke/mutex.h>
 #include <kernel/ke/semaphore.h>
 #include <kernel/ke/clock_event.h>
 #include <kernel/ke/critical_section.h>
@@ -53,9 +54,16 @@ static uint32_t KiCountQueueDepth(LINKED_LIST_TAG *head);
 static void KiCompleteWait(KWAIT_BLOCK *block, HO_STATUS status);
 static void KiInsertTimeoutQueue(KWAIT_BLOCK *block);
 static void KiInitWaitBlock(KWAIT_BLOCK *block);
+static void KiAssertDispatchContextAllowed(void);
 static HO_STATUS KiValidateDispatcherHeader(const KDISPATCHER_HEADER *header);
+static void KiAssertMutexState(const KMUTEX *mutex);
 static void KiAssertSemaphoreState(const KSEMAPHORE *semaphore);
-static BOOL KiTryAcquireDispatcherObject(KDISPATCHER_HEADER *header);
+static void KiIncrementOwnedMutexCount(KTHREAD *thread);
+static void KiDecrementOwnedMutexCount(KTHREAD *thread);
+static void KiAcquireMutexOwnership(KMUTEX *mutex, KTHREAD *thread);
+static void KiReleaseMutexOwnership(KMUTEX *mutex);
+static void KiHandOffMutexOwnership(KMUTEX *mutex, KTHREAD *thread);
+static HO_STATUS KiTryAcquireDispatcherObject(KDISPATCHER_HEADER *header, KTHREAD *thread, BOOL *acquired);
 
 void KiThreadTrampoline(void);
 
@@ -63,6 +71,12 @@ static inline uint64_t
 KiNowNs(void)
 {
     return KeGetSystemUpRealTime() * 1000ULL;
+}
+
+static void
+KiAssertDispatchContextAllowed(void)
+{
+    HO_KASSERT(KeGetCriticalSectionDepth() == 0, EC_INVALID_STATE);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -109,6 +123,7 @@ KeSchedulerInit(void)
     gIdleThread->StackPhys = 0; // boot stack, not our allocation
     gIdleThread->Priority = 0;
     gIdleThread->Quantum = 0;
+    gIdleThread->OwnedMutexCount = 0;
     KiInitWaitBlock(&gIdleThread->WaitBlock);
     LinkedListInit(&gIdleThread->ReadyLink);
     gIdleThread->EntryPoint = NULL;
@@ -176,6 +191,8 @@ KeThreadStart(KTHREAD *thread)
 HO_KERNEL_API void
 KeYield(void)
 {
+    KiAssertDispatchContextAllowed();
+
     ARCH_INTERRUPT_STATE savedInterruptState = ArchDisableInterrupts();
     KE_CRITICAL_SECTION criticalSection = {0};
     KeEnterCriticalSection(&criticalSection);
@@ -210,6 +227,7 @@ KeSleep(uint64_t durationNs)
         return;
     }
 
+    KiAssertDispatchContextAllowed();
     HO_KASSERT(gCurrentThread != gIdleThread, EC_INVALID_STATE);
 
     ARCH_INTERRUPT_STATE savedInterruptState = ArchDisableInterrupts();
@@ -241,11 +259,13 @@ KeSleep(uint64_t durationNs)
 HO_KERNEL_API HO_NORETURN void
 KeThreadExit(void)
 {
+    KiAssertDispatchContextAllowed();
+    HO_KASSERT(gCurrentThread != gIdleThread, EC_INVALID_STATE);
+    HO_KASSERT(gCurrentThread->OwnedMutexCount == 0, EC_INVALID_STATE);
+
     (void)ArchDisableInterrupts();
     KE_CRITICAL_SECTION criticalSection = {0};
     KeEnterCriticalSection(&criticalSection);
-
-    HO_KASSERT(gCurrentThread != gIdleThread, EC_INVALID_STATE);
 
     gCurrentThread->State = KTHREAD_STATE_TERMINATED;
     gStats.ActiveThreadCount--;
@@ -399,9 +419,29 @@ KiValidateDispatcherHeader(const KDISPATCHER_HEADER *header)
     {
     case DISPATCHER_TYPE_EVENT:
     case DISPATCHER_TYPE_SEMAPHORE:
+    case DISPATCHER_TYPE_MUTEX:
         return EC_SUCCESS;
     default:
         return EC_NOT_SUPPORTED;
+    }
+}
+
+// Internal: validate runtime mutex invariants
+static void
+KiAssertMutexState(const KMUTEX *mutex)
+{
+    HO_KASSERT(mutex != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(mutex->Header.Signature == KDISPATCHER_SIGNATURE, EC_INVALID_STATE);
+    HO_KASSERT(mutex->Header.Type == DISPATCHER_TYPE_MUTEX, EC_NOT_SUPPORTED);
+    HO_KASSERT(mutex->Header.SignalState == 0 || mutex->Header.SignalState == 1, EC_INVALID_STATE);
+
+    if (mutex->Header.SignalState != 0)
+    {
+        HO_KASSERT(mutex->OwnerThread == NULL, EC_INVALID_STATE);
+    }
+    else
+    {
+        HO_KASSERT(mutex->OwnerThread != NULL, EC_INVALID_STATE);
     }
 }
 
@@ -417,30 +457,118 @@ KiAssertSemaphoreState(const KSEMAPHORE *semaphore)
     HO_KASSERT(semaphore->Header.SignalState <= semaphore->Limit, EC_INVALID_STATE);
 }
 
-// Internal: test whether a dispatcher object can satisfy immediately.
-// For counted objects, this helper also consumes the permit atomically.
-static BOOL
-KiTryAcquireDispatcherObject(KDISPATCHER_HEADER *header)
+static void
+KiIncrementOwnedMutexCount(KTHREAD *thread)
 {
+    HO_KASSERT(thread != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(thread->OwnedMutexCount != 0xFFFFFFFFU, EC_OUT_OF_RESOURCE);
+    thread->OwnedMutexCount++;
+}
+
+static void
+KiDecrementOwnedMutexCount(KTHREAD *thread)
+{
+    HO_KASSERT(thread != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(thread->OwnedMutexCount != 0, EC_INVALID_STATE);
+    thread->OwnedMutexCount--;
+}
+
+static void
+KiAcquireMutexOwnership(KMUTEX *mutex, KTHREAD *thread)
+{
+    HO_KASSERT(mutex != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(thread != NULL, EC_ILLEGAL_ARGUMENT);
+    KiAssertMutexState(mutex);
+    HO_KASSERT(mutex->Header.SignalState == 1, EC_INVALID_STATE);
+    HO_KASSERT(mutex->OwnerThread == NULL, EC_INVALID_STATE);
+
+    mutex->OwnerThread = thread;
+    mutex->Header.SignalState = 0;
+    KiIncrementOwnedMutexCount(thread);
+    KiAssertMutexState(mutex);
+}
+
+static void
+KiReleaseMutexOwnership(KMUTEX *mutex)
+{
+    KTHREAD *owner;
+
+    HO_KASSERT(mutex != NULL, EC_ILLEGAL_ARGUMENT);
+    KiAssertMutexState(mutex);
+    owner = mutex->OwnerThread;
+    HO_KASSERT(owner != NULL, EC_INVALID_STATE);
+
+    KiDecrementOwnedMutexCount(owner);
+    mutex->OwnerThread = NULL;
+    mutex->Header.SignalState = 1;
+    KiAssertMutexState(mutex);
+}
+
+static void
+KiHandOffMutexOwnership(KMUTEX *mutex, KTHREAD *thread)
+{
+    KTHREAD *owner;
+
+    HO_KASSERT(mutex != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(thread != NULL, EC_ILLEGAL_ARGUMENT);
+    KiAssertMutexState(mutex);
+    owner = mutex->OwnerThread;
+    HO_KASSERT(owner != NULL, EC_INVALID_STATE);
+    HO_KASSERT(owner != thread, EC_INVALID_STATE);
+
+    KiDecrementOwnedMutexCount(owner);
+    mutex->OwnerThread = thread;
+    mutex->Header.SignalState = 0;
+    KiIncrementOwnedMutexCount(thread);
+    KiAssertMutexState(mutex);
+}
+
+// Internal: test whether a dispatcher object can satisfy immediately.
+// For counted or owned objects, this helper also consumes the grant atomically.
+static HO_STATUS
+KiTryAcquireDispatcherObject(KDISPATCHER_HEADER *header, KTHREAD *thread, BOOL *acquired)
+{
+    HO_KASSERT(header != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(acquired != NULL, EC_ILLEGAL_ARGUMENT);
+
+    *acquired = FALSE;
+
     switch (header->Type)
     {
     case DISPATCHER_TYPE_EVENT:
-        return header->SignalState != 0;
+        *acquired = header->SignalState != 0;
+        return EC_SUCCESS;
 
     case DISPATCHER_TYPE_SEMAPHORE: {
         KSEMAPHORE *semaphore = (KSEMAPHORE *)header;
         KiAssertSemaphoreState(semaphore);
 
         if (header->SignalState == 0)
-            return FALSE;
+            return EC_SUCCESS;
 
         header->SignalState--;
         HO_KASSERT(header->SignalState >= 0, EC_INVALID_STATE);
-        return TRUE;
+        *acquired = TRUE;
+        return EC_SUCCESS;
+    }
+
+    case DISPATCHER_TYPE_MUTEX: {
+        KMUTEX *mutex = (KMUTEX *)header;
+        KiAssertMutexState(mutex);
+
+        if (mutex->OwnerThread == thread)
+            return EC_INVALID_STATE;
+
+        if (header->SignalState == 0)
+            return EC_SUCCESS;
+
+        KiAcquireMutexOwnership(mutex, thread);
+        *acquired = TRUE;
+        return EC_SUCCESS;
     }
 
     default:
-        return FALSE;
+        return EC_NOT_SUPPORTED;
     }
 }
 
@@ -575,6 +703,8 @@ KiArmForNextEvent(uint64_t nowNs, KTHREAD *next)
 HO_KERNEL_API HO_STATUS
 KeWaitForSingleObject(void *object, uint64_t timeoutNs)
 {
+    KiAssertDispatchContextAllowed();
+
     if (object == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
@@ -590,7 +720,16 @@ KeWaitForSingleObject(void *object, uint64_t timeoutNs)
     KeEnterCriticalSection(&criticalSection);
 
     // Path 1: object already signaled / has a permit — immediate success
-    if (KiTryAcquireDispatcherObject(header))
+    BOOL acquired = FALSE;
+    HO_STATUS acquireStatus = KiTryAcquireDispatcherObject(header, gCurrentThread, &acquired);
+    if (acquireStatus != EC_SUCCESS)
+    {
+        KeLeaveCriticalSection(&criticalSection);
+        ArchRestoreInterruptState(savedInterruptState);
+        return acquireStatus;
+    }
+
+    if (acquired)
     {
         klog(KLOG_LEVEL_DEBUG, "[WAIT] Thread %u immediate satisfy (type=%d, state=%ld)\n", gCurrentThread->ThreadId,
              header->Type, (long)header->SignalState);
@@ -743,6 +882,25 @@ KeInitializeSemaphore(KSEMAPHORE *semaphore, int32_t initialCount, int32_t limit
 }
 
 // ─────────────────────────────────────────────────────────────
+// KeInitializeMutex
+// ─────────────────────────────────────────────────────────────
+
+HO_KERNEL_API void
+KeInitializeMutex(KMUTEX *mutex)
+{
+    HO_KASSERT(mutex != NULL, EC_ILLEGAL_ARGUMENT);
+
+    mutex->Header.Signature = KDISPATCHER_SIGNATURE;
+    mutex->Header.Type = DISPATCHER_TYPE_MUTEX;
+    mutex->Header.SignalState = 1;
+    LinkedListInit(&mutex->Header.WaitListHead);
+    mutex->OwnerThread = NULL;
+
+    KiAssertMutexState(mutex);
+    klog(KLOG_LEVEL_DEBUG, "[MUTEX] Initialized (available=1)\n");
+}
+
+// ─────────────────────────────────────────────────────────────
 // KeReleaseSemaphore
 // ─────────────────────────────────────────────────────────────
 
@@ -798,6 +956,51 @@ KeReleaseSemaphore(KSEMAPHORE *semaphore, int32_t releaseCount)
         KiSchedule();
     }
 
+    ArchRestoreInterruptState(savedInterruptState);
+    return EC_SUCCESS;
+}
+
+// ─────────────────────────────────────────────────────────────
+// KeReleaseMutex
+// ─────────────────────────────────────────────────────────────
+
+HO_KERNEL_API HO_STATUS
+KeReleaseMutex(KMUTEX *mutex)
+{
+    if (mutex == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    ARCH_INTERRUPT_STATE savedInterruptState = ArchDisableInterrupts();
+    KE_CRITICAL_SECTION criticalSection = {0};
+    KeEnterCriticalSection(&criticalSection);
+
+    KiAssertMutexState(mutex);
+
+    if (mutex->OwnerThread != gCurrentThread)
+    {
+        KeLeaveCriticalSection(&criticalSection);
+        ArchRestoreInterruptState(savedInterruptState);
+        return EC_INVALID_STATE;
+    }
+
+    if (LinkedListIsEmpty(&mutex->Header.WaitListHead))
+    {
+        KiReleaseMutexOwnership(mutex);
+        klog(KLOG_LEVEL_DEBUG, "[MUTEX] Release(owner=%u, handoff=none)\n", gCurrentThread->ThreadId);
+    }
+    else
+    {
+        LINKED_LIST_TAG *entry = mutex->Header.WaitListHead.Flink;
+        KWAIT_BLOCK *block = CONTAINING_RECORD(entry, KWAIT_BLOCK, WaitListLink);
+        KTHREAD *nextOwner = CONTAINING_RECORD(block, KTHREAD, WaitBlock);
+
+        KiHandOffMutexOwnership(mutex, nextOwner);
+        KiCompleteWait(block, EC_SUCCESS);
+        klog(KLOG_LEVEL_DEBUG, "[MUTEX] Release(owner=%u, handoff=%u)\n", gCurrentThread->ThreadId,
+             nextOwner->ThreadId);
+    }
+
+    KeLeaveCriticalSection(&criticalSection);
     ArchRestoreInterruptState(savedInterruptState);
     return EC_SUCCESS;
 }

@@ -21,6 +21,7 @@ typedef enum KDISPATCHER_OBJECT_TYPE
 {
     DISPATCHER_TYPE_EVENT = 0,
     DISPATCHER_TYPE_SEMAPHORE,
+    DISPATCHER_TYPE_MUTEX,
 } KDISPATCHER_OBJECT_TYPE;
 
 // ─────────────────────────────────────────────────────────────

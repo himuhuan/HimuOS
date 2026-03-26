@@ -67,6 +67,7 @@ typedef struct KTHREAD
 
     uint8_t Priority; // Reserved for multi-priority extension
     uint64_t Quantum; // Time slice remaining (nanoseconds)
+    uint32_t OwnedMutexCount;
 
     KWAIT_BLOCK WaitBlock; // Embedded wait record for unified wait model
 

@@ -78,23 +78,20 @@ KRN_BUILDROOT := build/kernel$(if $(strip $(BUILD_FLAVOR)),/$(BUILD_FLAVOR),)
 KRN_OBJDIR    := $(KRN_BUILDROOT)/obj
 KRN_BINDIR    := $(KRN_BUILDROOT)/bin
 
-VALID_TEST_MODULES := thread event semaphore list
+VALID_TEST_MODULES := schedule list
 TEST_MODULE_GOALS  := $(filter-out test,$(MAKECMDGOALS))
-TEST_MODULE        := $(if $(strip $(TEST_MODULE_GOALS)),$(firstword $(TEST_MODULE_GOALS)),all)
+TEST_MODULE        := $(if $(strip $(TEST_MODULE_GOALS)),$(firstword $(TEST_MODULE_GOALS)),list)
 TEST_BUILD_FLAVOR  := test-$(TEST_MODULE)
 
-TEST_DEFINE_all       := HO_DEMO_TEST_ALL
-TEST_DEFINE_thread    := HO_DEMO_TEST_THREAD
-TEST_DEFINE_event     := HO_DEMO_TEST_EVENT
-TEST_DEFINE_semaphore := HO_DEMO_TEST_SEMAPHORE
+TEST_DEFINE_schedule := HO_DEMO_TEST_SCHEDULE
 
 ifneq ($(filter test,$(MAKECMDGOALS)),)
 ifneq ($(words $(TEST_MODULE_GOALS)),0)
 ifneq ($(words $(TEST_MODULE_GOALS)),1)
-$(error Usage: make test <module>. Available modules: thread event semaphore. Use `make test` to run all demos or `make test list` to list modules)
+$(error Usage: make test <module>. Available modules: schedule. Use `make test` or `make test list` to inspect supported modules)
 endif
 ifneq ($(filter $(TEST_MODULE),$(VALID_TEST_MODULES)), $(TEST_MODULE))
-$(error Unknown test module '$(TEST_MODULE)'. Available modules: thread event semaphore. Use `make test list` to inspect supported modules)
+$(error Unknown test module '$(TEST_MODULE)'. Available modules: schedule. Use `make test list` to inspect supported modules)
 endif
 endif
 endif
@@ -209,7 +206,7 @@ OBJS_KERNEL     := $(OBJS_KERNEL_C) $(OBJS_KERNEL_ASM)
 
 TARGET_KERNEL := $(KRN_BINDIR)/kernel.bin
 
-.PHONY: all clean run efi install clean_code vmware_img kernel debug run_iso test thread event semaphore list
+.PHONY: all clean copy run efi install clean_code vmware_img kernel debug run_iso test schedule list
 
 all: efi kernel
 
@@ -245,23 +242,18 @@ $(KRN_OBJDIR)/%.o: src/%.asm
 	@nasm $(ASFLAGS) -o $@ $<
 
 # ------------------------------------------------------------------------------
-# Runtime artifacts for QEMU (vvfat): only refresh when binaries change
+# Runtime artifacts for QEMU (vvfat): always sync the current build flavor
 # ------------------------------------------------------------------------------
 ESP_BOOT_EFI   := esp/EFI/BOOT/BOOTX64.efi
 ESP_KERNEL_BIN := esp/kernel.bin
 
-copy: $(ESP_BOOT_EFI) $(ESP_KERNEL_BIN)
-	@echo "Copied EFI and kernel to esp/ directory."
+copy: $(TARGET_EFI) $(TARGET_KERNEL)
+	@mkdir -p $(dir $(ESP_BOOT_EFI)) $(dir $(ESP_KERNEL_BIN))
+	@cp $(TARGET_EFI) $(ESP_BOOT_EFI)
+	@cp $(TARGET_KERNEL) $(ESP_KERNEL_BIN)
+	@echo "Copied current build flavor to esp/ directory."
 
-$(ESP_BOOT_EFI): $(TARGET_EFI)
-	@mkdir -p $(dir $@)
-	@cp $< $@
-
-$(ESP_KERNEL_BIN): $(TARGET_KERNEL)
-	@mkdir -p $(dir $@)
-	@cp $< $@
-
-run: $(ESP_BOOT_EFI) $(ESP_KERNEL_BIN)
+run: copy
 	@if [ -z "$(OVMF_CODE)" ] || [ ! -r "$(OVMF_CODE)" ]; then \
 		echo "ERROR: OVMF firmware not found/readable."; \
 		echo "Set it explicitly, e.g. make run OVMF_CODE=/usr/share/edk2/x64/OVMF.4m.fd"; \
@@ -280,21 +272,19 @@ run: $(ESP_BOOT_EFI) $(ESP_KERNEL_BIN)
 test:
 ifeq ($(TEST_MODULE),list)
 	@echo "Available test modules:"
-	@echo "  thread     - scheduler yield/sleep demo threads"
-	@echo "  event      - KEVENT wait/set/reset scenarios"
-	@echo "  semaphore  - KSEMAPHORE acquire/release scenarios"
+	@echo "  schedule - scheduler demo suite (previous make run / make test all behavior)"
 	@echo "Usage:"
-	@echo "  make test <module>"
-	@echo "  make test            # run all demo modules"
+	@echo "  make test schedule   # run the scheduler demo suite"
+	@echo "  make test            # list available test modules"
 else
 	@echo "Starting test module: $(TEST_MODULE)"
 	@$(MAKE) run BUILD_FLAVOR=$(TEST_BUILD_FLAVOR) HO_DEMO_TEST_NAME=$(TEST_MODULE) HO_DEMO_TEST_DEFINE=$(TEST_DEFINE_$(TEST_MODULE))
 endif
 
-thread event semaphore list:
+schedule list:
 	@:
 		
-debug: $(ESP_BOOT_EFI) $(ESP_KERNEL_BIN)
+debug: copy
 	@if [ -z "$(OVMF_CODE)" ] || [ ! -r "$(OVMF_CODE)" ]; then \
 		echo "ERROR: OVMF firmware not found/readable."; \
 		echo "Set it explicitly, e.g. make debug OVMF_CODE=/usr/share/edk2/x64/OVMF.4m.fd"; \
