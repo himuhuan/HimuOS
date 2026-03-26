@@ -14,6 +14,7 @@
 #include <kernel/ke/semaphore.h>
 #include <kernel/ke/clock_event.h>
 #include <kernel/ke/critical_section.h>
+#include <kernel/ke/irql.h>
 #include <kernel/ke/time_source.h>
 #include <kernel/ke/mm.h>
 #include <kernel/hodefs.h>
@@ -54,7 +55,8 @@ static uint32_t KiCountQueueDepth(LINKED_LIST_TAG *head);
 static void KiCompleteWait(KWAIT_BLOCK *block, HO_STATUS status);
 static void KiInsertTimeoutQueue(KWAIT_BLOCK *block);
 static void KiInitWaitBlock(KWAIT_BLOCK *block);
-static void KiAssertDispatchContextAllowed(void);
+static void KiAssertBlockingAllowed(void);
+static void KiAssertDispatchLevel(void);
 static HO_STATUS KiValidateDispatcherHeader(const KDISPATCHER_HEADER *header);
 static void KiAssertMutexState(const KMUTEX *mutex);
 static void KiAssertSemaphoreState(const KSEMAPHORE *semaphore);
@@ -74,9 +76,15 @@ KiNowNs(void)
 }
 
 static void
-KiAssertDispatchContextAllowed(void)
+KiAssertBlockingAllowed(void)
 {
-    HO_KASSERT(KeGetCriticalSectionDepth() == 0, EC_INVALID_STATE);
+    HO_KASSERT(KeIsBlockingAllowed(), EC_INVALID_STATE);
+}
+
+static void
+KiAssertDispatchLevel(void)
+{
+    HO_KASSERT(KeGetCurrentIrql() == KE_IRQL_DISPATCH_LEVEL, EC_INVALID_STATE);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -124,6 +132,7 @@ KeSchedulerInit(void)
     gIdleThread->Priority = 0;
     gIdleThread->Quantum = 0;
     gIdleThread->OwnedMutexCount = 0;
+    KeInitializeIrqlState(&gIdleThread->IrqlState);
     KiInitWaitBlock(&gIdleThread->WaitBlock);
     LinkedListInit(&gIdleThread->ReadyLink);
     gIdleThread->EntryPoint = NULL;
@@ -131,6 +140,7 @@ KeSchedulerInit(void)
     gIdleThread->Flags = KTHREAD_FLAG_IDLE;
 
     gCurrentThread = gIdleThread;
+    KeSetCurrentIrqlState(&gIdleThread->IrqlState);
     gStats.TotalThreadsCreated = 1;
     gStats.ActiveThreadCount = 1;
 
@@ -191,9 +201,10 @@ KeThreadStart(KTHREAD *thread)
 HO_KERNEL_API void
 KeYield(void)
 {
-    KiAssertDispatchContextAllowed();
+    KiAssertBlockingAllowed();
 
-    ARCH_INTERRUPT_STATE savedInterruptState = ArchDisableInterrupts();
+    KE_IRQL_GUARD irqlGuard = {0};
+    KeAcquireIrqlGuard(&irqlGuard, KE_IRQL_DISPATCH_LEVEL);
     KE_CRITICAL_SECTION criticalSection = {0};
     KeEnterCriticalSection(&criticalSection);
 
@@ -202,7 +213,7 @@ KeYield(void)
     if (LinkedListIsEmpty(&gReadyQueue))
     {
         KeLeaveCriticalSection(&criticalSection);
-        ArchRestoreInterruptState(savedInterruptState);
+        KeReleaseIrqlGuard(&irqlGuard);
         return;
     }
 
@@ -211,7 +222,7 @@ KeYield(void)
 
     KeLeaveCriticalSection(&criticalSection);
     KiSchedule();
-    ArchRestoreInterruptState(savedInterruptState);
+    KeReleaseIrqlGuard(&irqlGuard);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -221,16 +232,18 @@ KeYield(void)
 HO_KERNEL_API void
 KeSleep(uint64_t durationNs)
 {
+    KiAssertBlockingAllowed();
+
     if (durationNs == 0)
     {
         KeYield();
         return;
     }
 
-    KiAssertDispatchContextAllowed();
     HO_KASSERT(gCurrentThread != gIdleThread, EC_INVALID_STATE);
 
-    ARCH_INTERRUPT_STATE savedInterruptState = ArchDisableInterrupts();
+    KE_IRQL_GUARD irqlGuard = {0};
+    KeAcquireIrqlGuard(&irqlGuard, KE_IRQL_DISPATCH_LEVEL);
     KE_CRITICAL_SECTION criticalSection = {0};
     KeEnterCriticalSection(&criticalSection);
 
@@ -249,7 +262,7 @@ KeSleep(uint64_t durationNs)
 
     KeLeaveCriticalSection(&criticalSection);
     KiSchedule();
-    ArchRestoreInterruptState(savedInterruptState);
+    KeReleaseIrqlGuard(&irqlGuard);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -259,11 +272,12 @@ KeSleep(uint64_t durationNs)
 HO_KERNEL_API HO_NORETURN void
 KeThreadExit(void)
 {
-    KiAssertDispatchContextAllowed();
+    KiAssertBlockingAllowed();
     HO_KASSERT(gCurrentThread != gIdleThread, EC_INVALID_STATE);
     HO_KASSERT(gCurrentThread->OwnedMutexCount == 0, EC_INVALID_STATE);
 
-    (void)ArchDisableInterrupts();
+    KE_IRQL_GUARD irqlGuard = {0};
+    KeAcquireIrqlGuard(&irqlGuard, KE_IRQL_DISPATCH_LEVEL);
     KE_CRITICAL_SECTION criticalSection = {0};
     KeEnterCriticalSection(&criticalSection);
 
@@ -297,7 +311,7 @@ KeGetCurrentThread(void)
 static void
 KiSchedule(void)
 {
-    // Must be called with IF=0
+    KiAssertDispatchLevel();
 
     KTHREAD *prev = gCurrentThread;
     KTHREAD *next;
@@ -315,6 +329,8 @@ KiSchedule(void)
 
     if (next == prev)
     {
+        next->State = KTHREAD_STATE_RUNNING;
+
         // Same thread, just re-arm and continue
         uint64_t nowNs = KiNowNs();
         KiArmForNextEvent(nowNs, next);
@@ -322,7 +338,6 @@ KiSchedule(void)
     }
 
     next->State = KTHREAD_STATE_RUNNING;
-    gCurrentThread = next;
     gStats.ContextSwitchCount++;
 
     // Update TSS.RSP0 to target thread's kernel stack top
@@ -334,6 +349,9 @@ KiSchedule(void)
     // Arm clock event for next deadline
     uint64_t nowNs = KiNowNs();
     KiArmForNextEvent(nowNs, next);
+
+    gCurrentThread = next;
+    KeSetCurrentIrqlState(&next->IrqlState);
 
     // Context switch — does not return until this thread is resumed
     KiSwitchContext(&prev->Context, &next->Context);
@@ -353,6 +371,8 @@ KiSchedulerTimerISR(void *frame, void *context)
 
     if (!gSchedulerEnabled)
         return;
+
+    KiAssertDispatchLevel();
 
     uint64_t nowNs = KiNowNs();
 
@@ -703,7 +723,7 @@ KiArmForNextEvent(uint64_t nowNs, KTHREAD *next)
 HO_KERNEL_API HO_STATUS
 KeWaitForSingleObject(void *object, uint64_t timeoutNs)
 {
-    KiAssertDispatchContextAllowed();
+    KiAssertBlockingAllowed();
 
     if (object == NULL)
         return EC_ILLEGAL_ARGUMENT;
@@ -715,7 +735,8 @@ KeWaitForSingleObject(void *object, uint64_t timeoutNs)
     if (validationStatus != EC_SUCCESS)
         return validationStatus;
 
-    ARCH_INTERRUPT_STATE savedInterruptState = ArchDisableInterrupts();
+    KE_IRQL_GUARD irqlGuard = {0};
+    KeAcquireIrqlGuard(&irqlGuard, KE_IRQL_DISPATCH_LEVEL);
     KE_CRITICAL_SECTION criticalSection = {0};
     KeEnterCriticalSection(&criticalSection);
 
@@ -725,7 +746,7 @@ KeWaitForSingleObject(void *object, uint64_t timeoutNs)
     if (acquireStatus != EC_SUCCESS)
     {
         KeLeaveCriticalSection(&criticalSection);
-        ArchRestoreInterruptState(savedInterruptState);
+        KeReleaseIrqlGuard(&irqlGuard);
         return acquireStatus;
     }
 
@@ -734,7 +755,7 @@ KeWaitForSingleObject(void *object, uint64_t timeoutNs)
         klog(KLOG_LEVEL_DEBUG, "[WAIT] Thread %u immediate satisfy (type=%d, state=%ld)\n", gCurrentThread->ThreadId,
              header->Type, (long)header->SignalState);
         KeLeaveCriticalSection(&criticalSection);
-        ArchRestoreInterruptState(savedInterruptState);
+        KeReleaseIrqlGuard(&irqlGuard);
         return EC_SUCCESS;
     }
 
@@ -744,7 +765,7 @@ KeWaitForSingleObject(void *object, uint64_t timeoutNs)
         klog(KLOG_LEVEL_DEBUG, "[WAIT] Thread %u zero-timeout poll miss (type=%d, state=%ld)\n",
              gCurrentThread->ThreadId, header->Type, (long)header->SignalState);
         KeLeaveCriticalSection(&criticalSection);
-        ArchRestoreInterruptState(savedInterruptState);
+        KeReleaseIrqlGuard(&irqlGuard);
         return EC_TIMEOUT;
     }
 
@@ -775,7 +796,7 @@ KeWaitForSingleObject(void *object, uint64_t timeoutNs)
     HO_STATUS completionStatus = gCurrentThread->WaitBlock.CompletionStatus;
     klog(KLOG_LEVEL_DEBUG, "[WAIT] Thread %u resumed (%s)\n", gCurrentThread->ThreadId,
          completionStatus == EC_SUCCESS ? "signaled" : "timeout");
-    ArchRestoreInterruptState(savedInterruptState);
+    KeReleaseIrqlGuard(&irqlGuard);
 
     return completionStatus;
 }
@@ -808,7 +829,8 @@ KeSetEvent(KEVENT *event)
     HO_KASSERT(event->Header.Signature == KDISPATCHER_SIGNATURE, EC_INVALID_STATE);
     HO_KASSERT(event->Header.Type == DISPATCHER_TYPE_EVENT, EC_NOT_SUPPORTED);
 
-    ARCH_INTERRUPT_STATE savedInterruptState = ArchDisableInterrupts();
+    KE_IRQL_GUARD irqlGuard = {0};
+    KeAcquireIrqlGuard(&irqlGuard, KE_IRQL_DISPATCH_LEVEL);
     KE_CRITICAL_SECTION criticalSection = {0};
     KeEnterCriticalSection(&criticalSection);
 
@@ -837,7 +859,7 @@ KeSetEvent(KEVENT *event)
         KiSchedule();
     }
 
-    ArchRestoreInterruptState(savedInterruptState);
+    KeReleaseIrqlGuard(&irqlGuard);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -910,7 +932,8 @@ KeReleaseSemaphore(KSEMAPHORE *semaphore, int32_t releaseCount)
     if (semaphore == NULL || releaseCount <= 0)
         return EC_ILLEGAL_ARGUMENT;
 
-    ARCH_INTERRUPT_STATE savedInterruptState = ArchDisableInterrupts();
+    KE_IRQL_GUARD irqlGuard = {0};
+    KeAcquireIrqlGuard(&irqlGuard, KE_IRQL_DISPATCH_LEVEL);
     KE_CRITICAL_SECTION criticalSection = {0};
     KeEnterCriticalSection(&criticalSection);
 
@@ -924,7 +947,7 @@ KeReleaseSemaphore(KSEMAPHORE *semaphore, int32_t releaseCount)
     if (resultingCount > semaphore->Limit)
     {
         KeLeaveCriticalSection(&criticalSection);
-        ArchRestoreInterruptState(savedInterruptState);
+        KeReleaseIrqlGuard(&irqlGuard);
         return EC_ILLEGAL_ARGUMENT;
     }
 
@@ -956,7 +979,7 @@ KeReleaseSemaphore(KSEMAPHORE *semaphore, int32_t releaseCount)
         KiSchedule();
     }
 
-    ArchRestoreInterruptState(savedInterruptState);
+    KeReleaseIrqlGuard(&irqlGuard);
     return EC_SUCCESS;
 }
 
@@ -970,7 +993,8 @@ KeReleaseMutex(KMUTEX *mutex)
     if (mutex == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    ARCH_INTERRUPT_STATE savedInterruptState = ArchDisableInterrupts();
+    KE_IRQL_GUARD irqlGuard = {0};
+    KeAcquireIrqlGuard(&irqlGuard, KE_IRQL_DISPATCH_LEVEL);
     KE_CRITICAL_SECTION criticalSection = {0};
     KeEnterCriticalSection(&criticalSection);
 
@@ -979,7 +1003,7 @@ KeReleaseMutex(KMUTEX *mutex)
     if (mutex->OwnerThread != gCurrentThread)
     {
         KeLeaveCriticalSection(&criticalSection);
-        ArchRestoreInterruptState(savedInterruptState);
+        KeReleaseIrqlGuard(&irqlGuard);
         return EC_INVALID_STATE;
     }
 
@@ -1001,7 +1025,7 @@ KeReleaseMutex(KMUTEX *mutex)
     }
 
     KeLeaveCriticalSection(&criticalSection);
-    ArchRestoreInterruptState(savedInterruptState);
+    KeReleaseIrqlGuard(&irqlGuard);
     return EC_SUCCESS;
 }
 

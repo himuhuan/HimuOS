@@ -12,6 +12,7 @@
 #include <_hobase.h>
 #include <lib/common/linked_list.h>
 #include <kernel/ke/pool.h>
+#include <kernel/ke/irql.h>
 #include <kernel/ke/dispatcher.h>
 
 // ─────────────────────────────────────────────────────────────
@@ -68,6 +69,7 @@ typedef struct KTHREAD
     uint8_t Priority; // Reserved for multi-priority extension
     uint64_t Quantum; // Time slice remaining (nanoseconds)
     uint32_t OwnedMutexCount;
+    KE_IRQL_STATE IrqlState;
 
     KWAIT_BLOCK WaitBlock; // Embedded wait record for unified wait model
 

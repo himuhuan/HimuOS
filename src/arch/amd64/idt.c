@@ -1,6 +1,7 @@
 #include "arch/amd64/idt.h"
 #include "arch/amd64/pm.h"
 #include "kernel/hodbg.h"
+#include <kernel/ke/irql.h>
 #include <libc/string.h>
 
 static IDT_ENTRY kInterruptDescriptorTable[256];
@@ -90,7 +91,9 @@ IdtExceptionHandler(void *frame)
         return;
     }
 
+    KeEnterInterruptContext();
     HandleExternalInterrupt(dump);
+    KeLeaveInterruptContext();
 }
 
 HO_PUBLIC_API const char *
