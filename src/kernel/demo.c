@@ -12,6 +12,7 @@
 #include <kernel/ke/scheduler.h>
 #include <kernel/ke/kthread.h>
 #include <kernel/ke/critical_section.h>
+#include <kernel/ke/irql.h>
 #include <kernel/ke/event.h>
 #include <kernel/ke/mutex.h>
 #include <kernel/ke/semaphore.h>
@@ -24,6 +25,10 @@
 #define HO_DEMO_TEST_MUTEX      5
 #define HO_DEMO_TEST_GUARD_WAIT 6
 #define HO_DEMO_TEST_OWNED_EXIT 7
+#define HO_DEMO_TEST_IRQL_WAIT  8
+#define HO_DEMO_TEST_IRQL_SLEEP 9
+#define HO_DEMO_TEST_IRQL_YIELD 10
+#define HO_DEMO_TEST_IRQL_EXIT  11
 
 #ifndef HO_DEMO_TEST_SELECTION
 #define HO_DEMO_TEST_SELECTION HO_DEMO_TEST_NONE
@@ -52,13 +57,19 @@ static void MutexWaiterTwoThread(void *arg);
 static void MutexNonOwnerReleaseThread(void *arg);
 static void CriticalSectionWaitViolationThread(void *arg);
 static void OwnedMutexExitViolationThread(void *arg);
+static void DispatchGuardWaitViolationThread(void *arg);
+static void DispatchGuardSleepViolationThread(void *arg);
+static void DispatchGuardYieldViolationThread(void *arg);
+static void DispatchGuardExitViolationThread(void *arg);
 
 static KEVENT gTestEvent;
 static KSEMAPHORE gTestSemaphore;
 static KMUTEX gTestMutex;
 static KEVENT gCriticalSectionGuardEvent;
+static KEVENT gDispatchGuardEvent;
 static KMUTEX gOwnedExitMutex;
 
+static void RunIrqlSelfTest(void);
 static void RunScheduleDemo(void);
 static void RunThreadDemo(void);
 static void RunEventDemo(void);
@@ -66,6 +77,10 @@ static void RunSemaphoreDemo(void);
 static void RunMutexDemo(void);
 static void RunGuardWaitDemo(void);
 static void RunOwnedExitDemo(void);
+static void RunDispatchGuardWaitDemo(void);
+static void RunDispatchGuardSleepDemo(void);
+static void RunDispatchGuardYieldDemo(void);
+static void RunDispatchGuardExitDemo(void);
 
 void
 RunKernelDemos(void)
@@ -112,15 +127,81 @@ RunKernelDemos(void)
     {
         RunOwnedExitDemo();
     }
+
+    if (HO_DEMO_TEST_SELECTION == HO_DEMO_TEST_IRQL_WAIT)
+    {
+        RunDispatchGuardWaitDemo();
+    }
+
+    if (HO_DEMO_TEST_SELECTION == HO_DEMO_TEST_IRQL_SLEEP)
+    {
+        RunDispatchGuardSleepDemo();
+    }
+
+    if (HO_DEMO_TEST_SELECTION == HO_DEMO_TEST_IRQL_YIELD)
+    {
+        RunDispatchGuardYieldDemo();
+    }
+
+    if (HO_DEMO_TEST_SELECTION == HO_DEMO_TEST_IRQL_EXIT)
+    {
+        RunDispatchGuardExitDemo();
+    }
 }
 
 static void
 RunScheduleDemo(void)
 {
+    RunIrqlSelfTest();
     RunThreadDemo();
     RunEventDemo();
     RunSemaphoreDemo();
     RunMutexDemo();
+}
+
+static void
+RunIrqlSelfTest(void)
+{
+    KE_IRQL_GUARD outerGuard = {0};
+    KE_IRQL_GUARD innerGuard = {0};
+    KE_CRITICAL_SECTION outerCriticalSection = {0};
+    KE_CRITICAL_SECTION innerCriticalSection = {0};
+
+    HO_KASSERT(KeGetCurrentIrql() == KE_IRQL_PASSIVE_LEVEL, EC_INVALID_STATE);
+    HO_KASSERT(KeIsBlockingAllowed(), EC_INVALID_STATE);
+
+    KeAcquireIrqlGuard(&outerGuard, KE_IRQL_DISPATCH_LEVEL);
+    HO_KASSERT(KeGetCurrentIrql() == KE_IRQL_DISPATCH_LEVEL, EC_INVALID_STATE);
+    HO_KASSERT(!KeIsBlockingAllowed(), EC_INVALID_STATE);
+
+    KeAcquireIrqlGuard(&innerGuard, KE_IRQL_DISPATCH_LEVEL);
+    HO_KASSERT(KeGetCurrentIrql() == KE_IRQL_DISPATCH_LEVEL, EC_INVALID_STATE);
+    HO_KASSERT(!KeIsBlockingAllowed(), EC_INVALID_STATE);
+    KeReleaseIrqlGuard(&innerGuard);
+
+    KeEnterCriticalSection(&outerCriticalSection);
+    HO_KASSERT(KeGetCurrentIrql() == KE_IRQL_DISPATCH_LEVEL, EC_INVALID_STATE);
+    KeLeaveCriticalSection(&outerCriticalSection);
+    HO_KASSERT(KeGetCurrentIrql() == KE_IRQL_DISPATCH_LEVEL, EC_INVALID_STATE);
+
+    KeReleaseIrqlGuard(&outerGuard);
+    HO_KASSERT(KeGetCurrentIrql() == KE_IRQL_PASSIVE_LEVEL, EC_INVALID_STATE);
+    HO_KASSERT(KeIsBlockingAllowed(), EC_INVALID_STATE);
+
+    KeEnterCriticalSection(&outerCriticalSection);
+    HO_KASSERT(KeGetCurrentIrql() == KE_IRQL_DISPATCH_LEVEL, EC_INVALID_STATE);
+    HO_KASSERT(!KeIsBlockingAllowed(), EC_INVALID_STATE);
+
+    KeEnterCriticalSection(&innerCriticalSection);
+    HO_KASSERT(KeGetCurrentIrql() == KE_IRQL_DISPATCH_LEVEL, EC_INVALID_STATE);
+    KeLeaveCriticalSection(&innerCriticalSection);
+    HO_KASSERT(KeGetCurrentIrql() == KE_IRQL_DISPATCH_LEVEL, EC_INVALID_STATE);
+
+    KeLeaveCriticalSection(&outerCriticalSection);
+    HO_KASSERT(KeGetCurrentIrql() == KE_IRQL_PASSIVE_LEVEL, EC_INVALID_STATE);
+    HO_KASSERT(KeIsBlockingAllowed(), EC_INVALID_STATE);
+
+    klog(KLOG_LEVEL_INFO, "[DEMO] IRQL/critical-section self-test passed\n");
 }
 
 static void
@@ -343,6 +424,68 @@ RunOwnedExitDemo(void)
     status = KeThreadStart(violator);
     if (status != EC_SUCCESS)
         HO_KPANIC(status, "Failed to start owned-exit violation thread");
+}
+
+static void
+RunDispatchGuardWaitDemo(void)
+{
+    HO_STATUS status;
+    KTHREAD *violator = NULL;
+
+    KeInitializeEvent(&gDispatchGuardEvent, TRUE);
+
+    status = KeThreadCreate(&violator, DispatchGuardWaitViolationThread, NULL);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to create dispatch-guard wait violation thread");
+
+    status = KeThreadStart(violator);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to start dispatch-guard wait violation thread");
+}
+
+static void
+RunDispatchGuardSleepDemo(void)
+{
+    HO_STATUS status;
+    KTHREAD *violator = NULL;
+
+    status = KeThreadCreate(&violator, DispatchGuardSleepViolationThread, NULL);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to create dispatch-guard sleep violation thread");
+
+    status = KeThreadStart(violator);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to start dispatch-guard sleep violation thread");
+}
+
+static void
+RunDispatchGuardYieldDemo(void)
+{
+    HO_STATUS status;
+    KTHREAD *violator = NULL;
+
+    status = KeThreadCreate(&violator, DispatchGuardYieldViolationThread, NULL);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to create dispatch-guard yield violation thread");
+
+    status = KeThreadStart(violator);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to start dispatch-guard yield violation thread");
+}
+
+static void
+RunDispatchGuardExitDemo(void)
+{
+    HO_STATUS status;
+    KTHREAD *violator = NULL;
+
+    status = KeThreadCreate(&violator, DispatchGuardExitViolationThread, NULL);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to create dispatch-guard exit violation thread");
+
+    status = KeThreadStart(violator);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to start dispatch-guard exit violation thread");
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -655,4 +798,60 @@ OwnedMutexExitViolationThread(void *arg)
 
     klog(KLOG_LEVEL_INFO, "[OWNEDEXIT-%u] calling KeThreadExit while owning mutex (expect panic)\n", id);
     KeThreadExit();
+}
+
+static void
+DispatchGuardWaitViolationThread(void *arg)
+{
+    (void)arg;
+    uint32_t id = KeGetCurrentThread()->ThreadId;
+    KE_IRQL_GUARD irqlGuard = {0};
+
+    klog(KLOG_LEVEL_INFO, "[IRQLWAIT-%u] entering DISPATCH_LEVEL before wait (expect panic)\n", id);
+    KeAcquireIrqlGuard(&irqlGuard, KE_IRQL_DISPATCH_LEVEL);
+
+    (void)KeWaitForSingleObject(&gDispatchGuardEvent, 0);
+    HO_KPANIC(EC_INVALID_STATE, "Dispatch-guard wait legality check did not fire");
+}
+
+static void
+DispatchGuardSleepViolationThread(void *arg)
+{
+    (void)arg;
+    uint32_t id = KeGetCurrentThread()->ThreadId;
+    KE_IRQL_GUARD irqlGuard = {0};
+
+    klog(KLOG_LEVEL_INFO, "[IRQLSLEEP-%u] entering DISPATCH_LEVEL before sleep (expect panic)\n", id);
+    KeAcquireIrqlGuard(&irqlGuard, KE_IRQL_DISPATCH_LEVEL);
+
+    KeSleep(1000000ULL);
+    HO_KPANIC(EC_INVALID_STATE, "Dispatch-guard sleep legality check did not fire");
+}
+
+static void
+DispatchGuardYieldViolationThread(void *arg)
+{
+    (void)arg;
+    uint32_t id = KeGetCurrentThread()->ThreadId;
+    KE_IRQL_GUARD irqlGuard = {0};
+
+    klog(KLOG_LEVEL_INFO, "[IRQLYIELD-%u] entering DISPATCH_LEVEL before yield (expect panic)\n", id);
+    KeAcquireIrqlGuard(&irqlGuard, KE_IRQL_DISPATCH_LEVEL);
+
+    KeYield();
+    HO_KPANIC(EC_INVALID_STATE, "Dispatch-guard yield legality check did not fire");
+}
+
+static void
+DispatchGuardExitViolationThread(void *arg)
+{
+    (void)arg;
+    uint32_t id = KeGetCurrentThread()->ThreadId;
+    KE_IRQL_GUARD irqlGuard = {0};
+
+    klog(KLOG_LEVEL_INFO, "[IRQLEXIT-%u] entering DISPATCH_LEVEL before exit (expect panic)\n", id);
+    KeAcquireIrqlGuard(&irqlGuard, KE_IRQL_DISPATCH_LEVEL);
+
+    KeThreadExit();
+    HO_KPANIC(EC_INVALID_STATE, "Dispatch-guard thread-exit legality check did not fire");
 }

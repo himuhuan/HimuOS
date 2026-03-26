@@ -10,11 +10,11 @@
 #pragma once
 
 #include <_hobase.h>
-#include <arch/arch.h>
+#include <kernel/ke/irql.h>
 
 typedef struct KE_CRITICAL_SECTION
 {
-    ARCH_INTERRUPT_STATE SavedInterruptState;
+    KE_IRQL_GUARD IrqlGuard;
     uint32_t EnterDepth;
     BOOL Active;
 } KE_CRITICAL_SECTION;

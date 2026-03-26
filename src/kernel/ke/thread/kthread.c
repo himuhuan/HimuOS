@@ -8,6 +8,7 @@
  */
 
 #include <kernel/ke/kthread.h>
+#include <kernel/ke/irql.h>
 #include <kernel/ke/scheduler.h>
 #include <kernel/ke/mm.h>
 #include <kernel/hodefs.h>
@@ -84,6 +85,7 @@ KeThreadCreate(KTHREAD **outThread, KTHREAD_ENTRY entryPoint, void *arg)
     thread->Priority = 0;
     thread->Quantum = KE_DEFAULT_QUANTUM_NS;
     thread->OwnedMutexCount = 0;
+    KeInitializeIrqlState(&thread->IrqlState);
 
     // Initialize embedded wait block
     thread->WaitBlock.Dispatcher = NULL;

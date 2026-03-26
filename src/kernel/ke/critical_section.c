@@ -19,7 +19,7 @@ KeEnterCriticalSection(KE_CRITICAL_SECTION *guard)
     HO_KASSERT(!guard->Active, EC_INVALID_STATE);
     HO_KASSERT(gCriticalSectionDepth != 0xFFFFFFFFU, EC_OUT_OF_RESOURCE);
 
-    guard->SavedInterruptState = ArchDisableInterrupts();
+    KeAcquireIrqlGuard(&guard->IrqlGuard, KE_IRQL_DISPATCH_LEVEL);
     gCriticalSectionDepth++;
 
     guard->EnterDepth = gCriticalSectionDepth;
@@ -35,13 +35,11 @@ KeLeaveCriticalSection(KE_CRITICAL_SECTION *guard)
     HO_KASSERT(guard->EnterDepth == gCriticalSectionDepth, EC_INVALID_STATE);
 
     gCriticalSectionDepth--;
-    BOOL restoreInterrupts = (gCriticalSectionDepth == 0) && guard->SavedInterruptState.MaskableInterruptEnabled;
 
     guard->Active = FALSE;
     guard->EnterDepth = 0;
 
-    if (restoreInterrupts)
-        ArchRestoreInterruptState(guard->SavedInterruptState);
+    KeReleaseIrqlGuard(&guard->IrqlGuard);
 }
 
 HO_KERNEL_API uint32_t
