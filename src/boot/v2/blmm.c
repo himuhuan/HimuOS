@@ -24,38 +24,58 @@ static EFI_STATUS MapAcpiRange(HOB_BALLOC *allocator, UINT64 pml4BasePhys, UINT6
 static BOOL IsSameMapping(UINT64 existingEntry, UINT64 targetPhys, UINT64 flags, UINT64 isPresent);
 static UINT64 GetNxFlag(void);
 static UINT64 GetHhdmMapFlags(EFI_MEMORY_TYPE type, UINT64 nxFlag);
+static EFI_STATUS MapInitialIdentityWindow(HOB_BALLOC *allocator, UINT64 pml4BasePhys, UINT64 size, UINT64 flags);
 
 EFI_MEMORY_MAP *
-GetLoaderRuntimeMemoryMap()
+GetLoaderRuntimeMemoryMap(UINTN *allocatedPagesOut)
 {
     EFI_PHYSICAL_ADDRESS mapBuffer = 0;
-    EFI_STATUS status = !EFI_SUCCESS;
     EFI_MEMORY_MAP *map = NULL;
-    int mapBufferPages = MIN_MEMMAP_PAGES;
+    UINTN mapBufferPages = MIN_MEMMAP_PAGES;
+    UINTN allocatedPages = 0;
 
-    while (status != EFI_SUCCESS)
+    if (allocatedPagesOut != NULL)
+        *allocatedPagesOut = 0;
+
+    while (TRUE)
     {
-        uint64_t mapBufferSize = mapBufferPages << 12;
+        UINT64 mapBufferSize = mapBufferPages << 12;
+        EFI_STATUS status;
+
         if (mapBuffer != 0)
         {
-            g_ST->BootServices->FreePages(mapBuffer, mapBufferPages);
+            g_ST->BootServices->FreePages(mapBuffer, allocatedPages);
             mapBuffer = 0;
+            allocatedPages = 0;
         }
 
-        status = g_ST->BootServices->AllocatePages(AllocateAnyPages, EfiLoaderData, mapBufferPages, &mapBuffer);
+        status = BootAllocateLoaderPages(mapBufferPages, &mapBuffer);
         if (EFI_ERROR(status))
         {
             LOG_ERROR("Failed to allocate memory map buffer: %k (0x%x)\r\n", status, status);
             return NULL;
         }
+
+        allocatedPages = mapBufferPages;
         map = InitMemoryMap((void *)mapBuffer, mapBufferSize);
         status = FillMemoryMap(map);
         if (!EFI_ERROR(status))
+        {
             LOG_DEBUG("Allocated %u bytes for memory map buffer at PA %p\r\n", mapBufferSize, mapBuffer);
+            if (allocatedPagesOut != NULL)
+                *allocatedPagesOut = allocatedPages;
+            return map;
+        }
+
+        if (EFI_STATUS_CODE_LOW(status) != EFI_BUFFER_TOO_SMALL)
+        {
+            LOG_ERROR("Failed to populate memory map buffer: %k (0x%x)\r\n", status, status);
+            g_ST->BootServices->FreePages(mapBuffer, allocatedPages);
+            return NULL;
+        }
+
         mapBufferPages++;
     }
-
-    return map;
 }
 
 EFI_STATUS
@@ -95,8 +115,8 @@ CreateCapsule(const BOOT_CAPSULE_LAYOUT *layout)
 {
     BOOT_CAPSULE_PAGE_LAYOUT pageLayout;
     UINT64 pages = GetCapsulePhysPages(layout, &pageLayout);
-    HO_PHYSICAL_ADDRESS basePhys;
-    EFI_STATUS status = g_ST->BootServices->AllocatePages(AllocateAnyPages, EfiLoaderData, pages, &basePhys);
+    HO_PHYSICAL_ADDRESS basePhys = 0;
+    EFI_STATUS status = BootAllocateLoaderPages(pages, &basePhys);
     if (EFI_ERROR(status))
     {
         LOG_ERROR("Failed to allocate boot capsule: %k (0x%x)\r\n", status, status);
@@ -146,8 +166,7 @@ CreateInitialMapping(BOOT_CAPSULE *capsule, EFI_MEMORY_MAP *memoryMap)
             break;
         }
 
-        status =
-            g_ST->BootServices->AllocatePages(AllocateAnyPages, EfiLoaderData, MAX_PAGE_TABLE_POOL_PAGES, &poolBase);
+        status = BootAllocateLoaderPages(MAX_PAGE_TABLE_POOL_PAGES, &poolBase);
         if (EFI_ERROR(status))
         {
             LOG_ERROR("Failed to allocate page table pool: %k (0x%x)\r\n", status, status);
@@ -168,7 +187,7 @@ CreateInitialMapping(BOOT_CAPSULE *capsule, EFI_MEMORY_MAP *memoryMap)
             break;
         }
 
-        status = MapRegion(&pageTableAlloc, pml4Phys, 0, 0, 0x80000000ULL, PTE_PRESENT | PTE_WRITABLE);
+        status = MapInitialIdentityWindow(&pageTableAlloc, pml4Phys, 0x80000000ULL, PTE_PRESENT | PTE_WRITABLE);
         if (EFI_ERROR(status))
         {
             LOG_ERROR("Failed to map lower 2GB memory: %k (0x%x)\r\n", status, status);
@@ -282,6 +301,37 @@ CreateInitialMapping(BOOT_CAPSULE *capsule, EFI_MEMORY_MAP *memoryMap)
     return 0;
 }
 
+static EFI_STATUS
+MapInitialIdentityWindow(HOB_BALLOC *allocator, UINT64 pml4BasePhys, UINT64 size, UINT64 flags)
+{
+    EFI_STATUS status;
+    UINT64 lowWindowSize = (size < PAGE_2MB) ? size : PAGE_2MB;
+
+    for (UINT64 offset = 0; offset < lowWindowSize; offset += PAGE_4KB)
+    {
+        MAP_PAGE_PARAMS req;
+        memset(&req, 0, sizeof(MAP_PAGE_PARAMS));
+        req.NotPresent = BootNullPointerDetectionEnabled() && offset == 0;
+        req.TableBasePhys = pml4BasePhys;
+        req.BumpAllocator = allocator;
+        req.AddrPhys = offset;
+        req.AddrVirt = offset;
+        req.Flags = flags;
+        req.PageSize = PAGE_4KB;
+        status = MapPage(&req);
+        if (EFI_ERROR(status))
+        {
+            LOG_ERROR(L"MapInitialIdentityWindow failed at Virt=%lx Phys=%lx\r\n", offset, offset);
+            return status;
+        }
+    }
+
+    if (size <= lowWindowSize)
+        return EFI_SUCCESS;
+
+    return MapRegion(allocator, pml4BasePhys, lowWindowSize, lowWindowSize, size - lowWindowSize, flags);
+}
+
 EFI_STATUS
 MapPage(MAP_PAGE_PARAMS *params)
 {
@@ -295,7 +345,8 @@ MapPage(MAP_PAGE_PARAMS *params)
     UINT64 alignedAddrVirt = HO_ALIGN_DOWN(params->AddrVirt, params->PageSize);
     HOB_BALLOC *allocator = params->BumpAllocator;
     PAGE_TABLE_ENTRY *pml4 = (PAGE_TABLE_ENTRY *)params->TableBasePhys;
-    UINT64 flags = (params->PageSize != PAGE_4KB) ? (params->Flags | PTE_PAGE_SIZE) : params->Flags;
+    UINT64 flagBits = params->Flags & ~PTE_PRESENT;
+    UINT64 flags = (params->PageSize != PAGE_4KB) ? (flagBits | PTE_PAGE_SIZE) : flagBits;
     UINT64 isPresent = (HO_LIKELY(!params->NotPresent)) ? PTE_PRESENT : 0;
 
     UINT64 pml4Index = PML4_INDEX(alignedAddrVirt);

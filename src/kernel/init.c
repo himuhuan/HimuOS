@@ -186,6 +186,7 @@ VerifyHhdm(STAGING_BLOCK *block)
     UINT64 probePhys = 0;
     BOOL probeFound = FALSE;
     BOOL zeroProbeFound = FALSE;
+    BOOL allowZeroProbeFallback = (HO_NULL_POINTER_DETECTION == 0);
 
     for (UINT64 idx = 0; idx < descCount; ++idx)
     {
@@ -202,10 +203,10 @@ VerifyHhdm(STAGING_BLOCK *block)
                                     pageTableEndExclusive, &candidateProbe))
             continue;
 
-        // Prefer a non-zero page when available; page 0 remains a fallback.
         if (candidateProbe == 0)
         {
-            zeroProbeFound = TRUE;
+            if (allowZeroProbeFallback)
+                zeroProbeFound = TRUE;
             continue;
         }
 
@@ -214,7 +215,7 @@ VerifyHhdm(STAGING_BLOCK *block)
         break;
     }
 
-    if (!probeFound && zeroProbeFound)
+    if (!probeFound && allowZeroProbeFallback && zeroProbeFound)
     {
         probePhys = 0;
         probeFound = TRUE;
@@ -275,6 +276,11 @@ FindFirstSafeProbePage(UINT64 descStart,
         *probePhysOut = 0;
 
     UINT64 candidate = descStart;
+#if HO_NULL_POINTER_DETECTION
+    if (candidate < PAGE_4KB)
+        candidate = PAGE_4KB;
+#endif
+
     for (UINT64 idx = 0; idx < 2; ++idx)
     {
         UINT64 rangeStart = ranges[idx].Start;

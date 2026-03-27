@@ -13,7 +13,7 @@
 #include "boot/boot_capsule.h"
 #include "ho_balloc.h"
 
-EFI_MEMORY_MAP *GetLoaderRuntimeMemoryMap();
+EFI_MEMORY_MAP *GetLoaderRuntimeMemoryMap(UINTN *allocatedPagesOut);
 EFI_STATUS LoadMemoryMap(HO_PHYSICAL_ADDRESS mapBasePhys, UINT64 maxSize, OUT UINTN *memoryMap);
 
 UINT64 GetCapsulePhysPages(const BOOT_CAPSULE_LAYOUT *block, BOOT_CAPSULE_PAGE_LAYOUT *pageLayout);

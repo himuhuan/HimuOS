@@ -470,8 +470,7 @@ ReadKernelImage(IN const CHAR16 *path, OUT void **outImage, OUT UINT64 *outSize)
     }
 
     EFI_PHYSICAL_ADDRESS bufferPhys = 0;
-    status = g_ST->BootServices->AllocatePages(AllocateAnyPages, EfiLoaderData,
-                                               HO_ALIGN_UP(kernelFileSize, PAGE_4KB) >> 12, &bufferPhys);
+    status = BootAllocateLoaderPages(HO_ALIGN_UP(kernelFileSize, PAGE_4KB) >> 12, &bufferPhys);
     if (EFI_ERROR(status))
     {
         LOG_ERROR(L"Failed to allocate memory for kernel file: %k (0x%x)\r\n", status, status);

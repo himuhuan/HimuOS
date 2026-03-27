@@ -29,11 +29,91 @@ static BOOL CpuSupportsNx(void);
 static BOOL EnableNxe(void);
 
 static BOOL kBootUseNx = FALSE;
+static BOOL kNullPageHandled = FALSE;
+static EFI_STATUS kNullPageHandleStatus = EFI_SUCCESS;
 
 BOOL
 BootUseNx(void)
 {
     return kBootUseNx;
+}
+
+BOOL
+BootNullPointerDetectionEnabled(void)
+{
+#if HO_NULL_POINTER_DETECTION
+    return TRUE;
+#else
+    return FALSE;
+#endif
+}
+
+EFI_STATUS
+BootQuarantineNullPage(void)
+{
+    EFI_PHYSICAL_ADDRESS pageZero = 0;
+    EFI_STATUS status;
+    UINT64 statusCode;
+
+    if (kNullPageHandled)
+        return kNullPageHandleStatus;
+
+    if (g_ST == NULL || g_ST->BootServices == NULL)
+        return EFI_INVALID_PARAMETER;
+
+    // The loader uses NULL as a sentinel in multiple handoff paths, so page 0
+    // must never back a loader-owned allocation.
+    status = g_ST->BootServices->AllocatePages(AllocateAddress, EfiLoaderData, 1, &pageZero);
+    statusCode = EFI_STATUS_CODE_LOW(status);
+    if (!EFI_ERROR(status))
+    {
+        LOG_INFO(L"Physical page 0 quarantined before loader staging\r\n");
+        kNullPageHandleStatus = EFI_SUCCESS;
+    }
+    else if (statusCode == EFI_NOT_FOUND || statusCode == EFI_OUT_OF_RESOURCES)
+    {
+        LOG_INFO(L"Physical page 0 already unavailable before loader staging: %k (0x%x)\r\n", status, status);
+        kNullPageHandleStatus = EFI_SUCCESS;
+    }
+    else
+    {
+        LOG_ERROR(L"Failed to quarantine physical page 0: %k (0x%x)\r\n", status, status);
+        kNullPageHandleStatus = status;
+    }
+
+    kNullPageHandled = TRUE;
+    return kNullPageHandleStatus;
+}
+
+EFI_STATUS
+BootAllocateLoaderPages(UINTN pages, EFI_PHYSICAL_ADDRESS *memory)
+{
+    EFI_STATUS status;
+
+    if (memory == NULL || pages == 0)
+        return EFI_INVALID_PARAMETER;
+
+    status = BootQuarantineNullPage();
+    if (EFI_ERROR(status))
+    {
+        *memory = 0;
+        return status;
+    }
+
+    *memory = 0;
+    status = g_ST->BootServices->AllocatePages(AllocateAnyPages, EfiLoaderData, pages, memory);
+    if (EFI_ERROR(status))
+        return status;
+
+    if (*memory == 0)
+    {
+        LOG_ERROR(L"Loader allocation unexpectedly returned physical page 0 after quarantine\r\n");
+        (void)g_ST->BootServices->FreePages(*memory, pages);
+        *memory = 0;
+        return EFI_DEVICE_ERROR;
+    }
+
+    return EFI_SUCCESS;
 }
 
 void
@@ -72,6 +152,13 @@ StagingKernel(const CHAR16 *path)
     void *image = NULL;
     EFI_MEMORY_MAP *memoryMap = NULL;
     UINT64 imageSize = 0;
+    UINTN imagePages = 0;
+    UINTN memoryMapAllocPages = 0;
+    UINTN capsuleMemoryMapPages = 0;
+
+    status = BootQuarantineNullPage();
+    if (EFI_ERROR(status))
+        goto handle_error;
 
     status = ReadKernelImage(path, &image, &imageSize);
     if (EFI_ERROR(status))
@@ -80,9 +167,9 @@ StagingKernel(const CHAR16 *path)
         goto handle_error;
     }
     LOG_DEBUG(L"Kernel image size: %u bytes\r\n", imageSize);
-    UINTN imagePages = HO_ALIGN_UP(imageSize, PAGE_4KB) >> 12;
+    imagePages = HO_ALIGN_UP(imageSize, PAGE_4KB) >> 12;
 
-    memoryMap = GetLoaderRuntimeMemoryMap();
+    memoryMap = GetLoaderRuntimeMemoryMap(&memoryMapAllocPages);
     if (memoryMap == NULL)
     {
         status = EFI_OUT_OF_RESOURCES;
@@ -90,7 +177,7 @@ StagingKernel(const CHAR16 *path)
         goto handle_error;
     }
     // +1 for safety margin
-    UINTN memoryMapPages = (HO_ALIGN_UP(memoryMap->Size, PAGE_4KB) >> 12) + 1;
+    capsuleMemoryMapPages = (HO_ALIGN_UP(memoryMap->Size, PAGE_4KB) >> 12) + 1;
 
     ELF64_LOAD_INFO elfInfo;
     memset(&elfInfo, 0, sizeof(ELF64_LOAD_INFO));
@@ -110,7 +197,7 @@ StagingKernel(const CHAR16 *path)
     BOOT_CAPSULE_LAYOUT layout;
     memset(&layout, 0, sizeof(layout));
     layout.HeaderSize = sizeof(BOOT_CAPSULE);
-    layout.MemoryMapSize = memoryMapPages << 12;
+    layout.MemoryMapSize = capsuleMemoryMapPages << 12;
     layout.KrnlCodeSize = elfInfo.ExecPhysPages << 12;
     layout.KrnlDataSize = elfInfo.DataPhysPages << 12;
     layout.KrnlStackSize = layout.IST1StackSize = HO_STACK_SIZE;
@@ -181,10 +268,10 @@ StagingKernel(const CHAR16 *path)
     JumpToKernel(capsule);
 
 handle_error:
-    if (image)
+    if (imagePages != 0)
         (void)g_ST->BootServices->FreePages((EFI_PHYSICAL_ADDRESS)image, imagePages);
-    if (memoryMap)
-        (void)g_ST->BootServices->FreePages((EFI_PHYSICAL_ADDRESS)memoryMap, memoryMapPages);
+    if (memoryMapAllocPages != 0)
+        (void)g_ST->BootServices->FreePages((EFI_PHYSICAL_ADDRESS)memoryMap, memoryMapAllocPages);
     if (EFI_ERROR(status))
     {
         LOG_ERROR(L"Kernel staging failed, terminating boot process.\r\n");
