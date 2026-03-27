@@ -28,13 +28,13 @@ MAYBE_UNUSED INT64 ConsoleReadline(OUT CHAR16 *Buffer, IN INT64 MaxCount);
 void ConsoleWriteStr(IN const CHAR16 *Buffer);
 
 EFI_STATUS ConsoleFormatWrite(const CHAR16 *fmt, ...);
-void PrintCapsule(const BOOT_CAPSULE *capsule, const CHAR16 *tag);
+// void PrintCapsule(const BOOT_CAPSULE *capsule, const CHAR16 *tag);
 
 #define LOG_DEBUG(fmt, ...)        ConsoleFormatWrite(L"[DEBUG  ] " fmt, ##__VA_ARGS__)
 #define LOG_INFO(fmt, ...)         ConsoleFormatWrite(L"[INFO   ] " fmt, ##__VA_ARGS__)
 #define LOG_WARNING(fmt, ...)      ConsoleFormatWrite(L"[WARNING] " fmt, ##__VA_ARGS__)
 #define LOG_ERROR(fmt, ...)        ConsoleFormatWrite(L"[ERROR  ] " fmt, ##__VA_ARGS__)
-#define PRINT_CAPSULE(capsule_ptr) PrintCapsule((capsule_ptr), TEXT(#capsule_ptr))
+#define PRINT_CAPSULE(capsule_ptr) /* PrintCapsule((capsule_ptr), TEXT(#capsule_ptr)) */
 
 EFI_STATUS GetFileSize(EFI_FILE_PROTOCOL *file, UINT64 *outSize);
 

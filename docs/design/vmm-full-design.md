@@ -462,6 +462,36 @@ sequenceDiagram
 - 当前页表页所在物理区间
 - 仍被 early kernel 依赖的其他固定映射
 
+### 9.4.1 Boot Mapping Manifest 契约
+
+bootloader 不应只把 `CR3` 和零散物理锚点交给内核，而应把自己在创建初始地址空间时掌握的事实同步固化为一份
+**Boot Mapping Manifest**。
+
+这份 manifest 的定位不是“调试附属品”，而是 VMM 第一阶段导入 boot-fixed region 的正式事实来源。
+
+每个 manifest entry 都应至少表达：
+
+- semantic category
+- VA range
+- PA / backing range
+- page granularity（4KB / 2MB / 1GB）
+- R / W / X
+- user / supervisor
+- cacheability
+- `boot-imported`
+- `releasable`
+- `migratable`
+- `bootstrap-only`
+
+当前 HimuOS 的 phase-1 约定是：
+
+- loader 在映射调用点直接同步生成 manifest entry，而不是让 kernel 事后反推
+- manifest entry 允许以多个 extent 表达同一语义类，以保留 head / body / tail 或 huge-page 拆分信息
+- kernel 在 early init 中导入并严格校验这份 manifest
+- kernel 还应把 active `CR3` 的高半区叶子映射与 manifest 做交叉核对，发现“页表里有，但 manifest 里没有”的 surviving mapping 时直接报错
+
+这样做的结果是，VMM 第一阶段接手的就不再只是“一棵别人建好的页表树”，而是一组已经被记录、分型、归属并可解释的 boot-fixed facts。
+
 ### 9.5 何时再重建 root page table
 
 只有在以下条件成立时，才建议进入 reroot / rebuild：

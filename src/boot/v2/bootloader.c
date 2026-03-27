@@ -3,7 +3,7 @@
 #include "arch/amd64/asm.h"
 #include "arch/amd64/pm.h"
 #include "arch/amd64/efi_mem.h"
-#include "blmm.h"
+#include "blmm/blmm.h"
 #include "kernel/hodefs.h"
 #include "lib/elf/elf.h"
 #include "kernel/ke/mm.h"
@@ -24,6 +24,7 @@ EFI_HANDLE gImageHandle;
 static BOOL LoadKernel(void *image, UINT64 imageSize, STAGING_BLOCK *staging);
 static void JumpToKernel(STAGING_BLOCK *block);
 static HO_PHYSICAL_ADDRESS FindAcpiRsdpPhys(void);
+static UINT32 GetBootMappingManifestCapacity(const EFI_MEMORY_MAP *memoryMap);
 static BOOL IsGuidEqual(const struct EFI_GUID *left, const struct EFI_GUID *right);
 static BOOL CpuSupportsNx(void);
 static BOOL EnableNxe(void);
@@ -196,7 +197,7 @@ StagingKernel(const CHAR16 *path)
 
     BOOT_CAPSULE_LAYOUT layout;
     memset(&layout, 0, sizeof(layout));
-    layout.HeaderSize = sizeof(BOOT_CAPSULE);
+    layout.HeaderSize = sizeof(BOOT_CAPSULE) + BootMappingManifestStorageBytes(GetBootMappingManifestCapacity(memoryMap));
     layout.MemoryMapSize = capsuleMemoryMapPages << 12;
     layout.KrnlCodeSize = elfInfo.ExecPhysPages << 12;
     layout.KrnlDataSize = elfInfo.DataPhysPages << 12;
@@ -359,6 +360,13 @@ FindAcpiRsdpPhys(void)
     }
 
     return 0;
+}
+
+static UINT32
+GetBootMappingManifestCapacity(const EFI_MEMORY_MAP *memoryMap)
+{
+    (void)memoryMap;
+    return 512U;
 }
 
 static BOOL

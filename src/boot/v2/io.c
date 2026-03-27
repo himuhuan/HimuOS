@@ -181,6 +181,7 @@ ConsoleFormatWrite(const CHAR16 *fmt, ...)
     return EFI_SUCCESS;
 }
 
+#if 0
 void
 PrintCapsule(const BOOT_CAPSULE *capsule, const CHAR16 *tag)
 {
@@ -213,11 +214,16 @@ PrintCapsule(const BOOT_CAPSULE *capsule, const CHAR16 *tag)
     ConsoleFormatWrite(L"| Phys map: mmap=%p entry=%p stack=%p ist1=%p\r\n", capsule->MemoryMapPhys,
                        capsule->KrnlEntryPhys, capsule->KrnlStackPhys, capsule->KrnlIST1StackPhys);
     ConsoleFormatWrite(L"| ACPI: rsdp=%p (HHDM)\r\n", capsule->AcpiRsdpPhys);
+    ConsoleFormatWrite(L"| Manifest: magic=0x%x ver=%u entries=%u/%u bytes=%u req=0x%x\r\n",
+                       capsule->MappingManifest.Magic, capsule->MappingManifest.Version,
+                       capsule->MappingManifest.EntryCount, capsule->MappingManifest.EntryCapacity,
+                       capsule->MappingManifest.EntriesBytes, capsule->MappingManifest.RequiredCategories);
     ConsoleFormatWrite(L"| Paging: pml4=%p size=%u bytes\r\n", capsule->PageTableInfo.Ptr, capsule->PageTableInfo.Size);
     ConsoleFormatWrite(L"| CPU: GDT.base=%p limit=%u TSS.rsp0=%p ist1=%p\r\n", capsule->CpuInfo.GdtPtr.Base,
                        capsule->CpuInfo.GdtPtr.Limit, capsule->CpuInfo.Tss.RSP0, capsule->CpuInfo.Tss.IST1);
     ConsoleFormatWrite(L"+======================================================+\r\n\r\n");
 }
+#endif
 
 //
 // static functions

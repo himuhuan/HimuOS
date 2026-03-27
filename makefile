@@ -82,20 +82,22 @@ KRN_BUILDROOT := build/kernel$(if $(strip $(BUILD_FLAVOR)),/$(BUILD_FLAVOR),)
 KRN_OBJDIR    := $(KRN_BUILDROOT)/obj
 KRN_BINDIR    := $(KRN_BUILDROOT)/bin
 
-VALID_TEST_MODULES := schedule list
+VALID_TEST_MODULES := schedule guard_wait owned_exit list
 TEST_MODULE_GOALS  := $(filter-out test,$(MAKECMDGOALS))
 TEST_MODULE        := $(if $(strip $(TEST_MODULE_GOALS)),$(firstword $(TEST_MODULE_GOALS)),list)
 TEST_BUILD_FLAVOR  := test-$(TEST_MODULE)
 
-TEST_DEFINE_schedule := HO_DEMO_TEST_SCHEDULE
+TEST_DEFINE_schedule   := HO_DEMO_TEST_SCHEDULE
+TEST_DEFINE_guard_wait := HO_DEMO_TEST_GUARD_WAIT
+TEST_DEFINE_owned_exit := HO_DEMO_TEST_OWNED_EXIT
 
 ifneq ($(filter test,$(MAKECMDGOALS)),)
 ifneq ($(words $(TEST_MODULE_GOALS)),0)
 ifneq ($(words $(TEST_MODULE_GOALS)),1)
-$(error Usage: make test <module>. Available modules: schedule. Use `make test` or `make test list` to inspect supported modules)
+$(error Usage: make test <module>. Available modules: schedule, guard_wait, owned_exit. Use `make test` or `make test list` to inspect supported modules)
 endif
 ifneq ($(filter $(TEST_MODULE),$(VALID_TEST_MODULES)), $(TEST_MODULE))
-$(error Unknown test module '$(TEST_MODULE)'. Available modules: schedule. Use `make test list` to inspect supported modules)
+$(error Unknown test module '$(TEST_MODULE)'. Available modules: schedule, guard_wait, owned_exit. Use `make test list` to inspect supported modules)
 endif
 endif
 endif
@@ -142,11 +144,14 @@ SRCS_ELF := \
 # EFI Bootloader Sources
 # ------------------------------------------------------------------------------
 SRCS_EFI_BOOT := \
-    src/boot/v2/blmm.c        \
-    src/boot/v2/bootloader.c  \
-    src/boot/v2/ho_balloc.c   \
-    src/boot/v2/efi_main.c    \
-    src/boot/v2/io.c          \
+    src/boot/v2/blmm/blmm.c            \
+    src/boot/v2/blmm/blmm_paging.c     \
+    src/boot/v2/blmm/blmm_manifest.c   \
+    src/boot/v2/blmm/blmm_hhdm_acpi.c  \
+    src/boot/v2/bootloader.c      \
+    src/boot/v2/ho_balloc.c       \
+    src/boot/v2/efi_main.c        \
+    src/boot/v2/io.c              \
     src/arch/amd64/pm.c
 
 # EFI target: bootloader + minimal libc + elf
@@ -159,9 +164,15 @@ TARGET_EFI   := $(EFI_BINDIR)/main.efi
 # ------------------------------------------------------------------------------
 SRCS_KERNEL_C := \
     src/kernel/hoentry.c                                \
-    src/kernel/init.c                                   \
+    src/kernel/init/init.c                              \
+    src/kernel/init/init_boot_mapping.c                 \
+    src/kernel/init/init_hhdm_verify.c                  \
     src/kernel/hodbg.c                                  \
-    src/kernel/demo.c                                   \
+    src/kernel/demo/demo.c                              \
+    src/kernel/demo/demo_thread.c                       \
+    src/kernel/demo/demo_event.c                        \
+    src/kernel/demo/demo_semaphore.c                    \
+    src/kernel/demo/demo_mutex.c                        \
     src/kernel/ke/critical_section.c                    \
     src/kernel/ke/console/console.c                     \
     src/kernel/ke/console/console_device.c              \
@@ -175,13 +186,18 @@ SRCS_KERNEL_C := \
     src/kernel/ke/time/sinks/hpet_sink.c                \
     src/kernel/ke/time/sinks/lapic_clockevent_sink.c    \
     src/kernel/ke/log/log.c                             \
-    src/kernel/ke/sysinfo.c                             \
+    src/kernel/ke/sysinfo/sysinfo.c                     \
+    src/kernel/ke/sysinfo/sysinfo_cpu.c                 \
+    src/kernel/ke/sysinfo/sysinfo_mem.c                 \
+    src/kernel/ke/sysinfo/sysinfo_time.c                \
     src/kernel/ke/pmm/pmm_device.c                      \
     src/kernel/ke/pmm/bitmap_sink.c                     \
     src/kernel/ke/pmm/pmm_boot_init.c                   \
     src/kernel/ke/mm/pool.c                             \
     src/kernel/ke/thread/kthread.c                      \
     src/kernel/ke/thread/scheduler.c                    \
+    src/kernel/ke/thread/scheduler_wait.c               \
+    src/kernel/ke/thread/scheduler_sync.c               \
     src/arch/arch.c                                     \
     src/arch/amd64/idt.c                                \
     src/arch/amd64/cpu.c                                \
@@ -210,7 +226,7 @@ OBJS_KERNEL     := $(OBJS_KERNEL_C) $(OBJS_KERNEL_ASM)
 
 TARGET_KERNEL := $(KRN_BINDIR)/kernel.bin
 
-.PHONY: all clean copy run efi install clean_code vmware_img kernel debug run_iso test schedule list
+.PHONY: all clean copy run efi install clean_code vmware_img kernel debug run_iso test schedule guard_wait owned_exit list
 
 all: efi kernel
 
@@ -277,15 +293,19 @@ test:
 ifeq ($(TEST_MODULE),list)
 	@echo "Available test modules:"
 	@echo "  schedule - scheduler demo suite (previous make run / make test all behavior)"
+	@echo "  guard_wait - panic regression: wait while inside a critical section"
+	@echo "  owned_exit - panic regression: thread exits while still owning a mutex"
 	@echo "Usage:"
 	@echo "  make test schedule   # run the scheduler demo suite"
+	@echo "  make test guard_wait # run the critical-section wait guard regression"
+	@echo "  make test owned_exit # run the owned-mutex exit regression"
 	@echo "  make test            # list available test modules"
 else
 	@echo "Starting test module: $(TEST_MODULE)"
 	@$(MAKE) run BUILD_FLAVOR=$(TEST_BUILD_FLAVOR) HO_DEMO_TEST_NAME=$(TEST_MODULE) HO_DEMO_TEST_DEFINE=$(TEST_DEFINE_$(TEST_MODULE))
 endif
 
-schedule list:
+schedule guard_wait owned_exit list:
 	@:
 		
 debug: copy

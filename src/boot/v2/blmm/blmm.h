@@ -11,7 +11,7 @@
 
 #include "arch/amd64/efi_mem.h"
 #include "boot/boot_capsule.h"
-#include "ho_balloc.h"
+#include "boot/v2/ho_balloc.h"
 
 EFI_MEMORY_MAP *GetLoaderRuntimeMemoryMap(UINTN *allocatedPagesOut);
 EFI_STATUS LoadMemoryMap(HO_PHYSICAL_ADDRESS mapBasePhys, UINT64 maxSize, OUT UINTN *memoryMap);
@@ -33,4 +33,12 @@ typedef struct
 } MAP_PAGE_PARAMS;
 EFI_STATUS MapPage(MAP_PAGE_PARAMS *request);
 EFI_STATUS
-MapRegion(HOB_BALLOC *allocator, UINT64 pml4BasePhys, UINT64 physStart, UINT64 virtStart, UINT64 size, UINT64 flags);
+MapRegion(HOB_BALLOC *allocator,
+          UINT64 pml4BasePhys,
+          UINT64 physStart,
+          UINT64 virtStart,
+          UINT64 size,
+          UINT64 flags,
+          BOOT_CAPSULE *capsule,
+          UINT32 category,
+          UINT64 manifestAttributes);
