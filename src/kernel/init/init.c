@@ -48,6 +48,18 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
              pmmStats.FreeBytes / 1024, pmmStats.ReservedBytes / 1024);
     }
 
+    initStatus = KeImportKernelAddressSpace(block, gBootMappingManifest);
+    if (initStatus != EC_SUCCESS)
+    {
+        HO_KPANIC(initStatus, "Failed to import kernel address space");
+    }
+
+    initStatus = KePtSelfTest();
+    if (initStatus != EC_SUCCESS)
+    {
+        HO_KPANIC(initStatus, "PT HAL self-test failed");
+    }
+
     // Smoke test: single page alloc/write/read/free
     {
         HO_PHYSICAL_ADDRESS testPage;

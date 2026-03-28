@@ -204,6 +204,7 @@ SRCS_KERNEL_C := \
     src/kernel/ke/pmm/pmm_device.c                      \
     src/kernel/ke/pmm/bitmap_sink.c                     \
     src/kernel/ke/pmm/pmm_boot_init.c                   \
+    src/kernel/ke/mm/address_space.c                    \
     src/kernel/ke/mm/pool.c                             \
     src/kernel/ke/thread/kthread.c                      \
     src/kernel/ke/thread/scheduler/scheduler.c          \
