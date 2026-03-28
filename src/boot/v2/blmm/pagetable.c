@@ -140,7 +140,8 @@ MapRegion(HOB_BALLOC *allocator, UINT64 pml4BasePhys, UINT64 physStart, UINT64 v
         return EFI_OUT_OF_RESOURCES;
     }
 
-    LOG_DEBUG("Mapping %p -> %p, size=%x, flags=%x\r\n", physStart, virtStart, size, flags);
+    // Too verbose for normal boot logging
+    // LOG_DEBUG("Mapping %p -> %p, size=%x, flags=%x\r\n", physStart, virtStart, size, flags);
 
     while (offset < size)
     {

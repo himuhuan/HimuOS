@@ -11,10 +11,13 @@
 # ==============================================================================
 
 # Cross compiler for x86_64 EFI applications
+HO_ENABLE_NULL_DETECTION ?= 1
+
 CC_EFI      := x86_64-w64-mingw32-gcc
 CFLAGS_EFI  := -Wall -Wextra -nostdlib -fno-builtin -nostartfiles -nodefaultlibs \
                -nostdinc -ffreestanding -c -mavx2 -g \
-               -Isrc -Isrc/include -Isrc/include/libc
+			   -Isrc -Isrc/include -Isrc/include/libc \
+			   -DHO_ENABLE_NULL_DETECTION=$(HO_ENABLE_NULL_DETECTION)
 LDFLAGS_EFI := -nostdlib -Wl,--subsystem,10 -e efi_main
 
 # Kernel compiler and linker
@@ -62,7 +65,8 @@ CFLAGS := -Wall -Wextra -Wmissing-prototypes -Wstrict-prototypes -Werror \
           -Isrc -Isrc/include -Isrc/include/libc \
           -DKRNL_VERSTR=\"$(KRNL_VERSTR)\" \
           -D__HO_DEBUG_BUILD__=$(HO_DEBUG_BUILD) \
-          -DHO_ENABLE_TIMESTAMP_LOG=$(HO_ENABLE_TIMESTAMP_LOG)
+		  -DHO_ENABLE_TIMESTAMP_LOG=$(HO_ENABLE_TIMESTAMP_LOG) \
+		  -DHO_ENABLE_NULL_DETECTION=$(HO_ENABLE_NULL_DETECTION)
 
 ifneq ($(strip $(HO_DEMO_TEST_DEFINE)),)
 CFLAGS += -DHO_DEMO_TEST_SELECTION=$(HO_DEMO_TEST_DEFINE) \

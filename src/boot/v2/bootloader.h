@@ -22,3 +22,6 @@ void LoaderInitialize(EFI_HANDLE imageHandle, struct EFI_SYSTEM_TABLE *systemTab
 EFI_STATUS StagingKernel(const CHAR16 *path);
 
 BOOL BootUseNx(void);
+EFI_STATUS BootClaimNullGuardPage(void);
+void BootReleaseNullGuardPage(void);
+EFI_STATUS BootValidateGuardedAllocation(const CHAR16 *resourceName, EFI_PHYSICAL_ADDRESS basePhys, UINTN pages);

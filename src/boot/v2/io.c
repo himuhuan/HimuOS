@@ -479,6 +479,15 @@ ReadKernelImage(IN const CHAR16 *path, OUT void **outImage, OUT UINT64 *outSize)
         rootDir->Close(rootDir);
         return status;
     }
+    status = BootValidateGuardedAllocation(L"kernel image staging buffer", bufferPhys,
+                                           HO_ALIGN_UP(kernelFileSize, PAGE_4KB) >> 12);
+    if (EFI_ERROR(status))
+    {
+        (void)g_ST->BootServices->FreePages(bufferPhys, HO_ALIGN_UP(kernelFileSize, PAGE_4KB) >> 12);
+        kernelFile->Close(kernelFile);
+        rootDir->Close(rootDir);
+        return status;
+    }
 
     UINTN readSize = kernelFileSize;
     status = kernelFile->Read(kernelFile, &readSize, (void *)bufferPhys);

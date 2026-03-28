@@ -16,7 +16,19 @@
 #define TRUE  1
 #define FALSE 0
 
+#ifndef HO_ENABLE_NULL_DETECTION
+#define HO_ENABLE_NULL_DETECTION 1
+#endif
+
+#define HO_NULL_DETECTION_ENABLED ((HO_ENABLE_NULL_DETECTION) != 0)
+
 typedef uint8_t BOOL;
+
+static inline BOOL
+HoNullDetectionEnabled(void)
+{
+    return HO_NULL_DETECTION_ENABLED ? TRUE : FALSE;
+}
 
 typedef uint64_t HO_PHYSICAL_ADDRESS;
 typedef uint64_t HO_VIRTUAL_ADDRESS;

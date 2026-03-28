@@ -44,6 +44,7 @@ VerifyHhdm(STAGING_BLOCK *block)
     UINT64 probePhys = 0;
     BOOL probeFound = FALSE;
     BOOL zeroProbeFound = FALSE;
+    BOOL allowZeroProbeFallback = !HoNullDetectionEnabled();
 
     for (UINT64 idx = 0; idx < descCount; ++idx)
     {
@@ -60,7 +61,6 @@ VerifyHhdm(STAGING_BLOCK *block)
                                     pageTableEndExclusive, &candidateProbe))
             continue;
 
-        // Prefer a non-zero page when available; page 0 remains a fallback.
         if (candidateProbe == 0)
         {
             zeroProbeFound = TRUE;
@@ -72,7 +72,7 @@ VerifyHhdm(STAGING_BLOCK *block)
         break;
     }
 
-    if (!probeFound && zeroProbeFound)
+    if (!probeFound && zeroProbeFound && allowZeroProbeFallback)
     {
         probePhys = 0;
         probeFound = TRUE;
@@ -80,7 +80,19 @@ VerifyHhdm(STAGING_BLOCK *block)
 
     if (!probeFound)
     {
-        klog(KLOG_LEVEL_WARNING, "[MM] FULL HHDM smoke test skipped: no reclaimable probe page\n");
+        if (HoNullDetectionEnabled())
+        {
+            if (zeroProbeFound)
+                klog(KLOG_LEVEL_WARNING,
+                     "[MM] FULL HHDM smoke test skipped: only page-0 probe candidates remain under NULL detection\n");
+            else
+                klog(KLOG_LEVEL_WARNING,
+                     "[MM] FULL HHDM smoke test skipped: no reclaimable non-zero probe page\n");
+        }
+        else
+        {
+            klog(KLOG_LEVEL_WARNING, "[MM] FULL HHDM smoke test skipped: no reclaimable probe page\n");
+        }
         DumpHhdmProbeDiagnostics(map, capsuleBase, capsuleEndExclusive, pageTableBase, pageTableEndExclusive);
         return;
     }

@@ -39,11 +39,17 @@ CreateCapsule(const BOOT_CAPSULE_LAYOUT *layout)
 {
     BOOT_CAPSULE_PAGE_LAYOUT pageLayout;
     UINT64 pages = GetCapsulePhysPages(layout, &pageLayout);
-    HO_PHYSICAL_ADDRESS basePhys;
+    HO_PHYSICAL_ADDRESS basePhys = 0;
     EFI_STATUS status = g_ST->BootServices->AllocatePages(AllocateAnyPages, EfiLoaderData, pages, &basePhys);
     if (EFI_ERROR(status))
     {
         LOG_ERROR("Failed to allocate boot capsule: %k (0x%x)\r\n", status, status);
+        return NULL;
+    }
+    status = BootValidateGuardedAllocation(L"boot capsule", basePhys, pages);
+    if (EFI_ERROR(status))
+    {
+        (void)g_ST->BootServices->FreePages(basePhys, pages);
         return NULL;
     }
     LOG_DEBUG("Allocated %u pages for boot capsule at PA %p\r\n", pages, basePhys);
@@ -112,7 +118,28 @@ CreateInitialMapping(BOOT_CAPSULE *capsule, EFI_MEMORY_MAP *memoryMap)
             break;
         }
 
-        status = MapRegion(&pageTableAlloc, pml4Phys, 0, 0, 0x80000000ULL, PTE_PRESENT | PTE_WRITABLE);
+        status = BootValidateGuardedAllocation(L"page table pool", poolBase, MAX_PAGE_TABLE_POOL_PAGES);
+        if (EFI_ERROR(status))
+        {
+            (void)g_ST->BootServices->FreePages(poolBase, MAX_PAGE_TABLE_POOL_PAGES);
+            poolBase = 0;
+            break;
+        }
+
+        if (HoNullDetectionEnabled())
+        {
+            status = MapRegion(&pageTableAlloc, pml4Phys, PAGE_4KB, PAGE_4KB, PAGE_2MB - PAGE_4KB,
+                               PTE_PRESENT | PTE_WRITABLE);
+            if (!EFI_ERROR(status))
+            {
+                status = MapRegion(&pageTableAlloc, pml4Phys, PAGE_2MB, PAGE_2MB, 0x80000000ULL - PAGE_2MB,
+                                   PTE_PRESENT | PTE_WRITABLE);
+            }
+        }
+        else
+        {
+            status = MapRegion(&pageTableAlloc, pml4Phys, 0, 0, 0x80000000ULL, PTE_PRESENT | PTE_WRITABLE);
+        }
         if (EFI_ERROR(status))
         {
             LOG_ERROR("Failed to map lower 2GB memory: %k (0x%x)\r\n", status, status);

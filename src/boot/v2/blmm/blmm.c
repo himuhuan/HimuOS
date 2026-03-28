@@ -26,6 +26,12 @@ GetLoaderRuntimeMemoryMap()
             LOG_ERROR("Failed to allocate memory map buffer: %k (0x%x)\r\n", status, status);
             return NULL;
         }
+        status = BootValidateGuardedAllocation(L"loader memory map buffer", mapBuffer, mapBufferPages);
+        if (EFI_ERROR(status))
+        {
+            (void)g_ST->BootServices->FreePages(mapBuffer, mapBufferPages);
+            return NULL;
+        }
         map = InitMemoryMap((void *)mapBuffer, mapBufferSize);
         status = FillMemoryMap(map);
         if (!EFI_ERROR(status))

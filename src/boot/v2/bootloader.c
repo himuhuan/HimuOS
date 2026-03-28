@@ -29,11 +29,57 @@ static BOOL CpuSupportsNx(void);
 static BOOL EnableNxe(void);
 
 static BOOL kBootUseNx = FALSE;
+static BOOL kBootNullPageClaimed = FALSE;
 
 BOOL
 BootUseNx(void)
 {
     return kBootUseNx;
+}
+
+EFI_STATUS
+BootClaimNullGuardPage(void)
+{
+    if (!HoNullDetectionEnabled() || kBootNullPageClaimed)
+        return EFI_SUCCESS;
+
+    EFI_PHYSICAL_ADDRESS nullPagePhys = 0;
+    EFI_STATUS status = g_ST->BootServices->AllocatePages(AllocateAddress, EfiLoaderData, 1, &nullPagePhys);
+    if (!EFI_ERROR(status))
+    {
+        kBootNullPageClaimed = TRUE;
+        LOG_DEBUG(L"NULL detection reserved physical page 0\r\n");
+        return EFI_SUCCESS;
+    }
+
+    if (EFI_STATUS_CODE_LOW(status) == EFI_NOT_FOUND)
+    {
+        LOG_DEBUG(L"Physical page 0 already unavailable; NULL detection guard satisfied\r\n");
+        return EFI_SUCCESS;
+    }
+
+    LOG_ERROR(L"Failed to reserve physical page 0 for NULL detection: %k (0x%x)\r\n", status, status);
+    return status;
+}
+
+void
+BootReleaseNullGuardPage(void)
+{
+    if (!kBootNullPageClaimed)
+        return;
+
+    (void)g_ST->BootServices->FreePages(0, 1);
+    kBootNullPageClaimed = FALSE;
+}
+
+EFI_STATUS
+BootValidateGuardedAllocation(const CHAR16 *resourceName, EFI_PHYSICAL_ADDRESS basePhys, UINTN pages)
+{
+    if (!HoNullDetectionEnabled() || basePhys != 0)
+        return EFI_SUCCESS;
+
+    LOG_ERROR(L"NULL detection requires %s to avoid physical page 0 (pages=%u)\r\n", resourceName, pages);
+    return EFI_NOT_FOUND;
 }
 
 void
@@ -72,6 +118,12 @@ StagingKernel(const CHAR16 *path)
     void *image = NULL;
     EFI_MEMORY_MAP *memoryMap = NULL;
     UINT64 imageSize = 0;
+    UINTN imagePages = 0;
+    UINTN memoryMapPages = 0;
+
+    status = BootClaimNullGuardPage();
+    if (EFI_ERROR(status))
+        goto handle_error;
 
     status = ReadKernelImage(path, &image, &imageSize);
     if (EFI_ERROR(status))
@@ -80,7 +132,7 @@ StagingKernel(const CHAR16 *path)
         goto handle_error;
     }
     LOG_DEBUG(L"Kernel image size: %u bytes\r\n", imageSize);
-    UINTN imagePages = HO_ALIGN_UP(imageSize, PAGE_4KB) >> 12;
+    imagePages = HO_ALIGN_UP(imageSize, PAGE_4KB) >> 12;
 
     memoryMap = GetLoaderRuntimeMemoryMap();
     if (memoryMap == NULL)
@@ -90,7 +142,7 @@ StagingKernel(const CHAR16 *path)
         goto handle_error;
     }
     // +1 for safety margin
-    UINTN memoryMapPages = (HO_ALIGN_UP(memoryMap->Size, PAGE_4KB) >> 12) + 1;
+    memoryMapPages = (HO_ALIGN_UP(memoryMap->Size, PAGE_4KB) >> 12) + 1;
 
     ELF64_LOAD_INFO elfInfo;
     memset(&elfInfo, 0, sizeof(ELF64_LOAD_INFO));
@@ -161,14 +213,14 @@ StagingKernel(const CHAR16 *path)
     if (status != EFI_SUCCESS)
     {
         LOG_ERROR(L"Failed to load memory map: %k (0x%x)\r\n", status, status);
-        return status;
+        goto handle_error;
     }
 
     status = g_ST->BootServices->ExitBootServices(gImageHandle, memoryMapKey);
     if (EFI_ERROR(status))
     {
         LOG_ERROR(L"Failed to exit boot services: %k (0x%x)\r\n", status, status);
-        return status;
+        goto handle_error;
     }
 
     if (kBootUseNx && !EnableNxe())
@@ -187,6 +239,7 @@ handle_error:
         (void)g_ST->BootServices->FreePages((EFI_PHYSICAL_ADDRESS)memoryMap, memoryMapPages);
     if (EFI_ERROR(status))
     {
+        BootReleaseNullGuardPage();
         LOG_ERROR(L"Kernel staging failed, terminating boot process.\r\n");
         return status;
     }
