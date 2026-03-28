@@ -1,0 +1,372 @@
+<mxGraphModel adaptiveColors="auto" dx="1600" dy="1150" grid="10" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+  <root>
+    <mxCell id="0" />
+    <mxCell id="1" parent="0" />
+
+    <!-- Title -->
+    <mxCell id="title" value="HimuOS 时间源子系统架构"
+      vertex="1" parent="1"
+      style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=20;fontStyle=1;verticalAlign=middle;">
+      <mxGeometry x="450" y="14" width="760" height="40" as="geometry" />
+    </mxCell>
+
+    <!-- ══════════════════════════════════════════════════════
+         LAYER LABEL COLUMN  (x=20, w=120)
+         ══════════════════════════════════════════════════════ -->
+    <mxCell id="lbl3" value="&lt;b&gt;Layer 3&lt;/b&gt;&#xa;消费层" vertex="1" parent="1"
+      style="rounded=0;fillColor=#6AA84F;strokeColor=#38761D;fontColor=#FFFFFF;fontSize=11;whiteSpace=wrap;verticalAlign=middle;align=center;">
+      <mxGeometry x="20" y="60" width="120" height="200" as="geometry" />
+    </mxCell>
+    <mxCell id="lbl2" value="&lt;b&gt;Layer 2&lt;/b&gt;&#xa;KE 设备层" vertex="1" parent="1"
+      style="rounded=0;fillColor=#3D6FA0;strokeColor=#2A4F73;fontColor=#FFFFFF;fontSize=11;whiteSpace=wrap;verticalAlign=middle;align=center;">
+      <mxGeometry x="20" y="260" width="120" height="270" as="geometry" />
+    </mxCell>
+    <mxCell id="lbl1" value="&lt;b&gt;Layer 1&lt;/b&gt;&#xa;KE Sink&#xa;接口层" vertex="1" parent="1"
+      style="rounded=0;fillColor=#BF8F00;strokeColor=#7E5F00;fontColor=#FFFFFF;fontSize=11;whiteSpace=wrap;verticalAlign=middle;align=center;">
+      <mxGeometry x="20" y="530" width="120" height="210" as="geometry" />
+    </mxCell>
+    <mxCell id="lbl0" value="&lt;b&gt;Layer 0&lt;/b&gt;&#xa;硬件驱动层" vertex="1" parent="1"
+      style="rounded=0;fillColor=#CC7A00;strokeColor=#7E4A00;fontColor=#FFFFFF;fontSize=11;whiteSpace=wrap;verticalAlign=middle;align=center;">
+      <mxGeometry x="20" y="740" width="120" height="210" as="geometry" />
+    </mxCell>
+    <mxCell id="lbIn" value="&lt;b&gt;外部输入&lt;/b&gt;" vertex="1" parent="1"
+      style="rounded=0;fillColor=#666666;strokeColor=#444444;fontColor=#FFFFFF;fontSize=11;whiteSpace=wrap;verticalAlign=middle;align=center;">
+      <mxGeometry x="20" y="950" width="120" height="120" as="geometry" />
+    </mxCell>
+
+    <!-- ══════════════════════════════════════════════════════
+         LAYER BACKGROUND BANDS  (x=150, w=1490)
+         ══════════════════════════════════════════════════════ -->
+    <mxCell id="bg3" value="" vertex="1" parent="1"
+      style="rounded=0;fillColor=#D5E8D4;strokeColor=#82B366;opacity=50;">
+      <mxGeometry x="150" y="60" width="1490" height="200" as="geometry" />
+    </mxCell>
+    <mxCell id="bg2" value="" vertex="1" parent="1"
+      style="rounded=0;fillColor=#DAE8FC;strokeColor=#6C8EBF;opacity=50;">
+      <mxGeometry x="150" y="260" width="1490" height="270" as="geometry" />
+    </mxCell>
+    <mxCell id="bg1" value="" vertex="1" parent="1"
+      style="rounded=0;fillColor=#FFF2CC;strokeColor=#D6B656;opacity=50;">
+      <mxGeometry x="150" y="530" width="1490" height="210" as="geometry" />
+    </mxCell>
+    <mxCell id="bg0" value="" vertex="1" parent="1"
+      style="rounded=0;fillColor=#FFE6CC;strokeColor=#D79B00;opacity=50;">
+      <mxGeometry x="150" y="740" width="1490" height="210" as="geometry" />
+    </mxCell>
+    <mxCell id="bgIn" value="" vertex="1" parent="1"
+      style="rounded=0;fillColor=#F5F5F5;strokeColor=#888888;opacity=50;fontColor=#333333;">
+      <mxGeometry x="150" y="950" width="1490" height="120" as="geometry" />
+    </mxCell>
+
+    <!-- ══════════════════════════════════════════════════════
+         LAYER 3: CONSUMERS  (y=75..240)
+         ══════════════════════════════════════════════════════ -->
+
+    <!-- Scheduler Timer ISR -->
+    <mxCell id="l3_sched" vertex="1" parent="1"
+      value="&lt;b&gt;调度器 定时 ISR&lt;/b&gt;&#xa;src/kernel/ke/thread/scheduler/timer.c&#xa;&#xa;KiSchedulerTimerISR()&#xa;KiNowNs() = KeGetSystemUpRealTime() x 1000&#xa;KeClockEventSetNextEvent(deltaNs)&#xa;KeClockEventOnInterrupt()"
+      style="rounded=1;fillColor=#6AA84F;strokeColor=#38761D;fontColor=#FFFFFF;fontSize=10;whiteSpace=wrap;align=left;spacingLeft=8;spacingTop=4;">
+      <mxGeometry x="170" y="78" width="380" height="160" as="geometry" />
+    </mxCell>
+
+    <!-- Logger -->
+    <mxCell id="l3_log" vertex="1" parent="1"
+      value="&lt;b&gt;内核日志 Logger&lt;/b&gt;&#xa;src/kernel/ke/log/log.c&#xa;&#xa;klog() / kprintf()&#xa;时间戳前缀: KeGetSystemUpRealTime() &#956;s"
+      style="rounded=1;fillColor=#6AA84F;strokeColor=#38761D;fontColor=#FFFFFF;fontSize=10;whiteSpace=wrap;align=left;spacingLeft=8;spacingTop=4;">
+      <mxGeometry x="700" y="90" width="280" height="140" as="geometry" />
+    </mxCell>
+
+    <!-- SysInfo -->
+    <mxCell id="l3_sysinfo" vertex="1" parent="1"
+      value="&lt;b&gt;系统信息 SysInfo&lt;/b&gt;&#xa;src/kernel/ke/sysinfo/time.c&#xa;&#xa;KeQuerySystemInformation()&#xa;KE_SYSINFO_TIME_SOURCE  (9)&#xa;KE_SYSINFO_UPTIME         (10)&#xa;KE_SYSINFO_CLOCK_EVENT  (12)"
+      style="rounded=1;fillColor=#6AA84F;strokeColor=#38761D;fontColor=#FFFFFF;fontSize=10;whiteSpace=wrap;align=left;spacingLeft=8;spacingTop=4;">
+      <mxGeometry x="1240" y="75" width="330" height="165" as="geometry" />
+    </mxCell>
+
+    <!-- ══════════════════════════════════════════════════════
+         LAYER 2: KE DEVICES  (y=278..510)
+         ══════════════════════════════════════════════════════ -->
+
+    <!-- KE_TIME_DEVICE -->
+    <mxCell id="l2_time" vertex="1" parent="1"
+      value="&lt;b&gt;KE_TIME_DEVICE&lt;/b&gt;    (src/include/kernel/ke/time_source.h)&#xa;ActiveSink: KE_TIME_SINK*  |  FreqHz  |  StartTick  |  Kind: { NONE / TSC / PM_TIMER / HPET }&#xa;&#xa;KeTimeSourceInit(acpiRsdpPhys)   KeGetSystemUpRealTime() &#8594; &#956;s   KeBusyWaitUs(us)&#xa;KeGetTimeSourceKind()   KeGetTimeSourceFrequency()   KeIsTimeSourceReady()&#xa;&#xa;&#x25B6; 选择优先级:  ①TSC (invariant 或 hypervisor 模式)  &gt;  ②PM Timer  &gt;  ③HPET&#xa;&#x25B6; TSC 校准: 5 x 10ms 测量窗口, 丢弃2个极值, 以 PM Timer 或 HPET 为参考时钟"
+      style="rounded=1;fillColor=#3D6FA0;strokeColor=#2A4F73;fontColor=#FFFFFF;fontSize=10;whiteSpace=wrap;align=left;spacingLeft=10;spacingTop=6;">
+      <mxGeometry x="170" y="278" width="920" height="200" as="geometry" />
+    </mxCell>
+
+    <!-- KE_CLOCK_EVENT_DEVICE -->
+    <mxCell id="l2_clock" vertex="1" parent="1"
+      value="&lt;b&gt;KE_CLOCK_EVENT_DEVICE&lt;/b&gt;    (src/include/kernel/ke/clock_event.h)&#xa;ActiveSink: KE_CLOCK_EVENT_SINK*  |  Mode: ONE_SHOT | TSC_DEADLINE&#xa;Kind: KE_CLOCK_EVENT_LAPIC_TIMER  |  VectorNumber: 0x40&#xa;PerCpu[]: { Initialized, InterruptCount }&#xa;&#xa;KeClockEventInit()   KeClockEventPerCpuInit(cpuIndex)&#xa;KeClockEventSetNextEvent(deltaNs)   KeClockEventOnInterrupt()&#xa;KeClockEventGetInterruptCount()   KeClockEventIsReady()&#xa;&#x25B6; 校准: KeLapicClockEventSinkCalibrate(10000 &#956;s) via KeBusyWaitUs"
+      style="rounded=1;fillColor=#3D6FA0;strokeColor=#2A4F73;fontColor=#FFFFFF;fontSize=10;whiteSpace=wrap;align=left;spacingLeft=10;spacingTop=6;">
+      <mxGeometry x="1140" y="278" width="470" height="230" as="geometry" />
+    </mxCell>
+
+    <!-- ══════════════════════════════════════════════════════
+         LAYER 1: KE SINKS  (y=548..720)
+         ══════════════════════════════════════════════════════ -->
+
+    <!-- KE_HPET_TIME_SINK -->
+    <mxCell id="l1_hpet" vertex="1" parent="1"
+      value="&lt;b&gt;KE_HPET_TIME_SINK&lt;/b&gt;&#xa;KE_TIME_SINK (vtable)&#xa;ReadCounter / GetFrequency / GetName&#xa;BaseVirt, FreqHz, Initialized&#xa;KeHpetTimeSinkInit(sink, rsdpPhys)"
+      style="rounded=1;fillColor=#BF8F00;strokeColor=#7E5F00;fontColor=#FFFFFF;fontSize=10;whiteSpace=wrap;align=left;spacingLeft=8;spacingTop=4;">
+      <mxGeometry x="170" y="550" width="285" height="140" as="geometry" />
+    </mxCell>
+
+    <!-- KE_PMTIMER_TIME_SINK -->
+    <mxCell id="l1_pmt" vertex="1" parent="1"
+      value="&lt;b&gt;KE_PMTIMER_TIME_SINK&lt;/b&gt;&#xa;KE_TIME_SINK (vtable)&#xa;ReadCounter / GetFrequency / GetName&#xa;Port, BitWidth, High, LastRaw&#xa;KePmTimerTimeSinkInit(sink, rsdpPhys)"
+      style="rounded=1;fillColor=#BF8F00;strokeColor=#7E5F00;fontColor=#FFFFFF;fontSize=10;whiteSpace=wrap;align=left;spacingLeft=8;spacingTop=4;">
+      <mxGeometry x="495" y="550" width="285" height="140" as="geometry" />
+    </mxCell>
+
+    <!-- KE_TSC_TIME_SINK -->
+    <mxCell id="l1_tsc" vertex="1" parent="1"
+      value="&lt;b&gt;KE_TSC_TIME_SINK&lt;/b&gt;&#xa;KE_TIME_SINK (vtable)&#xa;ReadCounter / GetFrequency / GetName&#xa;FreqHz, IsInvariant, Calibrated&#xa;KeTscTimeSinkInit()&#xa;KeTscTimeSinkCalibrate(sink, refSink)"
+      style="rounded=1;fillColor=#BF8F00;strokeColor=#7E5F00;fontColor=#FFFFFF;fontSize=10;whiteSpace=wrap;align=left;spacingLeft=8;spacingTop=4;">
+      <mxGeometry x="820" y="550" width="285" height="140" as="geometry" />
+    </mxCell>
+
+    <!-- KE_LAPIC_CLOCK_EVENT_SINK -->
+    <mxCell id="l1_lapic" vertex="1" parent="1"
+      value="&lt;b&gt;KE_LAPIC_CLOCK_EVENT_SINK&lt;/b&gt;&#xa;KE_CLOCK_EVENT_SINK (vtable)&#xa;SetNextEventNs / GetMinDeltaNs / GetMaxDeltaNs / GetName&#xa;BasePhys, BaseVirt, TicksPerSec, DividerValue, VectorNumber&#xa;KeLapicClockEventSinkInit(sink, vectorNumber)&#xa;KeLapicClockEventSinkCalibrate(sink, windowUs)"
+      style="rounded=1;fillColor=#BF8F00;strokeColor=#7E5F00;fontColor=#FFFFFF;fontSize=10;whiteSpace=wrap;align=left;spacingLeft=8;spacingTop=4;">
+      <mxGeometry x="1155" y="550" width="455" height="140" as="geometry" />
+    </mxCell>
+
+    <!-- ══════════════════════════════════════════════════════
+         LAYER 0: HARDWARE DRIVERS  (y=758..930)
+         ══════════════════════════════════════════════════════ -->
+
+    <!-- HPET Driver -->
+    <mxCell id="l0_hpet" vertex="1" parent="1"
+      value="&lt;b&gt;HPET Driver&lt;/b&gt;&#xa;src/drivers/time/hpet_driver.c&#xa;HpetSetup(rsdpPhys, *baseVirt, *freqHz)&#xa;HpetReadMainCounterAt(baseVirt)&#xa;freqHz = 10^15 / periodFs&#xa;寄存器: CAP_ID(0x000) / CONFIG(0x010) / COUNTER(0x0F0)"
+      style="rounded=1;fillColor=#CC7A00;strokeColor=#7E4A00;fontColor=#FFFFFF;fontSize=10;whiteSpace=wrap;align=left;spacingLeft=8;spacingTop=4;">
+      <mxGeometry x="170" y="758" width="285" height="152" as="geometry" />
+    </mxCell>
+
+    <!-- PM Timer Driver -->
+    <mxCell id="l0_pmt" vertex="1" parent="1"
+      value="&lt;b&gt;PM Timer Driver&lt;/b&gt;&#xa;src/drivers/time/pmtimer_driver.c&#xa;PmTimerSetup(rsdpPhys, *port, *bitWidth)&#xa;PmTimerRead(port) → inl(port)&#xa;PM_TIMER_FREQ_HZ = 3,579,545 Hz (固定)&#xa;24-bit 或 32-bit (FADT FLAG TMR_VAL_EXT)"
+      style="rounded=1;fillColor=#CC7A00;strokeColor=#7E4A00;fontColor=#FFFFFF;fontSize=10;whiteSpace=wrap;align=left;spacingLeft=8;spacingTop=4;">
+      <mxGeometry x="495" y="758" width="285" height="152" as="geometry" />
+    </mxCell>
+
+    <!-- TSC Driver -->
+    <mxCell id="l0_tsc" vertex="1" parent="1"
+      value="&lt;b&gt;TSC Driver&lt;/b&gt;&#xa;src/drivers/time/tsc_driver.c&#xa;TscDetectAvailable(cpuInfo)&#xa;TscDetectInvariant(cpuInfo)&#xa;TscGetFreqFromCpuid(cpuInfo) → 0 时需校准&#xa;TscReadTick() = rdtsc()&#xa;CPUID.15H (TSC/Crystal) + CPUID.16H (基础 MHz)"
+      style="rounded=1;fillColor=#CC7A00;strokeColor=#7E4A00;fontColor=#FFFFFF;fontSize=10;whiteSpace=wrap;align=left;spacingLeft=8;spacingTop=4;">
+      <mxGeometry x="820" y="758" width="285" height="152" as="geometry" />
+    </mxCell>
+
+    <!-- LAPIC Timer Driver -->
+    <mxCell id="l0_lapic" vertex="1" parent="1"
+      value="&lt;b&gt;LAPIC Timer Driver&lt;/b&gt;&#xa;src/drivers/time/lapic_timer_driver.c&#xa;LapicDetectAndEnable(*basePhys, *baseVirt)&#xa;LapicTimerConfigureOneShot(base, vec, div, masked)&#xa;LapicTimerSetInitialCount / LapicTimerGetCurrentCount&#xa;LapicSendEoi()&#xa;双模式: xAPIC (MMIO at IA32_APIC_BASE) | x2APIC (MSR)"
+      style="rounded=1;fillColor=#CC7A00;strokeColor=#7E4A00;fontColor=#FFFFFF;fontSize=10;whiteSpace=wrap;align=left;spacingLeft=8;spacingTop=4;">
+      <mxGeometry x="1155" y="758" width="455" height="152" as="geometry" />
+    </mxCell>
+
+    <!-- ══════════════════════════════════════════════════════
+         INPUT SOURCES  (y=968..1050)
+         ══════════════════════════════════════════════════════ -->
+
+    <!-- ACPI RSDP -->
+    <mxCell id="in_acpi" vertex="1" parent="1"
+      value="&lt;b&gt;ACPI RSDP&lt;/b&gt;  (物理地址由 UEFI Boot Loader 传入内核)&#xa;XSDT/RSDT &#8594; 签名 &quot;HPET&quot; &#8594; HPET 基础物理地址&#xa;XSDT/RSDT &#8594; 签名 &quot;FACP&quot; (FADT) &#8594; XPmTmrBlk (GAS) / PmTmrBlk 端口"
+      style="rounded=1;fillColor=#666666;strokeColor=#444444;fontColor=#FFFFFF;fontSize=10;whiteSpace=wrap;align=left;spacingLeft=8;spacingTop=4;">
+      <mxGeometry x="170" y="970" width="580" height="90" as="geometry" />
+    </mxCell>
+
+    <!-- CPU CPUID -->
+    <mxCell id="in_cpuid" vertex="1" parent="1"
+      value="&lt;b&gt;CPU CPUID  (x64_GetBasicCpuInfo() &#8594; gBasicCpuInfo,  src/arch/amd64/cpu.c)&lt;/b&gt;&#xa;ARCH_TIMER_FEAT_COUNTER    CPUID.01H:EDX[4]         TSC 计数器存在&#xa;ARCH_TIMER_FEAT_INVARIANT  CPUID.80000007H:EDX[8]   Invariant TSC (不随 P-State 变化)&#xa;ARCH_TIMER_FEAT_ONE_SHOT   CPUID.01H:ECX[24]        LAPIC One-Shot 定时器支持"
+      style="rounded=1;fillColor=#666666;strokeColor=#444444;fontColor=#FFFFFF;fontSize=10;whiteSpace=wrap;align=left;spacingLeft=8;spacingTop=4;">
+      <mxGeometry x="900" y="970" width="720" height="90" as="geometry" />
+    </mxCell>
+
+    <!-- ══════════════════════════════════════════════════════
+         EDGES: Input Sources  &#8594;  Layer 0 Drivers
+         ══════════════════════════════════════════════════════ -->
+    <mxCell id="e_acpi_hpet" edge="1" parent="1" source="in_acpi" target="l0_hpet"
+      style="endArrow=block;endFill=1;strokeColor=#888888;exitX=0.2;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e_acpi_pmt" edge="1" parent="1" source="in_acpi" target="l0_pmt"
+      style="endArrow=block;endFill=1;strokeColor=#888888;exitX=0.55;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e_cpuid_tsc" edge="1" parent="1" source="in_cpuid" target="l0_tsc"
+      style="endArrow=block;endFill=1;strokeColor=#888888;exitX=0.25;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e_cpuid_lapic" edge="1" parent="1" source="in_cpuid" target="l0_lapic"
+      style="endArrow=block;endFill=1;strokeColor=#888888;exitX=0.8;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+
+    <!-- ══════════════════════════════════════════════════════
+         EDGES: Layer 0  &#8594;  Layer 1  (Driver &#8594; Sink)
+         ══════════════════════════════════════════════════════ -->
+    <mxCell id="e_drv_hpet" edge="1" parent="1" source="l0_hpet" target="l1_hpet"
+      style="endArrow=block;endFill=1;strokeColor=#7E5F00;">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e_drv_pmt" edge="1" parent="1" source="l0_pmt" target="l1_pmt"
+      style="endArrow=block;endFill=1;strokeColor=#7E5F00;">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e_drv_tsc" edge="1" parent="1" source="l0_tsc" target="l1_tsc"
+      style="endArrow=block;endFill=1;strokeColor=#7E5F00;">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <mxCell id="e_drv_lapic" edge="1" parent="1" source="l0_lapic" target="l1_lapic"
+      style="endArrow=block;endFill=1;strokeColor=#7E5F00;">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+
+    <!-- ══════════════════════════════════════════════════════
+         EDGES: Layer 1 Sinks  &#8594;  Layer 2 Devices  (with selection priority labels)
+         ══════════════════════════════════════════════════════ -->
+    <!-- HPET Sink &#8594; TIME_DEVICE  (priority 3, dashed) -->
+    <mxCell id="e_s_hpet_dev" edge="1" parent="1" source="l1_hpet" target="l2_time"
+      style="endArrow=block;endFill=1;strokeColor=#3D6FA0;dashed=1;dashPattern=6 4;"
+      value="③ 回退">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <!-- PMTimer Sink &#8594; TIME_DEVICE  (priority 2, dashed) -->
+    <mxCell id="e_s_pmt_dev" edge="1" parent="1" source="l1_pmt" target="l2_time"
+      style="endArrow=block;endFill=1;strokeColor=#3D6FA0;dashed=1;dashPattern=6 4;"
+      value="② 次选">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <!-- TSC Sink &#8594; TIME_DEVICE  (priority 1, solid) -->
+    <mxCell id="e_s_tsc_dev" edge="1" parent="1" source="l1_tsc" target="l2_time"
+      style="endArrow=block;endFill=1;strokeColor=#3D6FA0;"
+      value="① 首选">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <!-- LAPIC Sink &#8594; CLOCK_EVENT_DEVICE -->
+    <mxCell id="e_s_lapic_dev" edge="1" parent="1" source="l1_lapic" target="l2_clock"
+      style="endArrow=block;endFill=1;strokeColor=#3D6FA0;">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+
+    <!-- ══════════════════════════════════════════════════════
+         CALIBRATION EDGES (dashed, coloured)
+         ══════════════════════════════════════════════════════ -->
+    <!-- PMTimer Sink &#8594; TSC Sink  (TSC 校准参考) -->
+    <mxCell id="e_calib_tsc" edge="1" parent="1" source="l1_pmt" target="l1_tsc"
+      style="endArrow=open;endFill=0;strokeColor=#E04444;dashed=1;dashPattern=8 4;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;"
+      value="TSC 校准参考">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <!-- TIME_DEVICE &#8594; CLOCK_EVENT_DEVICE  (KeBusyWaitUs 校准参考) -->
+    <mxCell id="e_calib_clock" edge="1" parent="1" source="l2_time" target="l2_clock"
+      style="endArrow=open;endFill=0;strokeColor=#FF8800;dashed=1;dashPattern=8 4;strokeWidth=2;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;"
+      value="KeBusyWaitUs() 校准参考">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+
+    <!-- ══════════════════════════════════════════════════════
+         EDGES: Layer 2 Devices  &#8594;  Layer 3 Consumers
+         ══════════════════════════════════════════════════════ -->
+    <!-- TIME_DEVICE &#8594; Scheduler -->
+    <mxCell id="e_td_sched" edge="1" parent="1" source="l2_time" target="l3_sched"
+      style="endArrow=block;endFill=1;strokeColor=#38761D;exitX=0.15;exitY=0;exitDx=0;exitDy=0;"
+      value="KiNowNs()">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <!-- CLOCK_EVENT &#8594; Scheduler  (IDT interrupt) -->
+    <mxCell id="e_ce_sched" edge="1" parent="1" source="l2_clock" target="l3_sched"
+      style="endArrow=block;endFill=1;strokeColor=#CC0000;strokeWidth=2;exitX=0.05;exitY=0;exitDx=0;exitDy=0;"
+      value="IDT 0x40 &#8594; ISR">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="1155" y="240" />
+          <mxPoint x="450" y="240" />
+        </Array>
+      </mxGeometry>
+    </mxCell>
+    <!-- TIME_DEVICE &#8594; Logger -->
+    <mxCell id="e_td_log" edge="1" parent="1" source="l2_time" target="l3_log"
+      style="endArrow=block;endFill=1;strokeColor=#38761D;exitX=0.55;exitY=0;exitDx=0;exitDy=0;"
+      value="&#956;s 时间戳">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <!-- TIME_DEVICE &#8594; SysInfo -->
+    <mxCell id="e_td_sysinfo" edge="1" parent="1" source="l2_time" target="l3_sysinfo"
+      style="endArrow=block;endFill=1;strokeColor=#38761D;exitX=0.95;exitY=0;exitDx=0;exitDy=0;"
+      value="Uptime / Source">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+    <!-- CLOCK_EVENT &#8594; SysInfo -->
+    <mxCell id="e_ce_sysinfo" edge="1" parent="1" source="l2_clock" target="l3_sysinfo"
+      style="endArrow=block;endFill=1;strokeColor=#38761D;exitX=0.85;exitY=0;exitDx=0;exitDy=0;"
+      value="Clock Event 状态">
+      <mxGeometry relative="1" as="geometry" />
+    </mxCell>
+
+    <!-- ══════════════════════════════════════════════════════
+         LEGEND
+         ══════════════════════════════════════════════════════ -->
+    <mxCell id="legend_title" value="&lt;b&gt;图例&lt;/b&gt;" vertex="1" parent="1"
+      style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontStyle=1;">
+      <mxGeometry x="170" y="1085" width="80" height="20" as="geometry" />
+    </mxCell>
+    <mxCell id="leg1" edge="1" parent="1"
+      style="endArrow=block;endFill=1;strokeColor=#7E5F00;entryX=0;entryY=0.5;entryDx=0;entryDy=0;">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="170" y="1115" as="sourcePoint" />
+        <mxPoint x="240" y="1115" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="leg1t" value="驱动初始化 / 数据流" vertex="1" parent="1"
+      style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;">
+      <mxGeometry x="248" y="1106" width="160" height="20" as="geometry" />
+    </mxCell>
+    <mxCell id="leg2" edge="1" parent="1"
+      style="endArrow=block;endFill=1;strokeColor=#3D6FA0;dashed=1;dashPattern=6 4;entryX=0;entryY=0.5;entryDx=0;entryDy=0;">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="440" y="1115" as="sourcePoint" />
+        <mxPoint x="510" y="1115" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="leg2t" value="Sink 注入 (带优先级)" vertex="1" parent="1"
+      style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;">
+      <mxGeometry x="518" y="1106" width="160" height="20" as="geometry" />
+    </mxCell>
+    <mxCell id="leg3" edge="1" parent="1"
+      style="endArrow=open;endFill=0;strokeColor=#E04444;dashed=1;dashPattern=8 4;strokeWidth=2;entryX=0;entryY=0.5;entryDx=0;entryDy=0;">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="710" y="1115" as="sourcePoint" />
+        <mxPoint x="780" y="1115" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="leg3t" value="TSC 校准参考" vertex="1" parent="1"
+      style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;">
+      <mxGeometry x="788" y="1106" width="120" height="20" as="geometry" />
+    </mxCell>
+    <mxCell id="leg4" edge="1" parent="1"
+      style="endArrow=open;endFill=0;strokeColor=#FF8800;dashed=1;dashPattern=8 4;strokeWidth=2;entryX=0;entryY=0.5;entryDx=0;entryDy=0;">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="940" y="1115" as="sourcePoint" />
+        <mxPoint x="1010" y="1115" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="leg4t" value="Clock Event 校准参考" vertex="1" parent="1"
+      style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;">
+      <mxGeometry x="1018" y="1106" width="160" height="20" as="geometry" />
+    </mxCell>
+    <mxCell id="leg5" edge="1" parent="1"
+      style="endArrow=block;endFill=1;strokeColor=#CC0000;strokeWidth=2;entryX=0;entryY=0.5;entryDx=0;entryDy=0;">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="1210" y="1115" as="sourcePoint" />
+        <mxPoint x="1280" y="1115" as="targetPoint" />
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="leg5t" value="中断触发 (IDT)" vertex="1" parent="1"
+      style="text;html=1;strokeColor=none;fillColor=none;fontSize=10;">
+      <mxGeometry x="1288" y="1106" width="120" height="20" as="geometry" />
+    </mxCell>
+
+  </root>
+</mxGraphModel>

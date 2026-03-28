@@ -1,3 +1,9 @@
-If:
-  CompileFlags:
-    CompilationDatabase: compile_commands.json
+
+CompileFlags:
+  CompilationDatabase: .
+
+Diagnostics:
+ UnusedIncludes: None
+
+Documentation:
+  CommentFormat: Doxygen
