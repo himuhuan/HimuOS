@@ -11,10 +11,13 @@
 # ==============================================================================
 
 # Cross compiler for x86_64 EFI applications
+HO_ENABLE_NULL_DETECTION ?= 1
+
 CC_EFI      := x86_64-w64-mingw32-gcc
 CFLAGS_EFI  := -Wall -Wextra -nostdlib -fno-builtin -nostartfiles -nodefaultlibs \
                -nostdinc -ffreestanding -c -mavx2 -g \
-               -Isrc -Isrc/include -Isrc/include/libc
+			   -Isrc -Isrc/include -Isrc/include/libc \
+			   -DHO_ENABLE_NULL_DETECTION=$(HO_ENABLE_NULL_DETECTION)
 LDFLAGS_EFI := -nostdlib -Wl,--subsystem,10 -e efi_main
 
 # Kernel compiler and linker
@@ -62,7 +65,8 @@ CFLAGS := -Wall -Wextra -Wmissing-prototypes -Wstrict-prototypes -Werror \
           -Isrc -Isrc/include -Isrc/include/libc \
           -DKRNL_VERSTR=\"$(KRNL_VERSTR)\" \
           -D__HO_DEBUG_BUILD__=$(HO_DEBUG_BUILD) \
-          -DHO_ENABLE_TIMESTAMP_LOG=$(HO_ENABLE_TIMESTAMP_LOG)
+		  -DHO_ENABLE_TIMESTAMP_LOG=$(HO_ENABLE_TIMESTAMP_LOG) \
+		  -DHO_ENABLE_NULL_DETECTION=$(HO_ENABLE_NULL_DETECTION)
 
 ifneq ($(strip $(HO_DEMO_TEST_DEFINE)),)
 CFLAGS += -DHO_DEMO_TEST_SELECTION=$(HO_DEMO_TEST_DEFINE) \
@@ -144,7 +148,11 @@ SRCS_ELF := \
 # EFI Bootloader Sources
 # ------------------------------------------------------------------------------
 SRCS_EFI_BOOT := \
-    src/boot/v2/blmm.c        \
+    src/boot/v2/blmm/blmm.c   \
+    src/boot/v2/blmm/acpi.c   \
+    src/boot/v2/blmm/hhdm.c   \
+    src/boot/v2/blmm/capsule.c \
+    src/boot/v2/blmm/pagetable.c \
     src/boot/v2/bootloader.c  \
     src/boot/v2/ho_balloc.c   \
     src/boot/v2/efi_main.c    \
@@ -161,9 +169,18 @@ TARGET_EFI   := $(EFI_BINDIR)/main.efi
 # ------------------------------------------------------------------------------
 SRCS_KERNEL_C := \
     src/kernel/hoentry.c                                \
-    src/kernel/init.c                                   \
+    src/kernel/init/init.c                              \
     src/kernel/hodbg.c                                  \
-    src/kernel/demo.c                                   \
+    src/kernel/demo/demo.c                              \
+    src/kernel/demo/event.c                             \
+    src/kernel/demo/guard.c                             \
+    src/kernel/demo/irql.c                              \
+    src/kernel/demo/mutex.c                             \
+    src/kernel/demo/semaphore.c                         \
+    src/kernel/demo/thread.c                            \
+    src/kernel/init/cpu.c                               \
+    src/kernel/init/font.c                              \
+    src/kernel/init/hhdm.c                              \
     src/kernel/ke/critical_section.c                    \
     src/kernel/ke/irql.c                                \
     src/kernel/ke/console/console.c                     \
@@ -178,13 +195,22 @@ SRCS_KERNEL_C := \
     src/kernel/ke/time/sinks/hpet_sink.c                \
     src/kernel/ke/time/sinks/lapic_clockevent_sink.c    \
     src/kernel/ke/log/log.c                             \
-    src/kernel/ke/sysinfo.c                             \
+    src/kernel/ke/sysinfo/sysinfo.c                     \
+    src/kernel/ke/sysinfo/cpu.c                         \
+    src/kernel/ke/sysinfo/memory.c                      \
+    src/kernel/ke/sysinfo/scheduler.c                   \
+    src/kernel/ke/sysinfo/tables.c                      \
+    src/kernel/ke/sysinfo/time.c                        \
     src/kernel/ke/pmm/pmm_device.c                      \
     src/kernel/ke/pmm/bitmap_sink.c                     \
     src/kernel/ke/pmm/pmm_boot_init.c                   \
     src/kernel/ke/mm/pool.c                             \
     src/kernel/ke/thread/kthread.c                      \
-    src/kernel/ke/thread/scheduler.c                    \
+    src/kernel/ke/thread/scheduler/scheduler.c          \
+    src/kernel/ke/thread/scheduler/wait.c               \
+    src/kernel/ke/thread/scheduler/sync.c               \
+    src/kernel/ke/thread/scheduler/timer.c              \
+    src/kernel/ke/thread/scheduler/diag.c               \
     src/arch/arch.c                                     \
     src/arch/amd64/idt.c                                \
     src/arch/amd64/cpu.c                                \

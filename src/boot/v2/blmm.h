@@ -15,6 +15,7 @@
 
 EFI_MEMORY_MAP *GetLoaderRuntimeMemoryMap();
 EFI_STATUS LoadMemoryMap(HO_PHYSICAL_ADDRESS mapBasePhys, UINT64 maxSize, OUT UINTN *memoryMap);
+UINT64 EstimateBootMappingManifestSize(const EFI_MEMORY_MAP *memoryMap, HO_PHYSICAL_ADDRESS rsdpPhys);
 
 UINT64 GetCapsulePhysPages(const BOOT_CAPSULE_LAYOUT *block, BOOT_CAPSULE_PAGE_LAYOUT *pageLayout);
 BOOT_CAPSULE *CreateCapsule(const BOOT_CAPSULE_LAYOUT *layout);
