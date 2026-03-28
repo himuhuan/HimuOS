@@ -195,6 +195,9 @@ PrintCapsule(const BOOT_CAPSULE *capsule, const CHAR16 *tag)
     BOOL magicOk = (capsule->Magic == BOOT_CAPSULE_MAGIC);
     const CHAR16 *mode = VideoModeTypeToString(capsule->VideoModeType);
     const CHAR16 *pixelFmt = PixelFormatToString(capsule->PixelFormat);
+    const BOOT_MAPPING_MANIFEST_HEADER *manifest = BootGetConstMappingManifest(capsule);
+    BOOL manifestOk = manifest != NULL && manifest->Magic == BOOT_MAPPING_MANIFEST_MAGIC &&
+                      manifest->Version == BOOT_MAPPING_MANIFEST_VERSION;
 
     ConsoleFormatWrite(L"\r\n+==================== BOOT CAPSULE ====================+\r\n");
     ConsoleFormatWrite(L"| Label : %s\r\n", name);
@@ -203,17 +206,22 @@ PrintCapsule(const BOOT_CAPSULE *capsule, const CHAR16 *tag)
     ConsoleFormatWrite(L"| Video : %s %ux%u stride=%u fmt=%s\r\n", mode, capsule->HorizontalResolution,
                        capsule->VerticalResolution, capsule->PixelsPerScanLine, pixelFmt);
     ConsoleFormatWrite(L"| Framebuffer : %p (%u bytes)\r\n", capsule->FramebufferPhys, capsule->FramebufferSize);
-    ConsoleFormatWrite(L"| Layout (bytes): hdr=%u map=%u code=%u data=%u stack=%u ist1=%u\r\n",
-                       capsule->Layout.HeaderSize, capsule->Layout.MemoryMapSize, capsule->Layout.KrnlCodeSize,
-                       capsule->Layout.KrnlDataSize, capsule->Layout.KrnlStackSize, capsule->Layout.IST1StackSize);
-    ConsoleFormatWrite(L"| Pages  (4K) : hdr+map=%u kernel=%u stack=%u ist1=%u total=%u\r\n",
-                       capsule->PageLayout.HeaderWithMapPages, capsule->PageLayout.KrnlPages,
+    ConsoleFormatWrite(L"| Layout (bytes): hdr=%u manifest=%u map=%u code=%u data=%u stack=%u ist1=%u\r\n",
+                       capsule->Layout.HeaderSize, capsule->Layout.ManifestSize, capsule->Layout.MemoryMapSize,
+                       capsule->Layout.KrnlCodeSize, capsule->Layout.KrnlDataSize, capsule->Layout.KrnlStackSize,
+                       capsule->Layout.IST1StackSize);
+    ConsoleFormatWrite(L"| Pages  (4K) : handoff=%u kernel=%u stack=%u ist1=%u total=%u\r\n",
+                       capsule->PageLayout.HandoffPages, capsule->PageLayout.KrnlPages,
                        capsule->PageLayout.KrnlStackPages, capsule->PageLayout.IST1StackPages,
                        capsule->PageLayout.TotalPages);
-    ConsoleFormatWrite(L"| Phys map: mmap=%p entry=%p stack=%p ist1=%p\r\n", capsule->MemoryMapPhys,
-                       capsule->KrnlEntryPhys, capsule->KrnlStackPhys, capsule->KrnlIST1StackPhys);
+    ConsoleFormatWrite(L"| Phys map: manifest=%p mmap=%p entry=%p stack=%p ist1=%p\r\n", capsule->ManifestPhys,
+                       capsule->MemoryMapPhys, capsule->KrnlEntryPhys, capsule->KrnlStackPhys,
+                       capsule->KrnlIST1StackPhys);
     ConsoleFormatWrite(L"| ACPI: rsdp=%p (HHDM)\r\n", capsule->AcpiRsdpPhys);
     ConsoleFormatWrite(L"| Paging: pml4=%p size=%u bytes\r\n", capsule->PageTableInfo.Ptr, capsule->PageTableInfo.Size);
+    ConsoleFormatWrite(L"| Manifest: %s size=%u entries=%u/%u\r\n", manifestOk ? L"valid" : L"INVALID",
+                       manifestOk ? (UINT64)manifest->TotalSize : 0, manifestOk ? (UINT64)manifest->EntryCount : 0,
+                       manifestOk ? (UINT64)manifest->EntryCapacity : 0);
     ConsoleFormatWrite(L"| CPU: GDT.base=%p limit=%u TSS.rsp0=%p ist1=%p\r\n", capsule->CpuInfo.GdtPtr.Base,
                        capsule->CpuInfo.GdtPtr.Limit, capsule->CpuInfo.Tss.RSP0, capsule->CpuInfo.Tss.IST1);
     ConsoleFormatWrite(L"+======================================================+\r\n\r\n");

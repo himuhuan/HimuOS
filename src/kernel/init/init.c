@@ -8,6 +8,7 @@ KE_VIDEO_DRIVER gVideoDriver;
 ARCH_BASIC_CPU_INFO gBasicCpuInfo;
 BITMAP_FONT_INFO gSystemFont;
 static BOOT_CAPSULE *gBootCapsule;
+static const BOOT_MAPPING_MANIFEST_HEADER *gBootMappingManifest;
 
 void
 InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
@@ -27,6 +28,7 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
         while (1)
             ;
     }
+    gBootMappingManifest = ValidateBootMappingManifest(block);
     VerifyHhdm(block);
     AssertRsdp(HHDM_PHYS2VIRT(block->AcpiRsdpPhys));
     GetBasicCpuInfo(&gBasicCpuInfo);
@@ -119,4 +121,10 @@ HO_KERNEL_API BOOT_CAPSULE *
 KeGetBootCapsule(void)
 {
     return gBootCapsule;
+}
+
+HO_KERNEL_API const BOOT_MAPPING_MANIFEST_HEADER *
+KeGetBootMappingManifest(void)
+{
+    return gBootMappingManifest;
 }

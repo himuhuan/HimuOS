@@ -26,3 +26,4 @@ void InitKernel(BOOT_CAPSULE *block);
  * @return Pointer to the boot capsule, or NULL if not initialized.
  */
 HO_KERNEL_API BOOT_CAPSULE *KeGetBootCapsule(void);
+HO_KERNEL_API const BOOT_MAPPING_MANIFEST_HEADER *KeGetBootMappingManifest(void);

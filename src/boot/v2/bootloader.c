@@ -120,6 +120,7 @@ StagingKernel(const CHAR16 *path)
     UINT64 imageSize = 0;
     UINTN imagePages = 0;
     UINTN memoryMapPages = 0;
+    HO_PHYSICAL_ADDRESS acpiRsdpPhys = 0;
 
     status = BootClaimNullGuardPage();
     if (EFI_ERROR(status))
@@ -143,6 +144,7 @@ StagingKernel(const CHAR16 *path)
     }
     // +1 for safety margin
     memoryMapPages = (HO_ALIGN_UP(memoryMap->Size, PAGE_4KB) >> 12) + 1;
+    acpiRsdpPhys = FindAcpiRsdpPhys();
 
     ELF64_LOAD_INFO elfInfo;
     memset(&elfInfo, 0, sizeof(ELF64_LOAD_INFO));
@@ -162,6 +164,7 @@ StagingKernel(const CHAR16 *path)
     BOOT_CAPSULE_LAYOUT layout;
     memset(&layout, 0, sizeof(layout));
     layout.HeaderSize = sizeof(BOOT_CAPSULE);
+    layout.ManifestSize = EstimateBootMappingManifestSize(memoryMap, acpiRsdpPhys);
     layout.MemoryMapSize = memoryMapPages << 12;
     layout.KrnlCodeSize = elfInfo.ExecPhysPages << 12;
     layout.KrnlDataSize = elfInfo.DataPhysPages << 12;
@@ -173,7 +176,7 @@ StagingKernel(const CHAR16 *path)
         goto handle_error;
     }
 
-    capsule->AcpiRsdpPhys = FindAcpiRsdpPhys();
+    capsule->AcpiRsdpPhys = acpiRsdpPhys;
     if (capsule->AcpiRsdpPhys == 0)
     {
         LOG_WARNING(L"ACPI RSDP not found in UEFI configuration tables\r\n");

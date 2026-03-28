@@ -21,6 +21,7 @@ static void DumpHhdmProbeDiagnostics(const EFI_MEMORY_MAP *map,
                                      UINT64 capsuleEndExclusive,
                                      UINT64 pageTableBase,
                                      UINT64 pageTableEndExclusive);
+static HO_STATUS ValidateBootMappingManifestEntry(const BOOT_MAPPING_MANIFEST_ENTRY *entry, uint32_t index);
 
 void
 VerifyHhdm(STAGING_BLOCK *block)
@@ -227,4 +228,157 @@ AssertRsdp(HO_VIRTUAL_ADDRESS rsdpVirt)
     {
         HO_KPANIC(EC_NOT_SUPPORTED, "ACPI Revision not supported (only v2.0+ supported)");
     }
+}
+
+const BOOT_MAPPING_MANIFEST_HEADER *
+ValidateBootMappingManifest(STAGING_BLOCK *block)
+{
+    if (!block)
+    {
+        HO_KPANIC(EC_ILLEGAL_ARGUMENT, "Boot capsule missing");
+    }
+
+    const BOOT_MAPPING_MANIFEST_HEADER *manifest = BootGetConstMappingManifest(block);
+    if (!manifest)
+    {
+        HO_KPANIC(EC_INVALID_STATE, "Boot Mapping Manifest missing");
+    }
+
+    UINT64 handoffStart = block->BasePhys;
+    UINT64 handoffSize = block->PageLayout.HandoffPages << PAGE_SHIFT;
+    UINT64 handoffEndExclusive = handoffStart + handoffSize;
+    UINT64 manifestStart = block->ManifestPhys;
+    UINT64 manifestEndExclusive = manifestStart + block->Layout.ManifestSize;
+    UINT64 memoryMapStart = block->MemoryMapPhys;
+    UINT64 memoryMapEndExclusive = memoryMapStart + block->Layout.MemoryMapSize;
+
+    if (handoffEndExclusive < handoffStart || manifestEndExclusive < manifestStart || memoryMapEndExclusive < memoryMapStart)
+    {
+        klog(KLOG_LEVEL_ERROR, "[MM] Boot Mapping Manifest validation failed: handoff range overflow\n");
+        HO_KPANIC(EC_INVALID_STATE, "Boot Mapping Manifest invalid");
+    }
+
+    if (!HO_IS_ALIGNED(block->ManifestPhys, BOOT_HANDOFF_ALIGNMENT) ||
+        block->ManifestPhys != block->BasePhys + BootCapsuleManifestOffset(block->Layout.HeaderSize))
+    {
+        klog(KLOG_LEVEL_ERROR, "[MM] Boot Mapping Manifest validation failed: manifest offset mismatch\n");
+        HO_KPANIC(EC_INVALID_STATE, "Boot Mapping Manifest invalid");
+    }
+
+    if (!HO_IS_ALIGNED(block->MemoryMapPhys, BOOT_HANDOFF_ALIGNMENT) ||
+        block->MemoryMapPhys != block->BasePhys + BootCapsuleMemoryMapOffset(block->Layout.HeaderSize,
+                                                                              block->Layout.ManifestSize))
+    {
+        klog(KLOG_LEVEL_ERROR, "[MM] Boot Mapping Manifest validation failed: memory-map offset mismatch\n");
+        HO_KPANIC(EC_INVALID_STATE, "Boot Mapping Manifest invalid");
+    }
+
+    if (manifestStart < handoffStart || manifestEndExclusive > handoffEndExclusive)
+    {
+        klog(KLOG_LEVEL_ERROR, "[MM] Boot Mapping Manifest validation failed: manifest outside handoff block\n");
+        HO_KPANIC(EC_INVALID_STATE, "Boot Mapping Manifest invalid");
+    }
+
+    if (manifest->Magic != BOOT_MAPPING_MANIFEST_MAGIC || manifest->Version != BOOT_MAPPING_MANIFEST_VERSION)
+    {
+        klog(KLOG_LEVEL_ERROR, "[MM] Boot Mapping Manifest validation failed: bad header magic/version\n");
+        HO_KPANIC(EC_INVALID_STATE, "Boot Mapping Manifest invalid");
+    }
+
+    if (manifest->HeaderSize != BootMappingManifestHeaderSize() ||
+        manifest->EntrySize != sizeof(BOOT_MAPPING_MANIFEST_ENTRY) ||
+        !HO_IS_ALIGNED(manifest->HeaderSize, BOOT_MAPPING_MANIFEST_ALIGNMENT) ||
+        !HO_IS_ALIGNED(manifest->EntrySize, BOOT_MAPPING_MANIFEST_ALIGNMENT) ||
+        !HO_IS_ALIGNED(manifest->TotalSize, BOOT_MAPPING_MANIFEST_ALIGNMENT))
+    {
+        klog(KLOG_LEVEL_ERROR, "[MM] Boot Mapping Manifest validation failed: unexpected header or entry size\n");
+        HO_KPANIC(EC_INVALID_STATE, "Boot Mapping Manifest invalid");
+    }
+
+    if (manifest->TotalSize != block->Layout.ManifestSize)
+    {
+        klog(KLOG_LEVEL_ERROR, "[MM] Boot Mapping Manifest validation failed: size mismatch capsule=%lu manifest=%u\n",
+             block->Layout.ManifestSize, manifest->TotalSize);
+        HO_KPANIC(EC_INVALID_STATE, "Boot Mapping Manifest invalid");
+    }
+
+    if ((uint64_t)manifest->HeaderSize + (uint64_t)manifest->EntryCapacity * manifest->EntrySize > manifest->TotalSize)
+    {
+        klog(KLOG_LEVEL_ERROR, "[MM] Boot Mapping Manifest validation failed: invalid manifest capacity geometry\n");
+        HO_KPANIC(EC_INVALID_STATE, "Boot Mapping Manifest invalid");
+    }
+
+    if (manifest->EntryCount > manifest->EntryCapacity)
+    {
+        klog(KLOG_LEVEL_ERROR, "[MM] Boot Mapping Manifest validation failed: entry count exceeds capacity\n");
+        HO_KPANIC(EC_INVALID_STATE, "Boot Mapping Manifest invalid");
+    }
+
+    if (BootMappingManifestUsedSize(manifest) > manifest->TotalSize)
+    {
+        klog(KLOG_LEVEL_ERROR, "[MM] Boot Mapping Manifest validation failed: used bytes exceed manifest size\n");
+        HO_KPANIC(EC_INVALID_STATE, "Boot Mapping Manifest invalid");
+    }
+
+    const BOOT_MAPPING_MANIFEST_ENTRY *entries = BootMappingManifestConstEntries(manifest);
+    for (uint32_t idx = 0; idx < manifest->EntryCount; ++idx)
+    {
+        HO_STATUS status = ValidateBootMappingManifestEntry(&entries[idx], idx);
+        if (status != EC_SUCCESS)
+        {
+            HO_KPANIC(status, "Boot Mapping Manifest invalid");
+        }
+    }
+
+        klog(KLOG_LEVEL_INFO, "[MM] Boot Mapping Manifest OK: entries=%u used=%u bytes phys=%p\n",
+            (uint64_t)manifest->EntryCount, (uint64_t)BootMappingManifestUsedSize(manifest),
+            (void *)(UINTN)block->ManifestPhys);
+    return manifest;
+}
+
+static HO_STATUS
+ValidateBootMappingManifestEntry(const BOOT_MAPPING_MANIFEST_ENTRY *entry, uint32_t index)
+{
+    if (!entry)
+    {
+        klog(KLOG_LEVEL_ERROR, "[MM] Boot Mapping Manifest validation failed: NULL entry at index %u\n", index);
+        return EC_INVALID_STATE;
+    }
+
+    if (entry->Type <= BOOT_MAPPING_REGION_INVALID || entry->Type >= BOOT_MAPPING_REGION_MAX)
+    {
+        klog(KLOG_LEVEL_ERROR, "[MM] Boot Mapping Manifest validation failed: bad type at index %u\n", index);
+        return EC_INVALID_STATE;
+    }
+
+    if (entry->Provenance >= BOOT_MAPPING_PROVENANCE_MAX || entry->Lifetime <= BOOT_MAPPING_LIFETIME_INVALID ||
+        entry->Lifetime >= BOOT_MAPPING_LIFETIME_MAX || entry->Granularity <= BOOT_MAPPING_GRANULARITY_INVALID ||
+        entry->Granularity >= BOOT_MAPPING_GRANULARITY_MAX)
+    {
+        klog(KLOG_LEVEL_ERROR, "[MM] Boot Mapping Manifest validation failed: bad enum value at index %u\n", index);
+        return EC_INVALID_STATE;
+    }
+
+    if (entry->Size == 0 || !HO_IS_ALIGNED(entry->VirtualStart, PAGE_4KB) || !HO_IS_ALIGNED(entry->PhysicalStart, PAGE_4KB) ||
+        !HO_IS_ALIGNED(entry->Size, PAGE_4KB))
+    {
+        klog(KLOG_LEVEL_ERROR,
+             "[MM] Boot Mapping Manifest validation failed: unaligned or empty range at index %u (va=%p pa=%p size=%lu)\n",
+             index, (void *)(UINTN)entry->VirtualStart, (void *)(UINTN)entry->PhysicalStart, entry->Size);
+        return EC_INVALID_STATE;
+    }
+
+    if (entry->VirtualStart + entry->Size < entry->VirtualStart || entry->PhysicalStart + entry->Size < entry->PhysicalStart)
+    {
+        klog(KLOG_LEVEL_ERROR, "[MM] Boot Mapping Manifest validation failed: wrapped range at index %u\n", index);
+        return EC_INVALID_STATE;
+    }
+
+    if ((entry->Attributes & PTE_PRESENT) == 0)
+    {
+        klog(KLOG_LEVEL_ERROR, "[MM] Boot Mapping Manifest validation failed: non-present attributes at index %u\n", index);
+        return EC_INVALID_STATE;
+    }
+
+    return EC_SUCCESS;
 }

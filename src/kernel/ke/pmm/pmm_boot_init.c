@@ -232,7 +232,7 @@ KePmmInitFromBootMemoryMap(BOOT_CAPSULE *capsule)
         {capsule->KrnlEntryPhys, capsule->PageLayout.KrnlPages},
         {capsule->KrnlStackPhys, capsule->PageLayout.KrnlStackPages},
         {capsule->KrnlIST1StackPhys, capsule->PageLayout.IST1StackPages},
-        {capsule->BasePhys, capsule->PageLayout.HeaderWithMapPages},
+        {capsule->BasePhys, capsule->PageLayout.HandoffPages},
         {capsule->PageTableInfo.Ptr, ptPages},
         {capsule->FramebufferPhys, fbPages},
     };
@@ -363,8 +363,8 @@ KePmmInitFromBootMemoryMap(BOOT_CAPSULE *capsule)
     // IST1 stack
     ReserveBootRange(&gBitmapCtx, capsule->KrnlIST1StackPhys, capsule->PageLayout.IST1StackPages);
 
-    // Boot capsule + memory map
-    ReserveBootRange(&gBitmapCtx, capsule->BasePhys, capsule->PageLayout.HeaderWithMapPages);
+    // Boot handoff block (capsule header + manifest + memory map)
+    ReserveBootRange(&gBitmapCtx, capsule->BasePhys, capsule->PageLayout.HandoffPages);
 
     // Page tables
     ReserveBootRange(&gBitmapCtx, capsule->PageTableInfo.Ptr, ptPages);

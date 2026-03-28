@@ -13,18 +13,21 @@
 
 #include "arch/amd64/efi_min.h"
 #include "arch/amd64/pm.h"
+#include "boot_mapping_manifest.h"
 
 #define BOOT_FRAMEBUFFER_VA     MMIO_BASE_VA
 #define BOOT_KRNL_ENTRY_VA      KRNL_ENTRY_VA
 #define BOOT_KRNL_STACK_VA      KRNL_STACK_VA      // Kernel stack BOTTOM virtual address
 #define BOOT_KRNL_IST1_STACK_VA KRNL_IST1_STACK_VA // Kernel IST1 stack BOTTOM virtual address
 #define BOOT_HHDM_BASE_VA       HHDM_BASE_VA
+#define BOOT_HANDOFF_ALIGNMENT  8ULL
 
 #define BOOT_CAPSULE_MAGIC      0x214F5348 // 'HOS!'
 
 typedef struct BOOT_CAPSULE_LAYOUT
 {
     size_t HeaderSize;    // Size of the BOOT_CAPSULE structure itself.
+    size_t ManifestSize;  // Size of the Boot Mapping Manifest.
     size_t MemoryMapSize; // Size of the memory map
     size_t KrnlCodeSize;  // Size of the kernel physical memory occupied by the kernel ELF code segments
     size_t KrnlDataSize;  // Size of the kernel physical memory occupied by the kernel ELF data segments (BSS)
@@ -34,11 +37,11 @@ typedef struct BOOT_CAPSULE_LAYOUT
 
 typedef struct BOOT_CAPSULE_PAGE_LAYOUT
 {
-    UINT64 HeaderWithMapPages; // Pages for BOOT_CAPSULE header plus memory map (aligned to 4KB)
-    UINT64 KrnlPages;          // Pages for kernel code + data (aligned to 4KB)
-    UINT64 KrnlStackPages;     // Pages for kernel stack (aligned to 4KB)
-    UINT64 IST1StackPages;     // Pages for IST#1 stack (aligned to 4KB)
-    UINT64 TotalPages;         // Total pages required for the capsule (sum of above)
+    UINT64 HandoffPages;   // Pages for BOOT_CAPSULE header + manifest + memory map (aligned to 4KB)
+    UINT64 KrnlPages;      // Pages for kernel code + data (aligned to 4KB)
+    UINT64 KrnlStackPages; // Pages for kernel stack (aligned to 4KB)
+    UINT64 IST1StackPages; // Pages for IST#1 stack (aligned to 4KB)
+    UINT64 TotalPages;     // Total pages required for the capsule (sum of above)
 } BOOT_CAPSULE_PAGE_LAYOUT;
 
 /**
@@ -58,6 +61,7 @@ typedef struct BOOT_CAPSULE
 {
     uint64_t Magic;               // 'HOS!' (0x214F5348)
     HO_PHYSICAL_ADDRESS BasePhys; // Physical base address of this structure
+    HO_PHYSICAL_ADDRESS ManifestPhys;
 
     // GOP
     HO_PHYSICAL_ADDRESS FramebufferPhys; // Map to BOOT_FRAMEBUFFER_VA
@@ -71,7 +75,7 @@ typedef struct BOOT_CAPSULE
     BOOT_CAPSULE_LAYOUT Layout;
     BOOT_CAPSULE_PAGE_LAYOUT PageLayout; // Actual page layout used
 
-    HO_PHYSICAL_ADDRESS MemoryMapPhys;     // Physical address of the memory map, HHDM
+    HO_PHYSICAL_ADDRESS MemoryMapPhys;     // Physical address of the copied EFI memory map, HHDM
     HO_PHYSICAL_ADDRESS AcpiRsdpPhys;      // Physical address of ACPI RSDP, HHDM
     HO_PHYSICAL_ADDRESS KrnlEntryPhys;     // Physical address of the kernel loaded segments, BOOT_KRNL_ENTRY_VA
     HO_PHYSICAL_ADDRESS KrnlStackPhys;     // Physical address of the kernel stack, BOOT_KRNL_STACK_VA
@@ -80,3 +84,42 @@ typedef struct BOOT_CAPSULE
     PAGE_TABLE_INFO PageTableInfo;
     CPU_CORE_LOCAL_DATA CpuInfo;
 } BOOT_CAPSULE, STAGING_BLOCK, BOOT_INFO_HEADER;
+
+static inline uint64_t
+BootCapsuleManifestOffset(size_t headerSize)
+{
+    return HO_ALIGN_UP((uint64_t)headerSize, BOOT_HANDOFF_ALIGNMENT);
+}
+
+static inline uint64_t
+BootCapsuleMemoryMapOffset(size_t headerSize, size_t manifestSize)
+{
+    return HO_ALIGN_UP(BootCapsuleManifestOffset(headerSize) + (uint64_t)manifestSize, BOOT_HANDOFF_ALIGNMENT);
+}
+
+static inline uint64_t
+BootCapsuleHandoffBytes(const BOOT_CAPSULE_LAYOUT *layout)
+{
+    if (!layout)
+        return 0;
+
+    return BootCapsuleMemoryMapOffset(layout->HeaderSize, layout->ManifestSize) + (uint64_t)layout->MemoryMapSize;
+}
+
+static inline BOOT_MAPPING_MANIFEST_HEADER *
+BootGetMappingManifest(BOOT_CAPSULE *capsule)
+{
+    if (!capsule || capsule->ManifestPhys < capsule->BasePhys)
+        return NULL;
+
+    return (BOOT_MAPPING_MANIFEST_HEADER *)((uint8_t *)capsule + (capsule->ManifestPhys - capsule->BasePhys));
+}
+
+static inline const BOOT_MAPPING_MANIFEST_HEADER *
+BootGetConstMappingManifest(const BOOT_CAPSULE *capsule)
+{
+    if (!capsule || capsule->ManifestPhys < capsule->BasePhys)
+        return NULL;
+
+    return (const BOOT_MAPPING_MANIFEST_HEADER *)((const uint8_t *)capsule + (capsule->ManifestPhys - capsule->BasePhys));
+}

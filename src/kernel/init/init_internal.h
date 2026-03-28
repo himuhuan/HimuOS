@@ -27,3 +27,4 @@ void InitBitmapFont(void);
 void InitCpuState(STAGING_BLOCK *block);
 void VerifyHhdm(STAGING_BLOCK *block);
 void AssertRsdp(HO_VIRTUAL_ADDRESS rsdpVirt);
+const BOOT_MAPPING_MANIFEST_HEADER *ValidateBootMappingManifest(STAGING_BLOCK *block);

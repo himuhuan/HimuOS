@@ -9,17 +9,41 @@
 
 #include "blmm_internal.h"
 
-static EFI_STATUS MapAcpiRange(HOB_BALLOC *allocator, UINT64 pml4BasePhys, UINT64 tablePhys, UINT32 length);
+static EFI_STATUS MapAcpiRange(HOB_BALLOC *allocator,
+                               UINT64 pml4BasePhys,
+                               UINT64 tablePhys,
+                               UINT32 length,
+                               UINT64 *startPhysOut,
+                               UINT64 *mapSizeOut);
+static uint32_t AcpiSignatureToUint32(const char signature[4]);
 
 // WARNING: this function only maps first level table
 EFI_STATUS
-MapAcpiTables(HOB_BALLOC *allocator, UINT64 pml4BasePhys, HO_PHYSICAL_ADDRESS rsdpPhys)
+MapAcpiTables(HOB_BALLOC *allocator, UINT64 pml4BasePhys, BOOT_CAPSULE *capsule, HO_PHYSICAL_ADDRESS rsdpPhys)
 {
     if (rsdpPhys == 0)
         return EFI_INVALID_PARAMETER;
 
     ACPI_RSDP *rsdp = (ACPI_RSDP *)(UINTN)rsdpPhys;
-    EFI_STATUS status = MapAcpiRange(allocator, pml4BasePhys, rsdpPhys, sizeof(ACPI_RSDP));
+    UINT64 mappedStart = 0;
+    UINT64 mappedSize = 0;
+    UINT64 nxFlag = GetNxFlag();
+    EFI_STATUS status = MapAcpiRange(allocator, pml4BasePhys, rsdpPhys, sizeof(ACPI_RSDP), &mappedStart, &mappedSize);
+    if (EFI_ERROR(status))
+        return status;
+
+    BOOT_MAPPING_RECORD_PARAMS record;
+    memset(&record, 0, sizeof(record));
+    record.VirtualStart = HHDM_BASE_VA + mappedStart;
+    record.PhysicalStart = mappedStart;
+    record.Size = mappedSize;
+    record.Attributes = nxFlag;
+    record.ProvenanceValue = BOOT_MAPPING_FOURCC('R', 'S', 'D', 'P');
+    record.Type = BOOT_MAPPING_REGION_ACPI_RSDP;
+    record.Provenance = BOOT_MAPPING_PROVENANCE_ACPI_SIGNATURE;
+    record.Lifetime = BOOT_MAPPING_LIFETIME_FIRMWARE;
+    record.Granularity = DetectBootMappingGranularity(mappedStart, HHDM_BASE_VA + mappedStart, mappedSize);
+    status = BootMappingManifestRecord(capsule, &record);
     if (EFI_ERROR(status))
         return status;
 
@@ -44,7 +68,21 @@ MapAcpiTables(HOB_BALLOC *allocator, UINT64 pml4BasePhys, HO_PHYSICAL_ADDRESS rs
     if (rootTable->Length < sizeof(ACPI_SDT_HEADER))
         return EFI_INVALID_PARAMETER;
 
-    status = MapAcpiRange(allocator, pml4BasePhys, rootPhys, rootTable->Length);
+    status = MapAcpiRange(allocator, pml4BasePhys, rootPhys, rootTable->Length, &mappedStart, &mappedSize);
+    if (EFI_ERROR(status))
+        return status;
+
+    memset(&record, 0, sizeof(record));
+    record.VirtualStart = HHDM_BASE_VA + mappedStart;
+    record.PhysicalStart = mappedStart;
+    record.Size = mappedSize;
+    record.Attributes = nxFlag;
+    record.ProvenanceValue = AcpiSignatureToUint32(rootTable->Signature);
+    record.Type = BOOT_MAPPING_REGION_ACPI_ROOT;
+    record.Provenance = BOOT_MAPPING_PROVENANCE_ACPI_SIGNATURE;
+    record.Lifetime = BOOT_MAPPING_LIFETIME_FIRMWARE;
+    record.Granularity = DetectBootMappingGranularity(mappedStart, HHDM_BASE_VA + mappedStart, mappedSize);
+    status = BootMappingManifestRecord(capsule, &record);
     if (EFI_ERROR(status))
         return status;
 
@@ -69,7 +107,21 @@ MapAcpiTables(HOB_BALLOC *allocator, UINT64 pml4BasePhys, HO_PHYSICAL_ADDRESS rs
         if (tableHeader->Length < sizeof(ACPI_SDT_HEADER))
             continue;
 
-        status = MapAcpiRange(allocator, pml4BasePhys, tablePhys, tableHeader->Length);
+        status = MapAcpiRange(allocator, pml4BasePhys, tablePhys, tableHeader->Length, &mappedStart, &mappedSize);
+        if (EFI_ERROR(status))
+            return status;
+
+        memset(&record, 0, sizeof(record));
+        record.VirtualStart = HHDM_BASE_VA + mappedStart;
+        record.PhysicalStart = mappedStart;
+        record.Size = mappedSize;
+        record.Attributes = nxFlag;
+        record.ProvenanceValue = AcpiSignatureToUint32(tableHeader->Signature);
+        record.Type = BOOT_MAPPING_REGION_ACPI_TABLE;
+        record.Provenance = BOOT_MAPPING_PROVENANCE_ACPI_SIGNATURE;
+        record.Lifetime = BOOT_MAPPING_LIFETIME_FIRMWARE;
+        record.Granularity = DetectBootMappingGranularity(mappedStart, HHDM_BASE_VA + mappedStart, mappedSize);
+        status = BootMappingManifestRecord(capsule, &record);
         if (EFI_ERROR(status))
             return status;
 
@@ -85,6 +137,22 @@ MapAcpiTables(HOB_BALLOC *allocator, UINT64 pml4BasePhys, HO_PHYSICAL_ADDRESS rs
                 {
                     LOG_WARNING("Failed to map HPET MMIO at %p\r\n", hpet->BaseAddressPhys);
                 }
+                else
+                {
+                    memset(&record, 0, sizeof(record));
+                    record.VirtualStart = HHDM_BASE_VA + hpet->BaseAddressPhys;
+                    record.PhysicalStart = hpet->BaseAddressPhys;
+                    record.Size = PAGE_4KB;
+                    record.Attributes = PTE_CACHE_DISABLE | PTE_WRITABLE | nxFlag;
+                    record.ProvenanceValue = BOOT_MAPPING_FOURCC('H', 'P', 'E', 'T');
+                    record.Type = BOOT_MAPPING_REGION_HPET_MMIO;
+                    record.Provenance = BOOT_MAPPING_PROVENANCE_ACPI_SIGNATURE;
+                    record.Lifetime = BOOT_MAPPING_LIFETIME_DEVICE;
+                    record.Granularity = BOOT_MAPPING_GRANULARITY_4KB;
+                    status = BootMappingManifestRecord(capsule, &record);
+                    if (EFI_ERROR(status))
+                        return status;
+                }
             }
         }
     }
@@ -93,7 +161,12 @@ MapAcpiTables(HOB_BALLOC *allocator, UINT64 pml4BasePhys, HO_PHYSICAL_ADDRESS rs
 }
 
 static EFI_STATUS
-MapAcpiRange(HOB_BALLOC *allocator, UINT64 pml4BasePhys, UINT64 tablePhys, UINT32 length)
+MapAcpiRange(HOB_BALLOC *allocator,
+             UINT64 pml4BasePhys,
+             UINT64 tablePhys,
+             UINT32 length,
+             UINT64 *startPhysOut,
+             UINT64 *mapSizeOut)
 {
     UINT64 startPhys = HO_ALIGN_DOWN(tablePhys, PAGE_4KB);
     UINT64 endPhys = HO_ALIGN_UP(tablePhys + length, PAGE_4KB);
@@ -102,5 +175,16 @@ MapAcpiRange(HOB_BALLOC *allocator, UINT64 pml4BasePhys, UINT64 tablePhys, UINT3
     if (mapSize == 0)
         return EFI_INVALID_PARAMETER;
 
+    if (startPhysOut)
+        *startPhysOut = startPhys;
+    if (mapSizeOut)
+        *mapSizeOut = mapSize;
+
     return MapRegion(allocator, pml4BasePhys, startPhys, HHDM_BASE_VA + startPhys, mapSize, GetNxFlag());
+}
+
+static uint32_t
+AcpiSignatureToUint32(const char signature[4])
+{
+    return BOOT_MAPPING_FOURCC(signature[0], signature[1], signature[2], signature[3]);
 }

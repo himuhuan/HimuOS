@@ -12,12 +12,13 @@
 EFI_STATUS
 MapFullHhdmFromMemoryMap(HOB_BALLOC *allocator,
                          UINT64 pml4BasePhys,
+                         BOOT_CAPSULE *capsule,
                          EFI_MEMORY_MAP *memoryMap,
                          UINT64 nxFlag,
                          UINT64 *mappedDescCount,
                          UINT64 *highestPhysExclusive)
 {
-    if (!allocator || !memoryMap || !mappedDescCount || !highestPhysExclusive)
+    if (!allocator || !capsule || !memoryMap || !mappedDescCount || !highestPhysExclusive)
         return EFI_INVALID_PARAMETER;
 
     if (memoryMap->DescriptorSize < sizeof(EFI_MEMORY_DESCRIPTOR) || memoryMap->DescriptorSize == 0)
@@ -48,6 +49,25 @@ MapFullHhdmFromMemoryMap(HOB_BALLOC *allocator,
         {
             LOG_ERROR("Map FULL HHDM failed at descriptor=%u type=%u phys=%p pages=%u: %k\r\n", idx, desc->Type,
                       (void *)(UINTN)mapPhysStart, desc->NumberOfPages, status);
+            return status;
+        }
+
+        BOOT_MAPPING_RECORD_PARAMS record;
+        memset(&record, 0, sizeof(record));
+        record.VirtualStart = HHDM_BASE_VA + mapPhysStart;
+        record.PhysicalStart = mapPhysStart;
+        record.Size = mapSize;
+        record.Attributes = flags;
+        record.ProvenanceValue = desc->Type;
+        record.Type = BOOT_MAPPING_REGION_HHDM;
+        record.Provenance = BOOT_MAPPING_PROVENANCE_EFI_MEMORY_TYPE;
+        record.Lifetime = BOOT_MAPPING_LIFETIME_RETAINED;
+        record.Granularity = DetectBootMappingGranularity(mapPhysStart, HHDM_BASE_VA + mapPhysStart, mapSize);
+        status = BootMappingManifestRecord(capsule, &record);
+        if (EFI_ERROR(status))
+        {
+            LOG_ERROR("Failed to record HHDM manifest entry at descriptor=%u type=%u phys=%p: %k\r\n", idx,
+                      desc->Type, (void *)(UINTN)mapPhysStart, status);
             return status;
         }
 
