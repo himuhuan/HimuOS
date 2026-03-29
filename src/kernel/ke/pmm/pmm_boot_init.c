@@ -16,6 +16,8 @@
 #include <kernel/ke/mm.h>
 
 #define UINT64_MAX 0xFFFFFFFFFFFFFFFFULL
+#define PMM_LOW_RESERVED_BYTES (1ULL << 20)
+#define PMM_LOW_RESERVED_PAGES (PMM_LOW_RESERVED_BYTES >> PAGE_SHIFT)
 
 // External: the global PMM device defined in pmm_device.c
 extern KE_PMM_DEVICE gPmmDevice;
@@ -253,10 +255,23 @@ KePmmInitFromBootMemoryMap(BOOT_CAPSULE *capsule)
         if (descEnd < descStart)
             continue;
 
-        uint64_t maxOffsetPages = d->NumberOfPages - bitmapPages;
-        for (uint64_t off = 0; off <= maxOffsetPages; off++)
+        HO_PHYSICAL_ADDRESS firstCandidate = descStart;
+        if (firstCandidate < PMM_LOW_RESERVED_BYTES)
+            firstCandidate = PMM_LOW_RESERVED_BYTES;
+
+        if (firstCandidate >= descEnd)
+            continue;
+
+        if (!HO_IS_ALIGNED(firstCandidate, PAGE_4KB))
+            firstCandidate = HO_ALIGN_UP(firstCandidate, PAGE_4KB);
+
+        HO_PHYSICAL_ADDRESS lastCandidate = descEnd - bitmapPages * PAGE_4KB;
+        if (firstCandidate > lastCandidate)
+            continue;
+
+        for (HO_PHYSICAL_ADDRESS candidateStart = firstCandidate; candidateStart <= lastCandidate;
+             candidateStart += PAGE_4KB)
         {
-            HO_PHYSICAL_ADDRESS candidateStart = descStart + off * PAGE_4KB;
             HO_PHYSICAL_ADDRESS candidateEnd = candidateStart + bitmapPages * PAGE_4KB;
 
             if (candidateEnd < candidateStart || candidateEnd > descEnd)
@@ -350,10 +365,13 @@ KePmmInitFromBootMemoryMap(BOOT_CAPSULE *capsule)
     // ---- Step 6: Reserve bitmap metadata pages ----
     ReserveBootRange(&gBitmapCtx, bitmapPhys, bitmapPages);
 
-    // ---- Step 7: Reserve page 0 ----
+    // ---- Step 7: Reserve legacy low memory window ----
+    ReserveBootRange(&gBitmapCtx, 0, PMM_LOW_RESERVED_PAGES);
+
+    // ---- Step 8: Reserve page 0 ----
     ReserveBootRange(&gBitmapCtx, 0, 1);
 
-    // ---- Step 8: Reserve boot-time regions from BOOT_CAPSULE ----
+    // ---- Step 9: Reserve boot-time regions from BOOT_CAPSULE ----
     // Kernel image
     ReserveBootRange(&gBitmapCtx, capsule->KrnlEntryPhys, capsule->PageLayout.KrnlPages);
 
@@ -372,7 +390,7 @@ KePmmInitFromBootMemoryMap(BOOT_CAPSULE *capsule)
     // Framebuffer
     ReserveBootRange(&gBitmapCtx, capsule->FramebufferPhys, fbPages);
 
-    // ---- Step 9: Activate device ----
+    // ---- Step 10: Activate device ----
     gPmmDevice.Sink = KePmmBitmapSinkGetSink();
     gPmmDevice.SinkContext = &gBitmapCtx;
     gPmmDevice.Initialized = TRUE;
