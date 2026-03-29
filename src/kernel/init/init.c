@@ -60,6 +60,9 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
         HO_KPANIC(initStatus, "PT HAL self-test failed");
     }
 
+    // The KVA heap foundation must exist before pool-backed subsystems (for
+    // example the KTHREAD pool) can initialize, because pool growth now uses
+    // KeHeapAllocPages() instead of direct PMM allocation.
     initStatus = KeKvaInit();
     if (initStatus != EC_SUCCESS)
     {
@@ -109,6 +112,8 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
     }
 
     // ---- KTHREAD Object Pool ----
+    // Depends on KeKvaInit(): KeKThreadPoolInit() -> KePoolInit() ->
+    // KeHeapAllocPages().
     initStatus = KeKThreadPoolInit();
     if (initStatus != EC_SUCCESS)
     {

@@ -3,7 +3,8 @@
  *
  * File: ke/pool.h
  * Description:
- * Ke Layer - Fixed-size kernel object pool (slab-like bootstrap arena).
+ * Ke Layer - Fixed-size kernel object pool (slab-like bootstrap arena)
+ * backed by KVA heap-foundation pages.
  * CHARACTERISTICS:
  * 1. Zero Per-Object Overhead: Instead of maintaining external metadata or
  * object headers, this pool time-multiplexes the memory slots. When a slot
@@ -50,18 +51,32 @@ typedef struct KE_POOL
  * @param objectSize Size of each object in bytes.
  * @param initialCapacity Minimum number of slots to pre-allocate.
  * @param name Descriptive name for debugging.
- * @return EC_SUCCESS on success, EC_NOT_ENOUGH_MEMORY if PMM allocation fails.
+ * @return EC_SUCCESS on success, or an error returned while growing the pool
+ * from the KVA heap foundation.
+ *
+ * Backing storage is obtained page-by-page through KeHeapAllocPages(), not by
+ * calling PMM directly.
+ *
+ * The kernel heap foundation must already be initialized (via KeKvaInit())
+ * before this call can succeed.
  */
 HO_KERNEL_API HO_STATUS KePoolInit(KE_POOL *pool, size_t objectSize, uint32_t initialCapacity, const char *name);
 
 /**
  * @brief Allocate an object from the pool (zero-initialized).
  * @param pool Pool to allocate from.
- * @return Pointer to allocated object, or NULL if pool and PMM are exhausted.
+ * @return Pointer to allocated object, or NULL if the freelist is empty and
+ * one-page growth from the KVA heap foundation fails.
+ *
+ * Successful allocations always come from pool-owned KVA-backed pages. The
+ * returned object remains pool-owned and must be returned with KePoolFree().
  */
 HO_KERNEL_API void *KePoolAlloc(KE_POOL *pool);
 
 /**
  * @brief Return an object to the pool. NULL is a no-op.
+ *
+ * This only recycles the slot into the freelist; it does not release the
+ * underlying backing page back to the KVA heap foundation.
  */
 HO_KERNEL_API void KePoolFree(KE_POOL *pool, void *object);

@@ -184,6 +184,12 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS KePtProtectPage(const KE_KERNEL_ADDRESS_SPA
  */
 HO_KERNEL_API HO_NODISCARD HO_STATUS KePtSelfTest(void);
 
+/**
+ * Initialize the kernel virtual address allocator and its arena records.
+ *
+ * Callers that depend on heap-backed page allocation (for example KePool via
+ * KeHeapAllocPages()) must run only after this initialization succeeds.
+ */
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaInit(void);
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaAllocRange(KE_KVA_ARENA_TYPE arena,
@@ -222,6 +228,15 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS KeFixmapAcquire(HO_PHYSICAL_ADDRESS physAdd
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeFixmapRelease(uint32_t slot);
 
+/**
+ * Allocate heap-backed kernel virtual pages from the KVA heap arena.
+ *
+ * This reserves a KVA range in the heap arena and maps owned physical pages
+ * into it. The caller receives the usable virtual base address.
+ */
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeHeapAllocPages(uint64_t pageCount, HO_VIRTUAL_ADDRESS *outVirtAddr);
 
+/**
+ * Release a previous KeHeapAllocPages() allocation by its usable base address.
+ */
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeHeapFreePages(HO_VIRTUAL_ADDRESS baseVirt);

@@ -89,6 +89,10 @@ extern KE_POOL gKThreadPool;
 
 /**
  * @brief Initialize the global KTHREAD object pool.
+ *
+ * Call after KeKvaInit() has brought up the KVA heap foundation, because this
+ * routine delegates to KePoolInit() and the pool now grows through
+ * KeHeapAllocPages().
  */
 HO_KERNEL_API HO_STATUS KeKThreadPoolInit(void);
 
