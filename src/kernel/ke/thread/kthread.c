@@ -50,17 +50,22 @@ KeThreadCreate(KTHREAD **outThread, KTHREAD_ENTRY entryPoint, void *arg)
     if (!thread)
         return EC_OUT_OF_RESOURCE;
 
-    // Allocate 4 physical pages for the kernel stack
-    HO_PHYSICAL_ADDRESS stackPhys;
-    HO_STATUS status = KePmmAllocPages(KE_THREAD_STACK_PAGES, (void *)0, &stackPhys);
+    KE_KVA_RANGE stackRange;
+    HO_STATUS status = KeKvaAllocRange(KE_KVA_ARENA_STACK, KE_THREAD_STACK_PAGES, 1, 0, TRUE, &stackRange);
     if (status != EC_SUCCESS)
     {
         KePoolFree(&gKThreadPool, thread);
-        return EC_NOT_ENOUGH_MEMORY;
+        return status;
     }
 
-    uint64_t stackBase = HHDM_PHYS2VIRT(stackPhys);
-    uint64_t stackTop = stackBase + KE_THREAD_STACK_SIZE;
+    status = KeKvaMapOwnedPages(&stackRange, PTE_WRITABLE | PTE_GLOBAL | PTE_NO_EXECUTE);
+    if (status != EC_SUCCESS)
+    {
+        KePoolFree(&gKThreadPool, thread);
+        return status;
+    }
+
+    uint64_t stackTop = stackRange.UsableBase + KE_THREAD_STACK_SIZE;
 
     // Set up initial stack for KiSwitchContext's RET
     // After RET: RSP = stackTop - 8 (ABI: 16n+8 at function entry)
@@ -78,9 +83,10 @@ KeThreadCreate(KTHREAD **outThread, KTHREAD_ENTRY entryPoint, void *arg)
     thread->Context.RSP = (uint64_t)sp;
     thread->Context.RIP = (uint64_t)KiThreadTrampoline; // informational
 
-    thread->StackBase = stackBase;
+    thread->StackBase = stackRange.UsableBase;
     thread->StackSize = KE_THREAD_STACK_SIZE;
-    thread->StackPhys = stackPhys;
+    thread->StackGuardBase = stackRange.BaseAddress;
+    thread->StackOwnedByKva = TRUE;
 
     thread->Priority = 0;
     thread->Quantum = KE_DEFAULT_QUANTUM_NS;
@@ -103,6 +109,7 @@ KeThreadCreate(KTHREAD **outThread, KTHREAD_ENTRY entryPoint, void *arg)
 
     *outThread = thread;
 
-    klog(KLOG_LEVEL_INFO, "[SCHED] Thread %u created (entry=%p)\n", thread->ThreadId, (void *)entryPoint);
+    klog(KLOG_LEVEL_INFO, "[SCHED] Thread %u created (entry=%p stack=%p guard=%p)\n", thread->ThreadId,
+         (void *)entryPoint, (void *)thread->StackBase, (void *)thread->StackGuardBase);
     return EC_SUCCESS;
 }

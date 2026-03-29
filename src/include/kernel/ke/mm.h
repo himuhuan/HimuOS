@@ -64,6 +64,37 @@ typedef struct KE_PT_MAPPING
     uint64_t Attributes;
 } KE_PT_MAPPING;
 
+typedef enum KE_KVA_ARENA_TYPE
+{
+    KE_KVA_ARENA_STACK = 0,
+    KE_KVA_ARENA_FIXMAP,
+    KE_KVA_ARENA_HEAP,
+    KE_KVA_ARENA_MAX,
+} KE_KVA_ARENA_TYPE;
+
+typedef struct KE_KVA_RANGE
+{
+    KE_KVA_ARENA_TYPE Arena;
+    uint32_t RecordId;
+    HO_VIRTUAL_ADDRESS BaseAddress;
+    HO_VIRTUAL_ADDRESS UsableBase;
+    uint64_t TotalPages;
+    uint64_t UsablePages;
+    uint64_t GuardLowerPages;
+    uint64_t GuardUpperPages;
+} KE_KVA_RANGE;
+
+typedef struct KE_KVA_ARENA_INFO
+{
+    KE_KVA_ARENA_TYPE Arena;
+    HO_VIRTUAL_ADDRESS BaseAddress;
+    HO_VIRTUAL_ADDRESS EndAddressExclusive;
+    uint64_t TotalPages;
+    uint64_t FreePages;
+    uint64_t ActiveAllocations;
+    BOOL OverlapsImportedRegions;
+} KE_KVA_ARENA_INFO;
+
 HO_KERNEL_API HO_NODISCARD HO_STATUS KePmmInitFromBootMemoryMap(struct BOOT_CAPSULE *capsule);
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS KePmmAllocPages(uint64_t count,
@@ -152,3 +183,45 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS KePtProtectPage(const KE_KERNEL_ADDRESS_SPA
  * hatch. The self-test performs local TLB maintenance only and leaves no persistent scratch mapping behind.
  */
 HO_KERNEL_API HO_NODISCARD HO_STATUS KePtSelfTest(void);
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaInit(void);
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaAllocRange(KE_KVA_ARENA_TYPE arena,
+                                                     uint64_t usablePages,
+                                                     uint64_t guardLowerPages,
+                                                     uint64_t guardUpperPages,
+                                                     BOOL ownsPhysicalBacking,
+                                                     KE_KVA_RANGE *outRange);
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaMapPage(const KE_KVA_RANGE *range,
+                                                  uint64_t usablePageIndex,
+                                                  HO_PHYSICAL_ADDRESS physAddr,
+                                                  uint64_t attributes);
+
+/**
+ * Map freshly allocated physical backing for a KVA-owned range.
+ *
+ * On failure, this routine rolls back any partial mappings and releases the range before returning the error.
+ */
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaMapOwnedPages(const KE_KVA_RANGE *range, uint64_t attributes);
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaReleaseRange(HO_VIRTUAL_ADDRESS usableBase);
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaQueryRange(HO_VIRTUAL_ADDRESS usableBase, KE_KVA_RANGE *outRange);
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaQueryArenaInfo(KE_KVA_ARENA_TYPE arena, KE_KVA_ARENA_INFO *outInfo);
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaValidateLayout(void);
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaSelfTest(void);
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeFixmapAcquire(HO_PHYSICAL_ADDRESS physAddr,
+                                                     uint64_t attributes,
+                                                     uint32_t *outSlot,
+                                                     HO_VIRTUAL_ADDRESS *outVirtAddr);
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeFixmapRelease(uint32_t slot);
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeHeapAllocPages(uint64_t pageCount, HO_VIRTUAL_ADDRESS *outVirtAddr);
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeHeapFreePages(HO_VIRTUAL_ADDRESS baseVirt);

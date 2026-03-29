@@ -358,11 +358,12 @@ KeImportKernelAddressSpace(struct BOOT_CAPSULE *capsule, const BOOT_MAPPING_MANI
             continue;
         }
 
-        klog(KLOG_LEVEL_INFO,
+        // Too verbose
+        /* klog(KLOG_LEVEL_INFO,
              "[MM] import region[%u]: va=[%p,%p) pa=[%p,%p) type=%u life=%u gran=%u pinned=%u boot_owned=%u\n", idx,
              (void *)(uint64_t)region->VirtualStart, (void *)(uint64_t)region->VirtualEndExclusive,
              (void *)(uint64_t)region->PhysicalStart, (void *)(uint64_t)region->PhysicalEndExclusive, region->Type,
-             region->Lifetime, region->Granularity, region->Pinned, region->BootOwned);
+             region->Lifetime, region->Granularity, region->Pinned, region->BootOwned); */
     }
 
     if (elidedRegionCount != 0)

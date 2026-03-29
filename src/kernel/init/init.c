@@ -60,6 +60,18 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
         HO_KPANIC(initStatus, "PT HAL self-test failed");
     }
 
+    initStatus = KeKvaInit();
+    if (initStatus != EC_SUCCESS)
+    {
+        HO_KPANIC(initStatus, "Failed to initialize KVA");
+    }
+
+    initStatus = KeKvaSelfTest();
+    if (initStatus != EC_SUCCESS)
+    {
+        HO_KPANIC(initStatus, "KVA self-test failed");
+    }
+
     // Smoke test: single page alloc/write/read/free
     {
         HO_PHYSICAL_ADDRESS testPage;
