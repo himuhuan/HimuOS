@@ -98,6 +98,7 @@ RunMemoryObservabilitySelfTest(void)
     if (status != EC_SUCCESS)
         goto cleanup;
     tempMapped = FALSE;
+    tempVirt = 0;
 
     status = KePmmFreePages(tempPhys, 1);
     if (status != EC_SUCCESS)
@@ -179,15 +180,42 @@ cleanup:
     if (tempMapped)
     {
         HO_STATUS cleanupStatus = KeTempPhysMapRelease(&tempMap);
+        if (cleanupStatus == EC_SUCCESS)
+        {
+            tempMapped = FALSE;
+            tempVirt = 0;
+        }
+        else
+        {
+            klog(KLOG_LEVEL_ERROR,
+                 "[OBS] cleanup preserved PMM page %p because temp-map release failed (%s, %p)\n",
+                 (void *)(uint64_t)tempPhys, KrGetStatusMessage(cleanupStatus), cleanupStatus);
+        }
+
         if (status == EC_SUCCESS)
             status = cleanupStatus;
     }
 
-    if (hasTempPhys)
+    if (hasTempPhys && !tempMapped)
     {
         HO_STATUS cleanupStatus = KePmmFreePages(tempPhys, 1);
+        if (cleanupStatus == EC_SUCCESS)
+        {
+            hasTempPhys = FALSE;
+        }
+        else
+        {
+            klog(KLOG_LEVEL_ERROR, "[OBS] cleanup failed to free PMM page %p (%s, %p)\n", (void *)(uint64_t)tempPhys,
+                 KrGetStatusMessage(cleanupStatus), cleanupStatus);
+        }
+
         if (status == EC_SUCCESS)
             status = cleanupStatus;
+    }
+    else if (hasTempPhys)
+    {
+        klog(KLOG_LEVEL_ERROR, "[OBS] cleanup preserved PMM page %p because a temp alias is still active\n",
+             (void *)(uint64_t)tempPhys);
     }
 
     if (heapAllocated)
@@ -294,11 +322,13 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
             initStatus = KeTempPhysMapRelease(&tempMap);
             if (initStatus != EC_SUCCESS)
             {
-                (void)KePmmFreePages(testPage, 1);
-                HO_KPANIC(initStatus, "Failed to release temporary mapping for PMM smoke test");
+                HO_KPANIC(initStatus, "Failed to release temporary mapping for PMM smoke test; backing page preserved");
             }
+            tempVirt = 0;
 
-            KePmmFreePages(testPage, 1);
+            initStatus = KePmmFreePages(testPage, 1);
+            if (initStatus != EC_SUCCESS)
+                HO_KPANIC(initStatus, "Failed to free PMM page for PMM smoke test");
             klog(KLOG_LEVEL_INFO, "[PMM] smoke: 1-page alloc/temp-map/write/read/free OK\n");
         }
 

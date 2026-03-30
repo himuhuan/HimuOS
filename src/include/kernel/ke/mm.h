@@ -292,8 +292,9 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS KeFixmapRelease(uint32_t slot);
  * Acquire a short-lived runtime alias for one physical page through fixmap.
  *
  * This wrapper keeps runtime callers from adopting direct HHDM aliases as
- * ownership addresses and returns an opaque release handle instead of exposing
- * slot identifiers directly.
+ * ownership addresses and returns an opaque release handle that encodes the
+ * current fixmap-slot ownership token instead of exposing slot identifiers
+ * directly.
  */
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeTempPhysMapAcquire(HO_PHYSICAL_ADDRESS physAddr,
                                                           uint64_t attributes,

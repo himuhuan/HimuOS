@@ -27,7 +27,9 @@
 #define KE_KVA_PAGE_STATE_ALLOC   1U
 #define KE_KVA_PAGE_STATE_GUARD   2U
 #define KE_KVA_DEFAULT_PAGE_ATTRS (PTE_WRITABLE | PTE_GLOBAL | PTE_NO_EXECUTE)
-#define KE_TEMP_MAP_TOKEN_XOR     0xA5F00000U
+#define KE_TEMP_MAP_TOKEN_SLOT_BITS       6U
+#define KE_TEMP_MAP_TOKEN_SLOT_MASK       ((1U << KE_TEMP_MAP_TOKEN_SLOT_BITS) - 1U)
+#define KE_TEMP_MAP_TOKEN_GENERATION_MASK 0x03FFFFFFU
 
 typedef struct KE_KVA_ARENA_STATE
 {
@@ -56,6 +58,7 @@ static KE_KVA_RANGE_RECORD gKvaRanges[KE_KVA_MAX_RANGES];
 static uint8_t gStackArenaStates[KE_KVA_STACK_ARENA_PAGES];
 static uint8_t gFixmapArenaStates[KE_KVA_FIXMAP_ARENA_PAGES];
 static uint8_t gHeapArenaStates[KE_KVA_HEAP_ARENA_PAGES];
+static uint32_t gFixmapSlotGenerations[KE_KVA_FIXMAP_ARENA_PAGES];
 static BOOL gKvaInitialized = FALSE;
 
 static inline KE_KVA_ARENA_STATE *
@@ -178,19 +181,46 @@ KiKvaLocateArenaByAddress(HO_VIRTUAL_ADDRESS virtAddr,
 }
 
 static HO_STATUS
-KiDecodeTempMapHandle(const KE_TEMP_PHYS_MAP_HANDLE *handle, uint32_t *outSlot)
+KiDecodeTempMapHandle(const KE_TEMP_PHYS_MAP_HANDLE *handle, uint32_t *outSlot, uint32_t *outGeneration)
 {
-    if (!handle || !outSlot)
+    if (!handle || !outSlot || !outGeneration)
         return EC_ILLEGAL_ARGUMENT;
     if (handle->Token == 0)
         return EC_INVALID_STATE;
 
-    uint32_t encoded = handle->Token ^ KE_TEMP_MAP_TOKEN_XOR;
-    if (encoded == 0 || encoded > KE_KVA_FIXMAP_ARENA_PAGES)
+    uint32_t slot = handle->Token & KE_TEMP_MAP_TOKEN_SLOT_MASK;
+    uint32_t generation = handle->Token >> KE_TEMP_MAP_TOKEN_SLOT_BITS;
+    if (slot >= KE_KVA_FIXMAP_ARENA_PAGES || generation == 0 || generation > KE_TEMP_MAP_TOKEN_GENERATION_MASK)
         return EC_ILLEGAL_ARGUMENT;
 
-    *outSlot = encoded - 1U;
+    *outSlot = slot;
+    *outGeneration = generation;
     return EC_SUCCESS;
+}
+
+static uint32_t
+KiNextFixmapSlotGeneration(uint32_t slot)
+{
+    if (slot >= KE_KVA_FIXMAP_ARENA_PAGES)
+        return 0;
+
+    uint32_t generation = (gFixmapSlotGenerations[slot] + 1U) & KE_TEMP_MAP_TOKEN_GENERATION_MASK;
+    if (generation == 0)
+        generation = 1U;
+
+    gFixmapSlotGenerations[slot] = generation;
+    return generation;
+}
+
+static uint32_t
+KiEncodeTempMapToken(uint32_t slot, uint32_t generation)
+{
+    if (slot >= KE_KVA_FIXMAP_ARENA_PAGES)
+        return 0;
+    if (generation == 0 || generation > KE_TEMP_MAP_TOKEN_GENERATION_MASK)
+        return 0;
+
+    return (generation << KE_TEMP_MAP_TOKEN_SLOT_BITS) | slot;
 }
 
 static KE_KVA_RANGE_RECORD *
@@ -345,6 +375,7 @@ KeKvaInit(void)
 
     for (uint32_t idx = 0; idx < KE_KVA_MAX_RANGES; ++idx)
         gKvaRanges[idx].RecordId = idx + 1;
+    memset(gFixmapSlotGenerations, 0, sizeof(gFixmapSlotGenerations));
 
     gKvaInitialized = TRUE;
 
@@ -697,6 +728,14 @@ KeFixmapAcquire(HO_PHYSICAL_ADDRESS physAddr, uint64_t attributes, uint32_t *out
     }
 
     *outSlot = (uint32_t)((range.UsableBase - KE_KVA_FIXMAP_ARENA_BASE) / PAGE_4KB);
+    if (KiNextFixmapSlotGeneration(*outSlot) == 0)
+    {
+        HO_STATUS cleanupStatus = KeKvaReleaseRange(range.UsableBase);
+        if (cleanupStatus != EC_SUCCESS)
+            return cleanupStatus;
+        return EC_INVALID_STATE;
+    }
+
     *outVirtAddr = range.UsableBase;
     return EC_SUCCESS;
 }
@@ -731,7 +770,16 @@ KeTempPhysMapAcquire(HO_PHYSICAL_ADDRESS physAddr,
     if (status != EC_SUCCESS)
         return status;
 
-    outHandle->Token = (slot + 1U) ^ KE_TEMP_MAP_TOKEN_XOR;
+    uint32_t generation = gFixmapSlotGenerations[slot];
+    outHandle->Token = KiEncodeTempMapToken(slot, generation);
+    if (outHandle->Token == 0)
+    {
+        HO_STATUS cleanupStatus = KeFixmapRelease(slot);
+        if (cleanupStatus != EC_SUCCESS)
+            return cleanupStatus;
+        return EC_INVALID_STATE;
+    }
+
     return EC_SUCCESS;
 }
 
@@ -742,9 +790,17 @@ KeTempPhysMapRelease(KE_TEMP_PHYS_MAP_HANDLE *handle)
         return EC_ILLEGAL_ARGUMENT;
 
     uint32_t slot = 0;
-    HO_STATUS status = KiDecodeTempMapHandle(handle, &slot);
+    uint32_t generation = 0;
+    HO_STATUS status = KiDecodeTempMapHandle(handle, &slot, &generation);
     if (status != EC_SUCCESS)
         return status;
+
+    HO_VIRTUAL_ADDRESS usableBase = KE_KVA_FIXMAP_ARENA_BASE + (uint64_t)slot * PAGE_4KB;
+    KE_KVA_RANGE_RECORD *record = KiKvaFindRecordByUsableBase(usableBase);
+    if (!record || record->Arena != KE_KVA_ARENA_FIXMAP)
+        return EC_INVALID_STATE;
+    if (gFixmapSlotGenerations[slot] != generation)
+        return EC_INVALID_STATE;
 
     status = KeFixmapRelease(slot);
     if (status == EC_SUCCESS)
@@ -828,6 +884,13 @@ KeKvaSelfTest(void)
     uint32_t slotB = 0;
     HO_VIRTUAL_ADDRESS fixVirtA = 0;
     HO_VIRTUAL_ADDRESS fixVirtB = 0;
+    KE_TEMP_PHYS_MAP_HANDLE tempHandleA = {0};
+    KE_TEMP_PHYS_MAP_HANDLE tempHandleB = {0};
+    KE_TEMP_PHYS_MAP_HANDLE staleHandle = {0};
+    HO_VIRTUAL_ADDRESS tempVirtA = 0;
+    HO_VIRTUAL_ADDRESS tempVirtB = 0;
+    HO_VIRTUAL_ADDRESS reusedTempVirt = 0;
+    HO_VIRTUAL_ADDRESS heapVirt = 0;
 
     status = KeFixmapAcquire(testPhys, KE_KVA_DEFAULT_PAGE_ATTRS, &slotA, &fixVirtA);
     if (status != EC_SUCCESS)
@@ -843,6 +906,7 @@ KeKvaSelfTest(void)
     status = KeFixmapRelease(slotA);
     if (status != EC_SUCCESS)
         goto cleanup_fixmap_phys;
+    fixVirtA = 0;
 
     status = KeFixmapAcquire(testPhys, KE_KVA_DEFAULT_PAGE_ATTRS, &slotB, &fixVirtB);
     if (status != EC_SUCCESS)
@@ -858,8 +922,66 @@ KeKvaSelfTest(void)
     status = KeFixmapRelease(slotB);
     if (status != EC_SUCCESS)
         goto cleanup_fixmap_phys;
+    fixVirtB = 0;
 
-    HO_VIRTUAL_ADDRESS heapVirt = 0;
+    status = KeTempPhysMapAcquire(testPhys, KE_KVA_DEFAULT_PAGE_ATTRS, &tempHandleA, &tempVirtA);
+    if (status != EC_SUCCESS)
+        goto cleanup_fixmap_phys;
+    reusedTempVirt = tempVirtA;
+
+    volatile uint64_t *tempAliasA = (volatile uint64_t *)(uint64_t)tempVirtA;
+    if (*tempAliasA != *alias)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup_temp_map_a;
+    }
+
+    staleHandle = tempHandleA;
+    status = KeTempPhysMapRelease(&tempHandleA);
+    if (status != EC_SUCCESS)
+        goto cleanup_fixmap_phys;
+    tempVirtA = 0;
+
+    status = KeTempPhysMapAcquire(testPhys, KE_KVA_DEFAULT_PAGE_ATTRS, &tempHandleB, &tempVirtB);
+    if (status != EC_SUCCESS)
+        goto cleanup_fixmap_phys;
+    if (tempVirtB != reusedTempVirt)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup_temp_map_b;
+    }
+
+    volatile uint64_t *tempAliasB = (volatile uint64_t *)(uint64_t)tempVirtB;
+    if (*tempAliasB != *alias)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup_temp_map_b;
+    }
+
+    HO_STATUS staleStatus = KeTempPhysMapRelease(&staleHandle);
+    if (staleStatus != EC_INVALID_STATE)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup_temp_map_b;
+    }
+    if (*tempAliasB != *alias)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup_temp_map_b;
+    }
+
+    status = KeTempPhysMapRelease(&tempHandleB);
+    if (status != EC_SUCCESS)
+        goto cleanup_fixmap_phys;
+    tempVirtB = 0;
+
+    staleStatus = KeTempPhysMapRelease(&tempHandleB);
+    if (staleStatus != EC_INVALID_STATE)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup_fixmap_phys;
+    }
+
     status = KeHeapAllocPages(2, &heapVirt);
     if (status != EC_SUCCESS)
         goto cleanup_fixmap_phys;
@@ -876,36 +998,111 @@ KeKvaSelfTest(void)
     status = KeHeapFreePages(heapVirt);
     if (status != EC_SUCCESS)
         goto cleanup_fixmap_phys;
+    heapVirt = 0;
 
     status = KePmmFreePages(testPhys, 1);
     if (status != EC_SUCCESS)
         return status;
+    testPhys = 0;
 
-    klog(KLOG_LEVEL_INFO, "[KVA] self-test OK: guard pages, fixmap reuse, and heap growth verified\n");
+    klog(KLOG_LEVEL_INFO, "[KVA] self-test OK: guard pages, fixmap reuse, temp-map ownership, and heap growth verified\n");
     return EC_SUCCESS;
 
 cleanup_heap:
     if (heapVirt != 0)
     {
         HO_STATUS cleanupStatus = KeHeapFreePages(heapVirt);
-        if (cleanupStatus != EC_SUCCESS)
+        if (cleanupStatus == EC_SUCCESS)
+        {
+            heapVirt = 0;
+        }
+        else if (status == EC_SUCCESS)
+        {
             status = cleanupStatus;
+        }
+    }
+cleanup_temp_map_b:
+    if (tempVirtB != 0)
+    {
+        HO_STATUS cleanupStatus = KeTempPhysMapRelease(&tempHandleB);
+        if (cleanupStatus == EC_SUCCESS)
+        {
+            tempVirtB = 0;
+        }
+        else
+        {
+            klog(KLOG_LEVEL_ERROR,
+                 "[KVA] self-test cleanup preserved PMM page %p because temp map release failed (%s, %p)\n",
+                 (void *)(uint64_t)testPhys, KrGetStatusMessage(cleanupStatus), cleanupStatus);
+            if (status == EC_SUCCESS)
+                status = cleanupStatus;
+        }
+    }
+cleanup_temp_map_a:
+    if (tempVirtA != 0)
+    {
+        HO_STATUS cleanupStatus = KeTempPhysMapRelease(&tempHandleA);
+        if (cleanupStatus == EC_SUCCESS)
+        {
+            tempVirtA = 0;
+        }
+        else
+        {
+            klog(KLOG_LEVEL_ERROR,
+                 "[KVA] self-test cleanup preserved PMM page %p because temp map release failed (%s, %p)\n",
+                 (void *)(uint64_t)testPhys, KrGetStatusMessage(cleanupStatus), cleanupStatus);
+            if (status == EC_SUCCESS)
+                status = cleanupStatus;
+        }
     }
 cleanup_fixmap_slot_b:
     if (fixVirtB != 0)
     {
         HO_STATUS cleanupStatus = KeFixmapRelease(slotB);
-        if (cleanupStatus != EC_SUCCESS)
-            status = cleanupStatus;
+        if (cleanupStatus == EC_SUCCESS)
+        {
+            fixVirtB = 0;
+        }
+        else
+        {
+            klog(KLOG_LEVEL_ERROR,
+                 "[KVA] self-test cleanup preserved PMM page %p because fixmap slot %lu release failed (%s, %p)\n",
+                 (void *)(uint64_t)testPhys, (unsigned long)slotB, KrGetStatusMessage(cleanupStatus), cleanupStatus);
+            if (status == EC_SUCCESS)
+                status = cleanupStatus;
+        }
     }
 cleanup_fixmap_slot_a:
     if (fixVirtA != 0)
     {
         HO_STATUS cleanupStatus = KeFixmapRelease(slotA);
-        if (cleanupStatus != EC_SUCCESS)
-            status = cleanupStatus;
+        if (cleanupStatus == EC_SUCCESS)
+        {
+            fixVirtA = 0;
+        }
+        else
+        {
+            klog(KLOG_LEVEL_ERROR,
+                 "[KVA] self-test cleanup preserved PMM page %p because fixmap slot %lu release failed (%s, %p)\n",
+                 (void *)(uint64_t)testPhys, (unsigned long)slotA, KrGetStatusMessage(cleanupStatus), cleanupStatus);
+            if (status == EC_SUCCESS)
+                status = cleanupStatus;
+        }
     }
 cleanup_fixmap_phys:
-    (void)KePmmFreePages(testPhys, 1);
+    if (testPhys != 0)
+    {
+        if (fixVirtA == 0 && fixVirtB == 0 && tempVirtA == 0 && tempVirtB == 0)
+        {
+            HO_STATUS cleanupStatus = KePmmFreePages(testPhys, 1);
+            if (cleanupStatus != EC_SUCCESS && status == EC_SUCCESS)
+                status = cleanupStatus;
+        }
+        else
+        {
+            klog(KLOG_LEVEL_ERROR, "[KVA] self-test preserved PMM page %p because a fixmap/temp alias is still active\n",
+                 (void *)(uint64_t)testPhys);
+        }
+    }
     return status;
 }

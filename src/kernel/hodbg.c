@@ -1,7 +1,6 @@
 #include <kernel/hodbg.h>
 #include <kernel/hodefs.h>
 #include <kernel/ke/console.h>
-#include <kernel/ke/mm.h>
 #include <arch/amd64/pm.h>
 #include <arch/amd64/idt.h> // TODO: remove dependency on x86 arch
 #include <arch/arch.h>
@@ -40,131 +39,6 @@ PrintPageFaultErrorBits(uint32_t errorCode)
             (errorCode >> 6) & 0x1, (errorCode >> 15) & 0x1);
 }
 
-static const char *
-VmmRegionTypeName(uint16_t type)
-{
-    switch (type)
-    {
-    case BOOT_MAPPING_REGION_IDENTITY:
-        return "identity";
-    case BOOT_MAPPING_REGION_HHDM:
-        return "hhdm";
-    case BOOT_MAPPING_REGION_BOOT_STAGING:
-        return "boot_staging";
-    case BOOT_MAPPING_REGION_BOOT_HANDOFF:
-        return "boot_handoff";
-    case BOOT_MAPPING_REGION_BOOT_PAGE_TABLES:
-        return "boot_page_tables";
-    case BOOT_MAPPING_REGION_ACPI_RSDP:
-        return "acpi_rsdp";
-    case BOOT_MAPPING_REGION_ACPI_ROOT:
-        return "acpi_root";
-    case BOOT_MAPPING_REGION_ACPI_TABLE:
-        return "acpi_table";
-    case BOOT_MAPPING_REGION_KERNEL_CODE:
-        return "kernel_code";
-    case BOOT_MAPPING_REGION_KERNEL_DATA:
-        return "kernel_data";
-    case BOOT_MAPPING_REGION_KERNEL_STACK:
-        return "kernel_stack";
-    case BOOT_MAPPING_REGION_KERNEL_IST_STACK:
-        return "kernel_ist_stack";
-    case BOOT_MAPPING_REGION_FRAMEBUFFER:
-        return "framebuffer";
-    case BOOT_MAPPING_REGION_HPET_MMIO:
-        return "hpet_mmio";
-    case BOOT_MAPPING_REGION_LAPIC_MMIO:
-        return "lapic_mmio";
-    default:
-        return "unknown";
-    }
-}
-
-static const char *
-VmmKvaKindName(KE_KVA_ADDRESS_KIND kind)
-{
-    switch (kind)
-    {
-    case KE_KVA_ADDRESS_OUTSIDE:
-        return "outside_kva";
-    case KE_KVA_ADDRESS_FREE_HOLE:
-        return "free_hole";
-    case KE_KVA_ADDRESS_GUARD_PAGE:
-        return "guard_page";
-    case KE_KVA_ADDRESS_ACTIVE_STACK:
-        return "active_stack";
-    case KE_KVA_ADDRESS_ACTIVE_FIXMAP:
-        return "active_fixmap";
-    case KE_KVA_ADDRESS_ACTIVE_HEAP:
-        return "active_heap";
-    default:
-        return "unknown";
-    }
-}
-
-static void
-PrintVmmDiagnosis(const KE_VA_DIAGNOSIS *diagnosis)
-{
-    if (!diagnosis)
-        return;
-
-    const KE_KVA_ADDRESS_INFO *kvaInfo = &diagnosis->KvaInfo;
-
-    if (diagnosis->ImportedRegionMatched && diagnosis->ImportedRegion)
-    {
-        const KE_IMPORTED_REGION *region = diagnosis->ImportedRegion;
-        kprintf("VMM imported: type=%s(%u) va=[%p,%p) pa=[%p,%p)\n", VmmRegionTypeName(region->Type), region->Type,
-                (void *)(uint64_t)region->VirtualStart, (void *)(uint64_t)region->VirtualEndExclusive,
-                (void *)(uint64_t)region->PhysicalStart, (void *)(uint64_t)region->PhysicalEndExclusive);
-    }
-    else
-    {
-        kprintf("VMM imported: none\n");
-    }
-
-    if (diagnosis->PtStatus != EC_SUCCESS)
-    {
-        kprintf("VMM pt: unavailable (%s, %p)\n", KrGetStatusMessage(diagnosis->PtStatus), diagnosis->PtStatus);
-    }
-    else if (!diagnosis->PtMapping.Present)
-    {
-        kprintf("VMM pt: not-present\n");
-    }
-    else
-    {
-        kprintf("VMM pt: present=1 level=%u page=%lu phys=%p attrs=%p\n", diagnosis->PtMapping.Level,
-                (unsigned long)diagnosis->PtMapping.PageSize, (void *)(uint64_t)diagnosis->PtMapping.PhysicalBase,
-                (void *)(uint64_t)diagnosis->PtMapping.Attributes);
-    }
-
-    if (diagnosis->KvaStatus != EC_SUCCESS && !kvaInfo->InKvaArena && kvaInfo->Kind == KE_KVA_ADDRESS_OUTSIDE &&
-        !kvaInfo->HasRange)
-    {
-        kprintf("VMM kva: unavailable (%s, %p)\n", KrGetStatusMessage(diagnosis->KvaStatus), diagnosis->KvaStatus);
-        return;
-    }
-
-    kprintf("VMM kva: %s", VmmKvaKindName(kvaInfo->Kind));
-    if (kvaInfo->InKvaArena)
-    {
-        kprintf(" arena=%u page=%lu", kvaInfo->Arena, (unsigned long)kvaInfo->ArenaPageIndex);
-    }
-    if (diagnosis->KvaStatus != EC_SUCCESS)
-    {
-        kprintf(" accounting=%s (%p)", KrGetStatusMessage(diagnosis->KvaStatus), diagnosis->KvaStatus);
-    }
-    kprintf("\n");
-
-    if (kvaInfo->HasRange)
-    {
-        kprintf("VMM kva range: arena=%u va=[%p,%p) usable=[%p,%p)\n", kvaInfo->Range.Arena,
-                (void *)(uint64_t)kvaInfo->Range.BaseAddress,
-                (void *)(uint64_t)(kvaInfo->Range.BaseAddress + kvaInfo->Range.TotalPages * PAGE_4KB),
-                (void *)(uint64_t)kvaInfo->Range.UsableBase,
-                (void *)(uint64_t)(kvaInfo->Range.UsableBase + kvaInfo->Range.UsablePages * PAGE_4KB));
-    }
-}
-
 static void
 ShowCpuExceptionInfo(int64_t vc, const HO_CPU_EXCEPTION_CONTEXT *context)
 {
@@ -198,17 +72,6 @@ ShowCpuExceptionInfo(int64_t vc, const HO_CPU_EXCEPTION_CONTEXT *context)
     {
         kprintf("CR2: %p\n", (void *)(uint64_t)context->FaultAddress);
         PrintPageFaultErrorBits(context->PageFaultErrorCode);
-
-        KE_VA_DIAGNOSIS diagnosis;
-        HO_STATUS status = KeDiagnoseVirtualAddress(NULL, context->FaultAddress, &diagnosis);
-        if (status == EC_SUCCESS)
-        {
-            PrintVmmDiagnosis(&diagnosis);
-        }
-        else
-        {
-            kprintf("VMM diagnosis failed: %s (%p)\n", KrGetStatusMessage(status), status);
-        }
     }
 }
 
