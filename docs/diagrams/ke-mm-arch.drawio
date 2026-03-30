@@ -1,0 +1,241 @@
+<mxGraphModel adaptiveColors="auto">
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+
+    <!-- Title -->
+    <mxCell id="title" value="HimuOS Ke 层内存子系统架构" style="text;html=1;align=center;fontStyle=1;fontSize=18;fillColor=none;strokeColor=none;" vertex="1" parent="1">
+      <mxGeometry x="50" y="10" width="1500" height="35" as="geometry"/>
+    </mxCell>
+
+    <!-- ================================================================ -->
+    <!-- Layer 0: Boot Inputs -->
+    <!-- ================================================================ -->
+    <mxCell id="c_boot" value="Boot Inputs (UEFI Handoff)" style="swimlane;startSize=30;fillColor=#fff2cc;strokeColor=#d6b656;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="50" y="55" width="1500" height="110" as="geometry"/>
+    </mxCell>
+    <mxCell id="boot_efi" value="EFI Memory Map" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="c_boot">
+      <mxGeometry x="80" y="45" width="200" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="boot_block" value="Boot Capsule (HandoffBlock)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="c_boot">
+      <mxGeometry x="440" y="45" width="220" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="boot_cr3" value="Active CR3 (Boot Root PT)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="c_boot">
+      <mxGeometry x="840" y="45" width="220" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="boot_manifest" value="BOOT_MAPPING_MANIFEST" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="c_boot">
+      <mxGeometry x="1200" y="45" width="220" height="50" as="geometry"/>
+    </mxCell>
+
+    <!-- ================================================================ -->
+    <!-- Layer 1: KE_PMM -->
+    <!-- ================================================================ -->
+    <mxCell id="c_pmm" value="Layer 1 - KE_PMM  [pmm_boot_init.c]  - 物理页生命周期管理" style="swimlane;startSize=30;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="50" y="225" width="1500" height="170" as="geometry"/>
+    </mxCell>
+    <mxCell id="pmm_bitmap" value="Bitmap Backend&lt;br/&gt;(2-bit per page)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="c_pmm">
+      <mxGeometry x="60" y="50" width="200" height="90" as="geometry"/>
+    </mxCell>
+    <mxCell id="pmm_states" value="Page States:&lt;br/&gt;FREE / ALLOCATED / RESERVED" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="c_pmm">
+      <mxGeometry x="310" y="50" width="240" height="90" as="geometry"/>
+    </mxCell>
+    <mxCell id="pmm_span" value="ManagedBasePhys&lt;br/&gt;TotalManagedPages" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="c_pmm">
+      <mxGeometry x="600" y="50" width="180" height="90" as="geometry"/>
+    </mxCell>
+    <mxCell id="pmm_api" value="KePmmAllocPages()&lt;br/&gt;KePmmFreePages()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=2;" vertex="1" parent="c_pmm">
+      <mxGeometry x="830" y="50" width="210" height="90" as="geometry"/>
+    </mxCell>
+    <mxCell id="pmm_reserved" value="Reserved: bitmap / low 1MiB / page0&lt;br/&gt;kernel image / stacks / handoff&lt;br/&gt;page table pages / framebuffer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;" vertex="1" parent="c_pmm">
+      <mxGeometry x="1090" y="50" width="360" height="90" as="geometry"/>
+    </mxCell>
+
+    <!-- ================================================================ -->
+    <!-- Layer 2: Imported Kernel Address Space -->
+    <!-- ================================================================ -->
+    <mxCell id="c_kas" value="Layer 2 - Imported Kernel Address Space  [address_space.c]  - Boot 页表提升为 Ke 对象" style="swimlane;startSize=30;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="50" y="455" width="1500" height="170" as="geometry"/>
+    </mxCell>
+    <mxCell id="kas_cr3" value="Read CR3&lt;br/&gt;+ verify vs Boot Capsule" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="c_kas">
+      <mxGeometry x="60" y="50" width="200" height="90" as="geometry"/>
+    </mxCell>
+    <mxCell id="kas_regions" value="KE_IMPORTED_REGION list&lt;br/&gt;from BOOT_MAPPING_MANIFEST&lt;br/&gt;(all Pinned)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="c_kas">
+      <mxGeometry x="320" y="50" width="260" height="90" as="geometry"/>
+    </mxCell>
+    <mxCell id="kas_global" value="KE_KERNEL_ADDRESS_SPACE&lt;br/&gt;KeGetKernelAddressSpace()&lt;br/&gt;global kernel AS metadata" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="c_kas">
+      <mxGeometry x="640" y="50" width="280" height="90" as="geometry"/>
+    </mxCell>
+    <mxCell id="kas_pinned" value="Boot-owned regions protected&lt;br/&gt;region lookup: smallest&lt;br/&gt;covering interval" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="c_kas">
+      <mxGeometry x="980" y="50" width="240" height="90" as="geometry"/>
+    </mxCell>
+    <mxCell id="kas_hhdm" value="HHDM&lt;br/&gt;(controlled escape)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;dashed=1;" vertex="1" parent="c_kas">
+      <mxGeometry x="1290" y="50" width="160" height="90" as="geometry"/>
+    </mxCell>
+
+    <!-- ================================================================ -->
+    <!-- Layer 3: PT HAL -->
+    <!-- ================================================================ -->
+    <mxCell id="c_pthal" value="Layer 3 - PT HAL  [address_space.c]  - Imported Root 上的最小 4KB 页表操作" style="swimlane;startSize=30;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="50" y="685" width="1500" height="140" as="geometry"/>
+    </mxCell>
+    <mxCell id="pt_query" value="KePtQueryPage()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="c_pthal">
+      <mxGeometry x="60" y="45" width="200" height="70" as="geometry"/>
+    </mxCell>
+    <mxCell id="pt_map" value="KePtMapPage()&lt;br/&gt;(alloc mid-level via PMM)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="c_pthal">
+      <mxGeometry x="310" y="45" width="220" height="70" as="geometry"/>
+    </mxCell>
+    <mxCell id="pt_unmap" value="KePtUnmapPage()&lt;br/&gt;+ invlpg (local TLB)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="c_pthal">
+      <mxGeometry x="580" y="45" width="200" height="70" as="geometry"/>
+    </mxCell>
+    <mxCell id="pt_protect" value="KePtProtectPage()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="c_pthal">
+      <mxGeometry x="830" y="45" width="200" height="70" as="geometry"/>
+    </mxCell>
+    <mxCell id="pt_selftest" value="KePtSelfTest()&lt;br/&gt;scratch hole: map/verify/unmap" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontStyle=2;" vertex="1" parent="c_pthal">
+      <mxGeometry x="1080" y="45" width="250" height="70" as="geometry"/>
+    </mxCell>
+    <mxCell id="pt_limit" value="4KB only; detects 2MB/1GB&lt;br/&gt;but does NOT split large pages" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;dashed=1;fontSize=11;" vertex="1" parent="c_pthal">
+      <mxGeometry x="1380" y="45" width="100" height="70" as="geometry"/>
+    </mxCell>
+
+    <!-- ================================================================ -->
+    <!-- Layer 4: KE_KVA -->
+    <!-- ================================================================ -->
+    <mxCell id="c_kva" value="Layer 4 - KE_KVA  [kva.c]  - 内核虚拟地址管理器" style="swimlane;startSize=30;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="50" y="885" width="1500" height="255" as="geometry"/>
+    </mxCell>
+
+    <!-- STACK Arena -->
+    <mxCell id="kva_stack" value="STACK Arena" style="swimlane;startSize=25;fillColor=#fff3e0;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="c_kva">
+      <mxGeometry x="60" y="50" width="310" height="180" as="geometry"/>
+    </mxCell>
+    <mxCell id="kva_stack_d" value="after boot main stack + IST1&lt;br/&gt;usable=KE_THREAD_STACK_PAGES&lt;br/&gt;guardLower=1 (guard page)&lt;br/&gt;StackBase / StackGuardBase" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#d79b00;fontSize=11;" vertex="1" parent="kva_stack">
+      <mxGeometry x="15" y="35" width="280" height="130" as="geometry"/>
+    </mxCell>
+
+    <!-- HEAP Arena -->
+    <mxCell id="kva_heap" value="HEAP Arena" style="swimlane;startSize=25;fillColor=#fff3e0;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="c_kva">
+      <mxGeometry x="430" y="50" width="310" height="180" as="geometry"/>
+    </mxCell>
+    <mxCell id="kva_heap_d" value="after STACK arena&lt;br/&gt;OwnsPhysicalBacking=TRUE&lt;br/&gt;stable non-HHDM KVA&lt;br/&gt;KeHeapAllocPages / FreePages" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#d79b00;fontSize=11;" vertex="1" parent="kva_heap">
+      <mxGeometry x="15" y="35" width="280" height="130" as="geometry"/>
+    </mxCell>
+
+    <!-- FIXMAP Arena -->
+    <mxCell id="kva_fixmap" value="FIXMAP Arena" style="swimlane;startSize=25;fillColor=#fff3e0;strokeColor=#d79b00;fontStyle=1;" vertex="1" parent="c_kva">
+      <mxGeometry x="800" y="50" width="310" height="180" as="geometry"/>
+    </mxCell>
+    <mxCell id="kva_fixmap_d" value="near HHDM_BASE_VA lower edge&lt;br/&gt;short-lifetime alias slots&lt;br/&gt;generation counter (ABA guard)&lt;br/&gt;KeFixmapAcquire / Release" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#d79b00;fontSize=11;" vertex="1" parent="kva_fixmap">
+      <mxGeometry x="15" y="35" width="280" height="130" as="geometry"/>
+    </mxCell>
+
+    <!-- Two-Phase Model -->
+    <mxCell id="kva_model" value="Two-Phase Allocation:&lt;br/&gt;&lt;br/&gt;Phase 1 - Reserve VA:&lt;br/&gt;KeKvaAllocRange()&lt;br/&gt;mark ALLOC / GUARD slots&lt;br/&gt;&lt;br/&gt;Phase 2 - Commit PA:&lt;br/&gt;KeKvaMapPage() external&lt;br/&gt;KeKvaMapOwnedPages() owned" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff3e0;strokeColor=#d79b00;align=left;fontSize=11;" vertex="1" parent="c_kva">
+      <mxGeometry x="1170" y="50" width="280" height="180" as="geometry"/>
+    </mxCell>
+
+    <!-- ================================================================ -->
+    <!-- Layer 5: Upper Consumers -->
+    <!-- ================================================================ -->
+    <mxCell id="c_consumers" value="Layer 5 - Upper Consumers  - KVA 管理的内核内存用户" style="swimlane;startSize=30;fillColor=#f8cecc;strokeColor=#b85450;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="50" y="1200" width="1500" height="170" as="geometry"/>
+    </mxCell>
+    <mxCell id="con_thread" value="KTHREAD Stack (kthread.c)&lt;br/&gt;usable + guardLower=1&lt;br/&gt;KeKvaMapOwnedPages()&lt;br/&gt;KeKvaReleaseRange() on exit" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="c_consumers">
+      <mxGeometry x="60" y="45" width="240" height="100" as="geometry"/>
+    </mxCell>
+    <mxCell id="con_fixmap" value="TempPhysMap / Fixmap&lt;br/&gt;KeFixmapAcquire()&lt;br/&gt;KeTempPhysMapAcquire()&lt;br/&gt;KeTempPhysMapRelease()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="c_consumers">
+      <mxGeometry x="360" y="45" width="240" height="100" as="geometry"/>
+    </mxCell>
+    <mxCell id="con_heap" value="Page-Level Heap&lt;br/&gt;KeHeapAllocPages(n, &amp;virt)&lt;br/&gt;KeHeapFreePages(baseVirt)&lt;br/&gt;stable, non-HHDM KVA" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="c_consumers">
+      <mxGeometry x="660" y="45" width="240" height="100" as="geometry"/>
+    </mxCell>
+    <mxCell id="con_pool" value="KePool (pool.c)&lt;br/&gt;expands via KeHeapAllocPages(1)&lt;br/&gt;freelist slot reuse&lt;br/&gt;no backing page shrink" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="c_consumers">
+      <mxGeometry x="960" y="45" width="240" height="100" as="geometry"/>
+    </mxCell>
+    <mxCell id="con_kthread" value="KTHREAD Pool&lt;br/&gt;KeKThreadPoolInit()&lt;br/&gt;depends on KePool&lt;br/&gt;initialized last (step 7)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;" vertex="1" parent="c_consumers">
+      <mxGeometry x="1260" y="45" width="180" height="100" as="geometry"/>
+    </mxCell>
+
+    <!-- ================================================================ -->
+    <!-- Layer 6: Observability and Self-Tests -->
+    <!-- ================================================================ -->
+    <mxCell id="c_obs" value="Layer 6 - Observability &amp; Self-Tests  - 统一可查询状态面" style="swimlane;startSize=30;fillColor=#e6d0de;strokeColor=#ae4132;fontStyle=1;fontSize=12;" vertex="1" parent="1">
+      <mxGeometry x="50" y="1430" width="1500" height="170" as="geometry"/>
+    </mxCell>
+    <mxCell id="obs_pmm" value="KE_SYSINFO_PHYSICAL_MEM_STATS&lt;br/&gt;Total / Free / Allocated / Reserved" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6d0de;strokeColor=#ae4132;" vertex="1" parent="c_obs">
+      <mxGeometry x="60" y="45" width="290" height="90" as="geometry"/>
+    </mxCell>
+    <mxCell id="obs_vmm" value="KE_SYSINFO_VMM_OVERVIEW&lt;br/&gt;imported regions / arena stats&lt;br/&gt;active ranges / fixmap slots" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6d0de;strokeColor=#ae4132;" vertex="1" parent="c_obs">
+      <mxGeometry x="410" y="45" width="290" height="90" as="geometry"/>
+    </mxCell>
+    <mxCell id="obs_selftest" value="RunMemoryObservabilitySelfTest()&lt;br/&gt;PMM baseline + fixmap + heap cycle&lt;br/&gt;账本闭环 (step 6)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6d0de;strokeColor=#ae4132;fontStyle=2;" vertex="1" parent="c_obs">
+      <mxGeometry x="760" y="45" width="290" height="90" as="geometry"/>
+    </mxCell>
+    <mxCell id="obs_pf" value="Page Fault Demo&lt;br/&gt;imported / guard / fixmap / heap&lt;br/&gt;CR2 + PFERR diagnostic output" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6d0de;strokeColor=#ae4132;" vertex="1" parent="c_obs">
+      <mxGeometry x="1110" y="45" width="290" height="90" as="geometry"/>
+    </mxCell>
+
+    <!-- ================================================================ -->
+    <!-- EDGES: Initialization Sequence and Dependencies -->
+    <!-- ================================================================ -->
+
+    <!-- e1: Boot -> PMM (step 1) -->
+    <mxCell id="e1" value="① KePmmInitFromBootMemoryMap(block)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;fontStyle=2;exitX=0.3;exitY=1;entryX=0.3;entryY=0;" edge="1" source="c_boot" target="c_pmm" parent="1">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+    <!-- e2: Boot -> KAS (step 2, right-side routing bypasses PMM layer) -->
+    <mxCell id="e2" value="② KeImportKernelAddressSpace(block, manifest)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;fontStyle=2;exitX=1;exitY=0.5;entryX=1;entryY=0.5;" edge="1" source="c_boot" target="c_kas" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="1630" y="110"/>
+          <mxPoint x="1630" y="540"/>
+        </Array>
+      </mxGeometry>
+    </mxCell>
+
+    <!-- e3: PMM -> KAS (dashed: provides backing pages for region dir alloc) -->
+    <mxCell id="e3" value="alloc region dir pages" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;" edge="1" source="c_pmm" target="c_kas" parent="1">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+    <!-- e4: KAS -> PTHAL (imported root CR3 + region list) -->
+    <mxCell id="e4" value="imported root CR3 + region list" style="edgeStyle=orthogonalEdgeStyle;rounded=1;" edge="1" source="c_kas" target="c_pthal" parent="1">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+    <!-- e5: PTHAL -> KVA (steps 3+4+5) -->
+    <mxCell id="e5" value="③ KePtSelfTest()  →  ④ KeKvaInit()  →  ⑤ KeKvaSelfTest()" style="edgeStyle=orthogonalEdgeStyle;rounded=1;fontStyle=2;" edge="1" source="c_pthal" target="c_kva" parent="1">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+    <!-- e6: PMM -> KVA (left-side bypass: KeKvaMapOwnedPages calls KePmmAllocPages) -->
+    <mxCell id="e6" value="KePmmAllocPages() for owned VA commit" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;exitX=0;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="c_pmm" target="c_kva" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="-20" y="310"/>
+          <mxPoint x="-20" y="1012"/>
+        </Array>
+      </mxGeometry>
+    </mxCell>
+
+    <!-- e7: KVA -> Consumers (step 7) -->
+    <mxCell id="e7" value="⑦ KVA-backed ranges (stack / heap / fixmap)" style="edgeStyle=orthogonalEdgeStyle;rounded=1;fontStyle=2;" edge="1" source="c_kva" target="c_consumers" parent="1">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+    <!-- e8: KVA -> Observability (step 6, right-side routing bypasses Consumers layer) -->
+    <mxCell id="e8" value="⑥ RunMemoryObservabilitySelfTest()" style="edgeStyle=orthogonalEdgeStyle;rounded=1;fontStyle=2;exitX=1;exitY=0.5;entryX=1;entryY=0.5;" edge="1" source="c_kva" target="c_obs" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <Array as="points">
+          <mxPoint x="1655" y="1012"/>
+          <mxPoint x="1655" y="1515"/>
+        </Array>
+      </mxGeometry>
+    </mxCell>
+
+    <!-- e9: Consumers -> Observability (ongoing sysinfo queries + page fault diagnostics) -->
+    <mxCell id="e9" value="sysinfo queries / page fault diag" style="edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;exitX=0.3;exitY=1;entryX=0.3;entryY=0;" edge="1" source="c_consumers" target="c_obs" parent="1">
+      <mxGeometry relative="1" as="geometry"/>
+    </mxCell>
+
+  </root>
+</mxGraphModel>
