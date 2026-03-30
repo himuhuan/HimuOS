@@ -1,6 +1,7 @@
 #include "arch/amd64/idt.h"
 #include "arch/amd64/pm.h"
 #include "kernel/hodbg.h"
+#include <kernel/init.h>
 #include <kernel/ke/irql.h>
 #include <libc/string.h>
 
@@ -26,6 +27,19 @@ ReadCr2(void)
     uint64_t cr2;
     __asm__ __volatile__("mov %%cr2, %0" : "=r"(cr2));
     return (HO_VIRTUAL_ADDRESS)cr2;
+}
+
+static BOOL
+IsCurrentPageFaultDiagnosticContext(void)
+{
+    BOOT_CAPSULE *capsule = KeGetBootCapsule();
+    if (!capsule || capsule->Layout.IST2StackSize == 0 || capsule->CpuInfo.Tss.IST2 == 0)
+        return FALSE;
+
+    uint8_t stackProbe;
+    HO_VIRTUAL_ADDRESS currentSp = (HO_VIRTUAL_ADDRESS)(uint64_t)&stackProbe;
+    HO_VIRTUAL_ADDRESS ist2Base = capsule->CpuInfo.Tss.IST2 - capsule->Layout.IST2StackSize;
+    return currentSp >= ist2Base && currentSp < capsule->CpuInfo.Tss.IST2;
 }
 
 static inline void
@@ -69,6 +83,8 @@ GetVectorIstIndex(uint8_t vectorNumber)
     {
     case 8: // #DF Double Fault
         return 1;
+    case 14: // #PF Page Fault
+        return 2;
     default:
         return 0;
     }
@@ -104,6 +120,7 @@ IdtExceptionHandler(void *frame)
             context.HasFaultAddress = TRUE;
             context.FaultAddress = ReadCr2();
             context.PageFaultErrorCode = (uint32_t)dump->ErrorCode;
+            context.IsSafePageFaultContext = IsCurrentPageFaultDiagnosticContext();
         }
 
         KernelHalt(-(int64_t)vectorNumber, &context);

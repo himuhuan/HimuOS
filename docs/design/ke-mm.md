@@ -92,7 +92,7 @@ PMM 的 bitmap 元数据本身也需要落在物理页上。当前实现会：
 - 低 1MiB window
 - page 0
 - 内核镜像
-- 主栈和 IST1 栈
+- 主栈以及 IST1 / IST2 栈
 - handoff block / memory map
 - 当前页表页
 - framebuffer
@@ -170,7 +170,7 @@ PMM 的 bitmap 元数据本身也需要落在物理页上。当前实现会：
 
 布局特点：
 
-- stack arena 放在 boot 主栈和 IST1 之后的高半区。
+- stack arena 放在 boot 主栈、IST1 和 page-fault diagnostic IST2 之后的高半区。
 - heap arena 紧跟 stack arena。
 - fixmap arena 放在 `HHDM_BASE_VA` 下沿附近，作为短生命周期别名窗口。
 
@@ -324,7 +324,7 @@ heap 目前还不是 malloc/slab，而是页级接口：
 
 这让本分支第一次具备了“账本能否闭环”的自动验证。
 
-### 11.3 页故障演示与基础异常信息
+### 11.3 页故障演示与安全诊断异常信息
 
 分支还增加了 page-fault demo：
 
@@ -333,7 +333,7 @@ heap 目前还不是 malloc/slab，而是页级接口：
 - fixmap page fault
 - heap page fault
 
-同时在 CPU exception 输出中补了 `CR2` 和 `PFERR` 位信息，便于区分 fault 地址与 fault 类型。它们主要用于 bring-up 和 VMM 诊断演练。
+同时，CPU exception 输出现在遵循“两阶段”契约：始终先输出寄存器转储、`CR2` 与 `PFERR` 位信息；当 vector 14 已切换到 dedicated `IST2` page-fault diagnostic stack 后，再追加 `VMM imported / VMM pt / VMM kva` 三层 richer diagnosis，用于区分 imported 地址、guard page、active fixmap、active heap 或未映射 hole。它们主要用于 bring-up 和 VMM 诊断演练。
 
 ## 12. 当前实现边界
 
@@ -362,7 +362,7 @@ heap 目前还不是 malloc/slab，而是页级接口：
 2. 支持 large page 识别之外的拆分、重映射和更细粒度保护。
 3. 为 KVA 引入更丰富的区间管理策略，而不只是一维 first-fit。
 4. 在 heap 之上再构建通用 kernel heap / slab 分配器。
-5. 把 page-fault 路径进一步接上 `KeDiagnoseVirtualAddress()`，把 imported/PT/KVA 三层诊断真正打进异常输出。
+5. 将当前单 CPU 的 safe page-fault diagnostic IST 扩展为 SMP / per-CPU 友好的异常栈模型。
 6. 在 SMP 阶段补齐跨核同步和 TLB shootdown。
 
 ## 14. 小结

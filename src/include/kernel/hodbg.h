@@ -43,6 +43,7 @@ typedef struct HO_CPU_EXCEPTION_CONTEXT
     HO_VIRTUAL_ADDRESS FaultAddress;
     uint32_t PageFaultErrorCode;
     BOOL HasFaultAddress;
+    BOOL IsSafePageFaultContext;
 } HO_CPU_EXCEPTION_CONTEXT;
 
 /**

@@ -33,7 +33,7 @@
 2. **Heap arena**
 3. **Fixmap arena**
 
-布局上，`stack arena` 起始于 boot 时内核主栈与 `IST1` 栈之后，并向高地址方向预留一段连续虚拟区间；`heap arena` 紧随 `stack arena` 之后，同样位于高半内核专用区；`fixmap arena` 则被放置在 `HHDM_BASE_VA` 之前的一个小窗口中。
+布局上，`stack arena` 起始于 boot 时内核主栈、`IST1` 栈与 dedicated page-fault diagnostic `IST2` 栈之后，并向高地址方向预留一段连续虚拟区间；`heap arena` 紧随 `stack arena` 之后，同样位于高半内核专用区；`fixmap arena` 则被放置在 `HHDM_BASE_VA` 之前的一个小窗口中。
 
 这种布局对应了三种不同的目标：
 
@@ -345,7 +345,7 @@
 2. `KeKvaQueryArenaInfo` 提供总体空闲页和活跃分配数量。
 3. `KeKvaQueryUsageInfo` 暴露 `ActiveRangeCount`、`FixmapTotalSlots` 与 `FixmapActiveSlots`，供 `KE_SYSINFO_VMM_OVERVIEW` 汇总。
 4. `KeDiagnoseVirtualAddress` 会把 imported-region、PT 映射状态与 KVA 归属信息组合成统一诊断结构。
-5. 页故障蓝屏输出新增 `CR2`、`PFERR` 位域，以及 `VMM imported / VMM pt / VMM kva` 三层诊断，能区分 imported 区域、guard page、active fixmap、active heap 或未映射 hole。
+5. 页故障蓝屏输出遵循 base-first 契约：先输出寄存器转储、`CR2`、`PFERR` 位域；只有在 dedicated `IST2` 安全诊断上下文中，才追加 `VMM imported / VMM pt / VMM kva` 三层诊断，区分 imported 区域、guard page、active fixmap、active heap 或未映射 hole。
 6. 线程创建日志会直接输出线程栈 usable base 与 guard base。
 7. 线程回收路径在释放 KVA 栈失败时直接触发 panic，避免 silent corruption。
 

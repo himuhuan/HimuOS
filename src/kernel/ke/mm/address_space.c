@@ -432,6 +432,7 @@ KeDiagnoseVirtualAddress(const KE_KERNEL_ADDRESS_SPACE *space, HO_VIRTUAL_ADDRES
 
     memset(outDiagnosis, 0, sizeof(*outDiagnosis));
     outDiagnosis->VirtualAddress = virtAddr;
+    outDiagnosis->ImportedStatus = EC_INVALID_STATE;
     outDiagnosis->PtStatus = EC_INVALID_STATE;
     outDiagnosis->KvaStatus = EC_INVALID_STATE;
 
@@ -443,6 +444,7 @@ KeDiagnoseVirtualAddress(const KE_KERNEL_ADDRESS_SPACE *space, HO_VIRTUAL_ADDRES
     {
         outDiagnosis->ImportedRegion = KeFindImportedRegion(effectiveSpace, virtAddr);
         outDiagnosis->ImportedRegionMatched = outDiagnosis->ImportedRegion != NULL;
+        outDiagnosis->ImportedStatus = EC_SUCCESS;
         outDiagnosis->PtStatus = KePtQueryPage(effectiveSpace, HO_ALIGN_DOWN(virtAddr, PAGE_4KB), &outDiagnosis->PtMapping);
     }
 

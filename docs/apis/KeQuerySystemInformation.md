@@ -130,8 +130,8 @@ typedef struct SYSINFO_UPTIME {
 
 以下接口不属于 `KeQuerySystemInformation`，但与本次内存可观测性变更配套：
 
-- `KeDiagnoseVirtualAddress()`：组合 imported-region、PT query、KVA 分类，返回统一的 `KE_VA_DIAGNOSIS`。
-- 页故障蓝屏输出：在 vector-14 下新增 `CR2`、`PFERR` 位域打印，以及 `VMM imported / VMM pt / VMM kva` 三层诊断输出，便于区分 imported 地址、guard page、active fixmap、active heap 或未映射空洞。
+- `KeDiagnoseVirtualAddress()`：组合 imported-region、PT query、KVA 分类及各层状态，返回统一的 `KE_VA_DIAGNOSIS`。
+- 页故障蓝屏输出：在 vector-14 下始终先输出寄存器转储、`CR2` 与 `PFERR` 位域；只有进入 dedicated `IST2` 安全诊断上下文后，才追加 `VMM imported / VMM pt / VMM kva` 三层诊断，用于区分 imported 地址、guard page、active fixmap、active heap 或未映射空洞。
 
 ## 启动期联动验证
 

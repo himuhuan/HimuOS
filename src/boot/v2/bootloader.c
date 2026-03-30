@@ -168,7 +168,9 @@ StagingKernel(const CHAR16 *path)
     layout.MemoryMapSize = memoryMapPages << 12;
     layout.KrnlCodeSize = elfInfo.ExecPhysPages << 12;
     layout.KrnlDataSize = elfInfo.DataPhysPages << 12;
-    layout.KrnlStackSize = layout.IST1StackSize = HO_STACK_SIZE;
+    layout.KrnlStackSize = HO_STACK_SIZE;
+    layout.IST1StackSize = HO_STACK_SIZE;
+    layout.IST2StackSize = HO_STACK_SIZE;
     BOOT_CAPSULE *capsule = CreateCapsule(&layout);
     if (capsule == NULL)
     {

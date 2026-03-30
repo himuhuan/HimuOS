@@ -15,12 +15,13 @@
 #include "arch/amd64/pm.h"
 #include "boot_mapping_manifest.h"
 
-#define BOOT_FRAMEBUFFER_VA     MMIO_BASE_VA
-#define BOOT_KRNL_ENTRY_VA      KRNL_ENTRY_VA
-#define BOOT_KRNL_STACK_VA      KRNL_STACK_VA      // Kernel stack BOTTOM virtual address
-#define BOOT_KRNL_IST1_STACK_VA KRNL_IST1_STACK_VA // Kernel IST1 stack BOTTOM virtual address
-#define BOOT_HHDM_BASE_VA       HHDM_BASE_VA
-#define BOOT_HANDOFF_ALIGNMENT  8ULL
+#define BOOT_FRAMEBUFFER_VA      MMIO_BASE_VA
+#define BOOT_KRNL_ENTRY_VA       KRNL_ENTRY_VA
+#define BOOT_KRNL_STACK_VA       KRNL_STACK_VA      // Kernel stack BOTTOM virtual address
+#define BOOT_KRNL_IST1_STACK_VA  KRNL_IST1_STACK_VA // Kernel IST1 stack BOTTOM virtual address
+#define BOOT_KRNL_IST2_STACK_VA  KRNL_IST2_STACK_VA // Kernel IST2 stack BOTTOM virtual address
+#define BOOT_HHDM_BASE_VA        HHDM_BASE_VA
+#define BOOT_HANDOFF_ALIGNMENT   8ULL
 
 #define BOOT_CAPSULE_MAGIC      0x214F5348 // 'HOS!'
 
@@ -33,6 +34,7 @@ typedef struct BOOT_CAPSULE_LAYOUT
     size_t KrnlDataSize;  // Size of the kernel physical memory occupied by the kernel ELF data segments (BSS)
     size_t KrnlStackSize; // Size of the kernel stack
     size_t IST1StackSize; // Size of the kernel IST#1 stack
+    size_t IST2StackSize; // Size of the kernel IST#2 stack
 } BOOT_CAPSULE_LAYOUT;
 
 typedef struct BOOT_CAPSULE_PAGE_LAYOUT
@@ -41,6 +43,7 @@ typedef struct BOOT_CAPSULE_PAGE_LAYOUT
     UINT64 KrnlPages;      // Pages for kernel code + data (aligned to 4KB)
     UINT64 KrnlStackPages; // Pages for kernel stack (aligned to 4KB)
     UINT64 IST1StackPages; // Pages for IST#1 stack (aligned to 4KB)
+    UINT64 IST2StackPages; // Pages for IST#2 stack (aligned to 4KB)
     UINT64 TotalPages;     // Total pages required for the capsule (sum of above)
 } BOOT_CAPSULE_PAGE_LAYOUT;
 
@@ -80,6 +83,7 @@ typedef struct BOOT_CAPSULE
     HO_PHYSICAL_ADDRESS KrnlEntryPhys;     // Physical address of the kernel loaded segments, BOOT_KRNL_ENTRY_VA
     HO_PHYSICAL_ADDRESS KrnlStackPhys;     // Physical address of the kernel stack, BOOT_KRNL_STACK_VA
     HO_PHYSICAL_ADDRESS KrnlIST1StackPhys; // Physical address of the IST#1 stack, BOOT_KRNL_IST1_STACK_VA
+    HO_PHYSICAL_ADDRESS KrnlIST2StackPhys; // Physical address of the IST#2 stack, BOOT_KRNL_IST2_STACK_VA
 
     PAGE_TABLE_INFO PageTableInfo;
     CPU_CORE_LOCAL_DATA CpuInfo;

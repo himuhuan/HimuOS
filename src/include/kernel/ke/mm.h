@@ -133,6 +133,7 @@ typedef struct KE_KVA_ADDRESS_INFO
 typedef struct KE_VA_DIAGNOSIS
 {
     HO_VIRTUAL_ADDRESS VirtualAddress;
+    HO_STATUS ImportedStatus;
     const KE_IMPORTED_REGION *ImportedRegion;
     BOOL ImportedRegionMatched;
     HO_STATUS PtStatus;
