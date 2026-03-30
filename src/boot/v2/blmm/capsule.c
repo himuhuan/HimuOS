@@ -31,7 +31,8 @@ GetCapsulePhysPages(const BOOT_CAPSULE_LAYOUT *layout, BOOT_CAPSULE_PAGE_LAYOUT 
     UINT64 kernelPages = HO_ALIGN_UP(layout->KrnlCodeSize + layout->KrnlDataSize, PAGE_4KB) >> 12;
     UINT64 kernelStackPages = HO_ALIGN_UP(layout->KrnlStackSize, PAGE_4KB) >> 12;
     UINT64 ist1StackPages = HO_ALIGN_UP(layout->IST1StackSize, PAGE_4KB) >> 12;
-    UINT64 totalPages = handoffPages + kernelPages + kernelStackPages + ist1StackPages;
+    UINT64 ist2StackPages = HO_ALIGN_UP(layout->IST2StackSize, PAGE_4KB) >> 12;
+    UINT64 totalPages = handoffPages + kernelPages + kernelStackPages + ist1StackPages + ist2StackPages;
 
     if (pageLayout != NULL)
     {
@@ -39,6 +40,7 @@ GetCapsulePhysPages(const BOOT_CAPSULE_LAYOUT *layout, BOOT_CAPSULE_PAGE_LAYOUT 
         pageLayout->KrnlPages = kernelPages;
         pageLayout->KrnlStackPages = kernelStackPages;
         pageLayout->IST1StackPages = ist1StackPages;
+        pageLayout->IST2StackPages = ist2StackPages;
         pageLayout->TotalPages = totalPages;
     }
 
@@ -87,6 +89,7 @@ CreateCapsule(const BOOT_CAPSULE_LAYOUT *layout)
     capsule->KrnlEntryPhys = basePhys + (pageLayout.HandoffPages << 12);
     capsule->KrnlStackPhys = capsule->KrnlEntryPhys + (pageLayout.KrnlPages << 12);
     capsule->KrnlIST1StackPhys = capsule->KrnlStackPhys + (pageLayout.KrnlStackPages << 12);
+    capsule->KrnlIST2StackPhys = capsule->KrnlIST1StackPhys + (pageLayout.IST1StackPages << 12);
 
     status = BootMappingManifestInitialize(capsule);
     if (EFI_ERROR(status))
@@ -341,6 +344,24 @@ CreateInitialMapping(BOOT_CAPSULE *capsule, EFI_MEMORY_MAP *memoryMap)
             if (EFI_ERROR(status))
             {
                 LOG_ERROR("Failed to record IST1 stack mapping in manifest: %k (0x%x)\r\n", status, status);
+                break;
+            }
+        }
+        if (capsule->Layout.IST2StackSize > 0)
+        {
+            status = MapRegion(&pageTableAlloc, pml4Phys, capsule->KrnlIST2StackPhys, KRNL_IST2_STACK_VA,
+                               capsule->Layout.IST2StackSize, PTE_WRITABLE | nxFlag);
+            if (EFI_ERROR(status))
+                break;
+
+            status = RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_KERNEL_IST_STACK,
+                                             BOOT_MAPPING_PROVENANCE_STATIC, 0, BOOT_MAPPING_LIFETIME_KERNEL,
+                                             capsule->KrnlIST2StackPhys, KRNL_IST2_STACK_VA,
+                                             HO_ALIGN_UP(capsule->Layout.IST2StackSize, PAGE_4KB),
+                                             PTE_WRITABLE | nxFlag);
+            if (EFI_ERROR(status))
+            {
+                LOG_ERROR("Failed to record IST2 stack mapping in manifest: %k (0x%x)\r\n", status, status);
                 break;
             }
         }

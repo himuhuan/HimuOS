@@ -33,6 +33,7 @@ typedef enum KE_SYSINFO_CLASS
     KE_SYSINFO_SYSTEM_VERSION = 11,
     KE_SYSINFO_CLOCK_EVENT = 12,
     KE_SYSINFO_SCHEDULER = 13,
+    KE_SYSINFO_VMM_OVERVIEW = 14,
     KE_SYSINFO_MAX
 } KE_SYSINFO_CLASS;
 
@@ -57,12 +58,13 @@ typedef struct SYSINFO_PAGE_TABLE
     HO_PHYSICAL_ADDRESS Cr3;
 } SYSINFO_PAGE_TABLE;
 
-// KE_SYSINFO_PHYSICAL_MEM_STATS (reserved for PMM)
+// KE_SYSINFO_PHYSICAL_MEM_STATS
 typedef struct SYSINFO_PHYSICAL_MEM_STATS
 {
     uint64_t TotalBytes;
-    uint64_t UsedBytes;
     uint64_t FreeBytes;
+    uint64_t AllocatedBytes;
+    uint64_t ReservedBytes;
 } SYSINFO_PHYSICAL_MEM_STATS;
 
 // KE_SYSINFO_VIRTUAL_LAYOUT
@@ -73,6 +75,25 @@ typedef struct SYSINFO_VIRTUAL_LAYOUT
     HO_VIRTUAL_ADDRESS HhdmBase;
     HO_VIRTUAL_ADDRESS MmioBase;
 } SYSINFO_VIRTUAL_LAYOUT;
+
+typedef struct SYSINFO_VMM_ARENA_OVERVIEW
+{
+    uint64_t TotalPages;
+    uint64_t FreePages;
+    uint64_t ActiveAllocations;
+} SYSINFO_VMM_ARENA_OVERVIEW;
+
+typedef struct SYSINFO_VMM_OVERVIEW
+{
+    uint32_t ImportedRegionCount;
+    uint32_t Reserved0;
+    SYSINFO_VMM_ARENA_OVERVIEW StackArena;
+    SYSINFO_VMM_ARENA_OVERVIEW FixmapArena;
+    SYSINFO_VMM_ARENA_OVERVIEW HeapArena;
+    uint64_t ActiveKvaRangeCount;
+    uint64_t FixmapTotalSlots;
+    uint64_t FixmapActiveSlots;
+} SYSINFO_VMM_OVERVIEW;
 
 // KE_SYSINFO_GDT
 typedef struct SYSINFO_GDT

@@ -65,7 +65,8 @@ KeSchedulerInit(void)
     memset(&gIdleThread->Context, 0, sizeof(KTHREAD_CONTEXT));
     gIdleThread->StackBase = bootStackTop - HO_STACK_SIZE;
     gIdleThread->StackSize = HO_STACK_SIZE;
-    gIdleThread->StackPhys = 0; // boot stack, not our allocation
+    gIdleThread->StackGuardBase = 0;
+    gIdleThread->StackOwnedByKva = FALSE;
     gIdleThread->Priority = 0;
     gIdleThread->Quantum = 0;
     gIdleThread->OwnedMutexCount = 0;
@@ -319,10 +320,13 @@ KiReapTerminatedThreads(void)
 
         KTHREAD *thread = CONTAINING_RECORD(entry, KTHREAD, ReadyLink);
 
-        // Free stack pages
-        if (thread->StackPhys != 0)
+        if (thread->StackOwnedByKva)
         {
-            KePmmFreePages(thread->StackPhys, KE_THREAD_STACK_PAGES);
+            HO_STATUS status = KeKvaReleaseRange(thread->StackBase);
+            if (status != EC_SUCCESS)
+            {
+                HO_KPANIC(status, "Failed to release terminated KTHREAD stack");
+            }
         }
 
         // Return KTHREAD to pool

@@ -62,9 +62,10 @@ typedef struct KTHREAD
     KTHREAD_STATE State;
     KTHREAD_CONTEXT Context;
 
-    uint64_t StackBase;            // Virtual address (HHDM) of stack base (lowest addr)
-    uint64_t StackSize;            // Stack size in bytes
-    HO_PHYSICAL_ADDRESS StackPhys; // Physical address of stack pages (0 if boot stack)
+    uint64_t StackBase;      // Lowest usable virtual address of the thread stack
+    uint64_t StackSize;      // Usable stack size in bytes
+    uint64_t StackGuardBase; // Lowest guard-page virtual address (0 if not KVA-managed)
+    BOOL StackOwnedByKva;
 
     uint8_t Priority; // Reserved for multi-priority extension
     uint64_t Quantum; // Time slice remaining (nanoseconds)
@@ -88,6 +89,10 @@ extern KE_POOL gKThreadPool;
 
 /**
  * @brief Initialize the global KTHREAD object pool.
+ *
+ * Call after KeKvaInit() has brought up the KVA heap foundation, because this
+ * routine delegates to KePoolInit() and the pool now grows through
+ * KeHeapAllocPages().
  */
 HO_KERNEL_API HO_STATUS KeKThreadPoolInit(void);
 

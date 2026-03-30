@@ -88,26 +88,26 @@ KeTimeSourceInit(HO_PHYSICAL_ADDRESS acpiRsdpPhys)
             HO_STATUS calStatus = KeTscTimeSinkCalibrate(&gTscSink, refSink);
             if (calStatus == EC_SUCCESS)
             {
-                klog(KLOG_LEVEL_ERROR, "[TIME] TSC calibrated by %s: %lu -> %lu Hz\n", refSink->GetName(refSink),
+                klog(KLOG_LEVEL_INFO, "[TIME] TSC calibrated by %s: %lu -> %lu Hz\n", refSink->GetName(refSink),
                      oldFreqHz, gTscSink.FreqHz);
             }
             else if (oldFreqHz != 0)
             {
                 gTscSink.FreqHz = oldFreqHz;
                 gTscSink.Calibrated = TRUE;
-                klog(KLOG_LEVEL_ERROR, "[TIME] TSC calibration by %s failed, fallback to %lu Hz\n",
+                klog(KLOG_LEVEL_INFO, "[TIME] TSC calibration by %s failed, fallback to %lu Hz\n",
                      refSink->GetName(refSink), oldFreqHz);
             }
             else
             {
                 gTscSink.Calibrated = FALSE;
-                klog(KLOG_LEVEL_ERROR, "[TIME] TSC calibration by %s failed and no fallback freq\n",
+                klog(KLOG_LEVEL_INFO, "[TIME] TSC calibration by %s failed and no fallback freq\n",
                      refSink->GetName(refSink));
             }
         }
         else if (!gTscSink.Calibrated)
         {
-            klog(KLOG_LEVEL_ERROR, "[TIME] Error: TSC needs calibration but no ref timer available\n");
+            klog(KLOG_LEVEL_INFO, "[TIME] Error: TSC needs calibration but no ref timer available\n");
         }
     }
 

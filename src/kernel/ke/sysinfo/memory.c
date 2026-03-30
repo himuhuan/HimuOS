@@ -9,6 +9,14 @@
 
 #include "sysinfo_internal.h"
 
+static void
+KiFillVmmArenaOverview(SYSINFO_VMM_ARENA_OVERVIEW *outArena, const KE_KVA_ARENA_INFO *arenaInfo)
+{
+    outArena->TotalPages = arenaInfo->TotalPages;
+    outArena->FreePages = arenaInfo->FreePages;
+    outArena->ActiveAllocations = arenaInfo->ActiveAllocations;
+}
+
 #if __HO_DEBUG_BUILD__
 HO_STATUS
 QueryBootMemoryMap(void *Buffer, size_t BufferSize, size_t *RequiredSize)
@@ -58,11 +66,28 @@ QueryPageTable(void *Buffer, size_t BufferSize, size_t *RequiredSize)
 HO_STATUS
 QueryPhysicalMemStats(void *Buffer, size_t BufferSize, size_t *RequiredSize)
 {
-    (void)Buffer;
-    (void)BufferSize;
-    (void)RequiredSize;
-    // Reserved for PMM implementation
-    return EC_NOT_SUPPORTED;
+    const size_t required = sizeof(SYSINFO_PHYSICAL_MEM_STATS);
+
+    if (RequiredSize)
+        *RequiredSize = required;
+
+    if (!Buffer)
+        return EC_SUCCESS;
+
+    if (BufferSize < required)
+        return EC_NOT_ENOUGH_MEMORY;
+
+    KE_PMM_STATS pmmStats;
+    HO_STATUS status = KePmmQueryStats(&pmmStats);
+    if (status != EC_SUCCESS)
+        return status;
+
+    SYSINFO_PHYSICAL_MEM_STATS *info = (SYSINFO_PHYSICAL_MEM_STATS *)Buffer;
+    info->TotalBytes = pmmStats.TotalBytes;
+    info->FreeBytes = pmmStats.FreeBytes;
+    info->AllocatedBytes = pmmStats.AllocatedBytes;
+    info->ReservedBytes = pmmStats.ReservedBytes;
+    return EC_SUCCESS;
 }
 
 HO_STATUS
@@ -85,5 +110,55 @@ QueryVirtualLayout(void *Buffer, size_t BufferSize, size_t *RequiredSize)
     info->HhdmBase = HHDM_BASE_VA;
     info->MmioBase = MMIO_BASE_VA;
 
+    return EC_SUCCESS;
+}
+
+HO_STATUS
+QueryVmmOverview(void *Buffer, size_t BufferSize, size_t *RequiredSize)
+{
+    const size_t required = sizeof(SYSINFO_VMM_OVERVIEW);
+
+    if (RequiredSize)
+        *RequiredSize = required;
+
+    if (!Buffer)
+        return EC_SUCCESS;
+
+    if (BufferSize < required)
+        return EC_NOT_ENOUGH_MEMORY;
+
+    const KE_KERNEL_ADDRESS_SPACE *space = KeGetKernelAddressSpace();
+    if (!space || !space->Initialized)
+        return EC_INVALID_STATE;
+
+    KE_KVA_ARENA_INFO stackArena;
+    HO_STATUS status = KeKvaQueryArenaInfo(KE_KVA_ARENA_STACK, &stackArena);
+    if (status != EC_SUCCESS)
+        return status;
+
+    KE_KVA_ARENA_INFO fixmapArena;
+    status = KeKvaQueryArenaInfo(KE_KVA_ARENA_FIXMAP, &fixmapArena);
+    if (status != EC_SUCCESS)
+        return status;
+
+    KE_KVA_ARENA_INFO heapArena;
+    status = KeKvaQueryArenaInfo(KE_KVA_ARENA_HEAP, &heapArena);
+    if (status != EC_SUCCESS)
+        return status;
+
+    KE_KVA_USAGE_INFO usageInfo;
+    status = KeKvaQueryUsageInfo(&usageInfo);
+    if (status != EC_SUCCESS)
+        return status;
+
+    SYSINFO_VMM_OVERVIEW *info = (SYSINFO_VMM_OVERVIEW *)Buffer;
+    memset(info, 0, sizeof(*info));
+    info->ImportedRegionCount = space->RegionCount;
+    KiFillVmmArenaOverview(&info->StackArena, &stackArena);
+    KiFillVmmArenaOverview(&info->FixmapArena, &fixmapArena);
+    KiFillVmmArenaOverview(&info->HeapArena, &heapArena);
+    info->ActiveKvaRangeCount = usageInfo.ActiveRangeCount;
+    info->FixmapTotalSlots = usageInfo.FixmapTotalSlots;
+    info->FixmapActiveSlots = usageInfo.FixmapActiveSlots;
     return EC_SUCCESS;
 }

@@ -1,4 +1,5 @@
 #include "init_internal.h"
+#include <kernel/ke/sysinfo.h>
 
 //
 // Global kernel variables that need to be initialized at startup
@@ -9,6 +10,223 @@ ARCH_BASIC_CPU_INFO gBasicCpuInfo;
 BITMAP_FONT_INFO gSystemFont;
 static BOOT_CAPSULE *gBootCapsule;
 static const BOOT_MAPPING_MANIFEST_HEADER *gBootMappingManifest;
+
+static HO_STATUS
+KiQueryPhysicalStats(SYSINFO_PHYSICAL_MEM_STATS *outStats)
+{
+    if (!outStats)
+        return EC_ILLEGAL_ARGUMENT;
+    return KeQuerySystemInformation(KE_SYSINFO_PHYSICAL_MEM_STATS, outStats, sizeof(*outStats), NULL);
+}
+
+static HO_STATUS
+KiQueryVmmOverview(SYSINFO_VMM_OVERVIEW *outOverview)
+{
+    if (!outOverview)
+        return EC_ILLEGAL_ARGUMENT;
+    return KeQuerySystemInformation(KE_SYSINFO_VMM_OVERVIEW, outOverview, sizeof(*outOverview), NULL);
+}
+
+static HO_STATUS
+RunMemoryObservabilitySelfTest(void)
+{
+    SYSINFO_PHYSICAL_MEM_STATS basePhysical = {0};
+    SYSINFO_PHYSICAL_MEM_STATS fixmapPhysical = {0};
+    SYSINFO_PHYSICAL_MEM_STATS heapPhysical = {0};
+    SYSINFO_PHYSICAL_MEM_STATS finalPhysical = {0};
+
+    SYSINFO_VMM_OVERVIEW baseVmm = {0};
+    SYSINFO_VMM_OVERVIEW fixmapVmm = {0};
+    SYSINFO_VMM_OVERVIEW heapVmm = {0};
+    SYSINFO_VMM_OVERVIEW finalVmm = {0};
+
+    HO_PHYSICAL_ADDRESS tempPhys = 0;
+    BOOL hasTempPhys = FALSE;
+    KE_TEMP_PHYS_MAP_HANDLE tempMap = {0};
+    BOOL tempMapped = FALSE;
+    HO_VIRTUAL_ADDRESS tempVirt = 0;
+    HO_VIRTUAL_ADDRESS heapVirt = 0;
+    BOOL heapAllocated = FALSE;
+
+    HO_STATUS status = KiQueryPhysicalStats(&basePhysical);
+    if (status != EC_SUCCESS)
+        return status;
+    status = KiQueryVmmOverview(&baseVmm);
+    if (status != EC_SUCCESS)
+        return status;
+
+    status = KePmmAllocPages(1, NULL, &tempPhys);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+    hasTempPhys = TRUE;
+
+    status = KeTempPhysMapAcquire(tempPhys, PTE_WRITABLE | PTE_GLOBAL | PTE_NO_EXECUTE, &tempMap, &tempVirt);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+    tempMapped = TRUE;
+
+    volatile uint64_t *tempWords = (volatile uint64_t *)(uint64_t)tempVirt;
+    tempWords[0] = 0x4F4253544D415031ULL;
+    if (tempWords[0] != 0x4F4253544D415031ULL)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+
+    status = KiQueryPhysicalStats(&fixmapPhysical);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+    status = KiQueryVmmOverview(&fixmapVmm);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+
+    if (fixmapPhysical.AllocatedBytes < basePhysical.AllocatedBytes + PAGE_4KB ||
+        fixmapPhysical.FreeBytes + PAGE_4KB > basePhysical.FreeBytes)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+    if (fixmapVmm.FixmapActiveSlots != baseVmm.FixmapActiveSlots + 1 ||
+        fixmapVmm.FixmapArena.ActiveAllocations != baseVmm.FixmapArena.ActiveAllocations + 1 ||
+        fixmapVmm.ActiveKvaRangeCount < baseVmm.ActiveKvaRangeCount + 1)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+
+    status = KeTempPhysMapRelease(&tempMap);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+    tempMapped = FALSE;
+    tempVirt = 0;
+
+    status = KePmmFreePages(tempPhys, 1);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+    hasTempPhys = FALSE;
+
+    status = KeHeapAllocPages(1, &heapVirt);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+    heapAllocated = TRUE;
+
+    volatile uint64_t *heapWords = (volatile uint64_t *)(uint64_t)heapVirt;
+    heapWords[0] = 0x4F42534845415031ULL;
+    if (heapWords[0] != 0x4F42534845415031ULL)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+
+    status = KiQueryPhysicalStats(&heapPhysical);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+    status = KiQueryVmmOverview(&heapVmm);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+
+    if (heapPhysical.AllocatedBytes < basePhysical.AllocatedBytes + PAGE_4KB || heapPhysical.FreeBytes > basePhysical.FreeBytes)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+    if (heapVmm.HeapArena.ActiveAllocations != baseVmm.HeapArena.ActiveAllocations + 1 ||
+        heapVmm.ActiveKvaRangeCount < baseVmm.ActiveKvaRangeCount + 1 ||
+        heapVmm.FixmapActiveSlots != baseVmm.FixmapActiveSlots)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+
+    status = KeHeapFreePages(heapVirt);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+    heapAllocated = FALSE;
+
+    status = KiQueryPhysicalStats(&finalPhysical);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+    status = KiQueryVmmOverview(&finalVmm);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+
+    if (finalPhysical.TotalBytes != basePhysical.TotalBytes || finalPhysical.FreeBytes != basePhysical.FreeBytes ||
+        finalPhysical.AllocatedBytes != basePhysical.AllocatedBytes || finalPhysical.ReservedBytes != basePhysical.ReservedBytes)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+
+    if (finalVmm.ImportedRegionCount != baseVmm.ImportedRegionCount ||
+        finalVmm.ActiveKvaRangeCount != baseVmm.ActiveKvaRangeCount ||
+        finalVmm.FixmapTotalSlots != baseVmm.FixmapTotalSlots ||
+        finalVmm.FixmapActiveSlots != baseVmm.FixmapActiveSlots ||
+        finalVmm.StackArena.ActiveAllocations != baseVmm.StackArena.ActiveAllocations ||
+        finalVmm.StackArena.FreePages != baseVmm.StackArena.FreePages ||
+        finalVmm.FixmapArena.ActiveAllocations != baseVmm.FixmapArena.ActiveAllocations ||
+        finalVmm.FixmapArena.FreePages != baseVmm.FixmapArena.FreePages ||
+        finalVmm.HeapArena.ActiveAllocations != baseVmm.HeapArena.ActiveAllocations ||
+        finalVmm.HeapArena.FreePages != baseVmm.HeapArena.FreePages)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+
+    klog(KLOG_LEVEL_INFO,
+         "[OBS] memory observability self-test OK: pmm/vmm counters tracked fixmap+heap activity and recovered\n");
+    return EC_SUCCESS;
+
+cleanup:
+    if (tempMapped)
+    {
+        HO_STATUS cleanupStatus = KeTempPhysMapRelease(&tempMap);
+        if (cleanupStatus == EC_SUCCESS)
+        {
+            tempMapped = FALSE;
+            tempVirt = 0;
+        }
+        else
+        {
+            klog(KLOG_LEVEL_ERROR,
+                 "[OBS] cleanup preserved PMM page %p because temp-map release failed (%s, %p)\n",
+                 (void *)(uint64_t)tempPhys, KrGetStatusMessage(cleanupStatus), cleanupStatus);
+        }
+
+        if (status == EC_SUCCESS)
+            status = cleanupStatus;
+    }
+
+    if (hasTempPhys && !tempMapped)
+    {
+        HO_STATUS cleanupStatus = KePmmFreePages(tempPhys, 1);
+        if (cleanupStatus == EC_SUCCESS)
+        {
+            hasTempPhys = FALSE;
+        }
+        else
+        {
+            klog(KLOG_LEVEL_ERROR, "[OBS] cleanup failed to free PMM page %p (%s, %p)\n", (void *)(uint64_t)tempPhys,
+                 KrGetStatusMessage(cleanupStatus), cleanupStatus);
+        }
+
+        if (status == EC_SUCCESS)
+            status = cleanupStatus;
+    }
+    else if (hasTempPhys)
+    {
+        klog(KLOG_LEVEL_ERROR, "[OBS] cleanup preserved PMM page %p because a temp alias is still active\n",
+             (void *)(uint64_t)tempPhys);
+    }
+
+    if (heapAllocated)
+    {
+        HO_STATUS cleanupStatus = KeHeapFreePages(heapVirt);
+        if (status == EC_SUCCESS)
+            status = cleanupStatus;
+    }
+
+    return status;
+}
 
 void
 InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
@@ -48,17 +266,70 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
              pmmStats.FreeBytes / 1024, pmmStats.ReservedBytes / 1024);
     }
 
+    initStatus = KeImportKernelAddressSpace(block, gBootMappingManifest);
+    if (initStatus != EC_SUCCESS)
+    {
+        HO_KPANIC(initStatus, "Failed to import kernel address space");
+    }
+
+    initStatus = KePtSelfTest();
+    if (initStatus != EC_SUCCESS)
+    {
+        HO_KPANIC(initStatus, "PT HAL self-test failed");
+    }
+
+    // The KVA heap foundation must exist before pool-backed subsystems (for
+    // example the KTHREAD pool) can initialize, because pool growth now uses
+    // KeHeapAllocPages() instead of direct PMM allocation.
+    initStatus = KeKvaInit();
+    if (initStatus != EC_SUCCESS)
+    {
+        HO_KPANIC(initStatus, "Failed to initialize KVA");
+    }
+
+    initStatus = KeKvaSelfTest();
+    if (initStatus != EC_SUCCESS)
+    {
+        HO_KPANIC(initStatus, "KVA self-test failed");
+    }
+
+    initStatus = RunMemoryObservabilitySelfTest();
+    if (initStatus != EC_SUCCESS)
+    {
+        HO_KPANIC(initStatus, "Memory observability self-test failed");
+    }
+
     // Smoke test: single page alloc/write/read/free
     {
         HO_PHYSICAL_ADDRESS testPage;
         initStatus = KePmmAllocPages(1, (void *)0, &testPage);
         if (initStatus == EC_SUCCESS)
         {
-            volatile uint64_t *va = (volatile uint64_t *)HHDM_PHYS2VIRT(testPage);
+            // Runtime RAM smoke test should use a temporary fixmap alias, not a persistent HHDM ownership address.
+            KE_TEMP_PHYS_MAP_HANDLE tempMap = {0};
+            HO_VIRTUAL_ADDRESS tempVirt = 0;
+            initStatus = KeTempPhysMapAcquire(testPage, PTE_WRITABLE | PTE_GLOBAL | PTE_NO_EXECUTE, &tempMap, &tempVirt);
+            if (initStatus != EC_SUCCESS)
+            {
+                (void)KePmmFreePages(testPage, 1);
+                HO_KPANIC(initStatus, "Failed to acquire temporary mapping for PMM smoke test");
+            }
+
+            volatile uint64_t *va = (volatile uint64_t *)(uint64_t)tempVirt;
             *va = 0xDEADBEEFCAFEBABEULL;
             HO_KASSERT(*va == 0xDEADBEEFCAFEBABEULL, EC_INVALID_STATE);
-            KePmmFreePages(testPage, 1);
-            klog(KLOG_LEVEL_INFO, "[PMM] smoke: 1-page alloc/write/read/free OK\n");
+
+            initStatus = KeTempPhysMapRelease(&tempMap);
+            if (initStatus != EC_SUCCESS)
+            {
+                HO_KPANIC(initStatus, "Failed to release temporary mapping for PMM smoke test; backing page preserved");
+            }
+            tempVirt = 0;
+
+            initStatus = KePmmFreePages(testPage, 1);
+            if (initStatus != EC_SUCCESS)
+                HO_KPANIC(initStatus, "Failed to free PMM page for PMM smoke test");
+            klog(KLOG_LEVEL_INFO, "[PMM] smoke: 1-page alloc/temp-map/write/read/free OK\n");
         }
 
         // 4 contiguous pages
@@ -85,6 +356,8 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
     }
 
     // ---- KTHREAD Object Pool ----
+    // Depends on KeKvaInit(): KeKThreadPoolInit() -> KePoolInit() ->
+    // KeHeapAllocPages().
     initStatus = KeKThreadPoolInit();
     if (initStatus != EC_SUCCESS)
     {

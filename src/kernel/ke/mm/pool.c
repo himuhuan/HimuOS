@@ -16,12 +16,14 @@
 static HO_STATUS
 KiPoolExpandOnePage(KE_POOL *pool)
 {
-    HO_PHYSICAL_ADDRESS phys;
-    HO_STATUS status = KePmmAllocPages(1, (void *)0, &phys);
+    // Pool backing now comes from the KVA heap foundation instead of directly
+    // from PMM, so KeKvaInit() must have completed before any pool can grow.
+    HO_VIRTUAL_ADDRESS baseVirt;
+    HO_STATUS status = KeHeapAllocPages(1, &baseVirt);
     if (status != EC_SUCCESS)
         return status;
 
-    uint8_t *base = (uint8_t *)HHDM_PHYS2VIRT(phys);
+    uint8_t *base = (uint8_t *)(uint64_t)baseVirt;
 
     for (uint32_t i = 0; i < pool->SlotsPerPage; i++)
     {

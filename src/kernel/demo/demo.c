@@ -81,6 +81,26 @@ RunKernelDemos(void)
     {
         RunDispatchGuardExitDemo();
     }
+
+    if (HO_DEMO_TEST_SELECTION == HO_DEMO_TEST_PF_IMPORTED)
+    {
+        RunPageFaultImportedDemo();
+    }
+
+    if (HO_DEMO_TEST_SELECTION == HO_DEMO_TEST_PF_GUARD)
+    {
+        RunPageFaultGuardDemo();
+    }
+
+    if (HO_DEMO_TEST_SELECTION == HO_DEMO_TEST_PF_FIXMAP)
+    {
+        RunPageFaultFixmapDemo();
+    }
+
+    if (HO_DEMO_TEST_SELECTION == HO_DEMO_TEST_PF_HEAP)
+    {
+        RunPageFaultHeapDemo();
+    }
 }
 
 void
