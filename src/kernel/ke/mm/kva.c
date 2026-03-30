@@ -27,6 +27,7 @@
 #define KE_KVA_PAGE_STATE_ALLOC   1U
 #define KE_KVA_PAGE_STATE_GUARD   2U
 #define KE_KVA_DEFAULT_PAGE_ATTRS (PTE_WRITABLE | PTE_GLOBAL | PTE_NO_EXECUTE)
+#define KE_TEMP_MAP_TOKEN_XOR     0xA5F00000U
 
 typedef struct KE_KVA_ARENA_STATE
 {
@@ -111,6 +112,85 @@ KiKvaFindRecordByUsableBase(HO_VIRTUAL_ADDRESS usableBase)
     }
 
     return NULL;
+}
+
+static KE_KVA_RANGE_RECORD *
+KiKvaFindRecordByAddress(KE_KVA_ARENA_TYPE arenaType, HO_VIRTUAL_ADDRESS virtAddr)
+{
+    for (uint32_t idx = 0; idx < KE_KVA_MAX_RANGES; ++idx)
+    {
+        KE_KVA_RANGE_RECORD *record = &gKvaRanges[idx];
+        if (!record->InUse || record->Arena != arenaType)
+            continue;
+
+        KE_KVA_ARENA_STATE *arena = KiKvaArenaState(record->Arena);
+        if (!arena)
+            continue;
+
+        HO_VIRTUAL_ADDRESS baseAddress = arena->BaseAddress + record->BasePageIndex * PAGE_4KB;
+        HO_VIRTUAL_ADDRESS endExclusive = baseAddress + record->TotalPages * PAGE_4KB;
+        if (virtAddr >= baseAddress && virtAddr < endExclusive)
+            return record;
+    }
+
+    return NULL;
+}
+
+static KE_KVA_ADDRESS_KIND
+KiKvaAddressKindFromArena(KE_KVA_ARENA_TYPE arenaType)
+{
+    switch (arenaType)
+    {
+    case KE_KVA_ARENA_STACK:
+        return KE_KVA_ADDRESS_ACTIVE_STACK;
+    case KE_KVA_ARENA_FIXMAP:
+        return KE_KVA_ADDRESS_ACTIVE_FIXMAP;
+    case KE_KVA_ARENA_HEAP:
+        return KE_KVA_ADDRESS_ACTIVE_HEAP;
+    default:
+        return KE_KVA_ADDRESS_UNKNOWN;
+    }
+}
+
+static BOOL
+KiKvaLocateArenaByAddress(HO_VIRTUAL_ADDRESS virtAddr,
+                          KE_KVA_ARENA_TYPE *outArenaType,
+                          KE_KVA_ARENA_STATE **outArena,
+                          uint64_t *outPageIndex)
+{
+    for (uint32_t idx = 0; idx < KE_KVA_ARENA_MAX; ++idx)
+    {
+        KE_KVA_ARENA_STATE *arena = &gKvaArenas[idx];
+        HO_VIRTUAL_ADDRESS endExclusive = arena->BaseAddress + arena->SizeBytes;
+        if (virtAddr < arena->BaseAddress || virtAddr >= endExclusive)
+            continue;
+
+        if (outArenaType)
+            *outArenaType = (KE_KVA_ARENA_TYPE)idx;
+        if (outArena)
+            *outArena = arena;
+        if (outPageIndex)
+            *outPageIndex = (virtAddr - arena->BaseAddress) >> PAGE_SHIFT;
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+static HO_STATUS
+KiDecodeTempMapHandle(const KE_TEMP_PHYS_MAP_HANDLE *handle, uint32_t *outSlot)
+{
+    if (!handle || !outSlot)
+        return EC_ILLEGAL_ARGUMENT;
+    if (handle->Token == 0)
+        return EC_INVALID_STATE;
+
+    uint32_t encoded = handle->Token ^ KE_TEMP_MAP_TOKEN_XOR;
+    if (encoded == 0 || encoded > KE_KVA_FIXMAP_ARENA_PAGES)
+        return EC_ILLEGAL_ARGUMENT;
+
+    *outSlot = encoded - 1U;
+    return EC_SUCCESS;
 }
 
 static KE_KVA_RANGE_RECORD *
@@ -209,6 +289,20 @@ KiKvaCountActiveRanges(KE_KVA_ARENA_TYPE arenaType)
     for (uint32_t idx = 0; idx < KE_KVA_MAX_RANGES; ++idx)
     {
         if (gKvaRanges[idx].InUse && gKvaRanges[idx].Arena == arenaType)
+            ++active;
+    }
+
+    return active;
+}
+
+static uint64_t
+KiKvaCountAllActiveRanges(void)
+{
+    uint64_t active = 0;
+
+    for (uint32_t idx = 0; idx < KE_KVA_MAX_RANGES; ++idx)
+    {
+        if (gKvaRanges[idx].InUse)
             ++active;
     }
 
@@ -480,6 +574,91 @@ KeKvaQueryArenaInfo(KE_KVA_ARENA_TYPE arenaType, KE_KVA_ARENA_INFO *outInfo)
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
+KeKvaQueryUsageInfo(KE_KVA_USAGE_INFO *outInfo)
+{
+    if (!gKvaInitialized)
+        return EC_INVALID_STATE;
+    if (!outInfo)
+        return EC_ILLEGAL_ARGUMENT;
+
+    memset(outInfo, 0, sizeof(*outInfo));
+    outInfo->ActiveRangeCount = KiKvaCountAllActiveRanges();
+    outInfo->FixmapTotalSlots = gKvaArenas[KE_KVA_ARENA_FIXMAP].PageCount;
+    outInfo->FixmapActiveSlots = KiKvaCountActiveRanges(KE_KVA_ARENA_FIXMAP);
+    return EC_SUCCESS;
+}
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS
+KeKvaClassifyAddress(HO_VIRTUAL_ADDRESS virtAddr, KE_KVA_ADDRESS_INFO *outInfo)
+{
+    if (!gKvaInitialized)
+        return EC_INVALID_STATE;
+    if (!outInfo)
+        return EC_ILLEGAL_ARGUMENT;
+
+    memset(outInfo, 0, sizeof(*outInfo));
+    outInfo->Kind = KE_KVA_ADDRESS_OUTSIDE;
+    outInfo->Arena = KE_KVA_ARENA_MAX;
+
+    KE_KVA_ARENA_TYPE arenaType = KE_KVA_ARENA_MAX;
+    KE_KVA_ARENA_STATE *arena = NULL;
+    uint64_t pageIndex = 0;
+    if (!KiKvaLocateArenaByAddress(virtAddr, &arenaType, &arena, &pageIndex))
+        return EC_SUCCESS;
+
+    outInfo->InKvaArena = TRUE;
+    outInfo->Arena = arenaType;
+    outInfo->ArenaBase = arena->BaseAddress;
+    outInfo->ArenaEndExclusive = arena->BaseAddress + arena->SizeBytes;
+    outInfo->ArenaPageIndex = pageIndex;
+
+    uint8_t pageState = arena->PageStates[pageIndex];
+    if (pageState == KE_KVA_PAGE_STATE_FREE)
+    {
+        outInfo->Kind = KE_KVA_ADDRESS_FREE_HOLE;
+        return EC_SUCCESS;
+    }
+
+    KE_KVA_RANGE_RECORD *record = KiKvaFindRecordByAddress(arenaType, virtAddr);
+    if (!record)
+    {
+        if (pageState == KE_KVA_PAGE_STATE_GUARD)
+        {
+            outInfo->Kind = KE_KVA_ADDRESS_GUARD_PAGE;
+        }
+        else if (pageState == KE_KVA_PAGE_STATE_ALLOC)
+        {
+            outInfo->Kind = KiKvaAddressKindFromArena(arenaType);
+        }
+        else
+        {
+            outInfo->Kind = KE_KVA_ADDRESS_UNKNOWN;
+        }
+        return EC_INVALID_STATE;
+    }
+
+    HO_STATUS status = KiKvaFillRangeFromRecord(record, &outInfo->Range);
+    if (status != EC_SUCCESS)
+        return status;
+    outInfo->HasRange = TRUE;
+
+    if (pageState == KE_KVA_PAGE_STATE_GUARD)
+    {
+        outInfo->Kind = KE_KVA_ADDRESS_GUARD_PAGE;
+        return EC_SUCCESS;
+    }
+
+    if (pageState == KE_KVA_PAGE_STATE_ALLOC)
+    {
+        outInfo->Kind = KiKvaAddressKindFromArena(arenaType);
+        return outInfo->Kind == KE_KVA_ADDRESS_UNKNOWN ? EC_INVALID_STATE : EC_SUCCESS;
+    }
+
+    outInfo->Kind = KE_KVA_ADDRESS_UNKNOWN;
+    return EC_INVALID_STATE;
+}
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS
 KeKvaValidateLayout(void)
 {
     if (!gKvaInitialized)
@@ -536,6 +715,41 @@ KeFixmapRelease(uint32_t slot)
         return EC_INVALID_STATE;
 
     return KeKvaReleaseRange(usableBase);
+}
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS
+KeTempPhysMapAcquire(HO_PHYSICAL_ADDRESS physAddr,
+                     uint64_t attributes,
+                     KE_TEMP_PHYS_MAP_HANDLE *outHandle,
+                     HO_VIRTUAL_ADDRESS *outVirtAddr)
+{
+    if (!outHandle || !outVirtAddr || !HO_IS_ALIGNED(physAddr, PAGE_4KB))
+        return EC_ILLEGAL_ARGUMENT;
+
+    uint32_t slot = 0;
+    HO_STATUS status = KeFixmapAcquire(physAddr, attributes, &slot, outVirtAddr);
+    if (status != EC_SUCCESS)
+        return status;
+
+    outHandle->Token = (slot + 1U) ^ KE_TEMP_MAP_TOKEN_XOR;
+    return EC_SUCCESS;
+}
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS
+KeTempPhysMapRelease(KE_TEMP_PHYS_MAP_HANDLE *handle)
+{
+    if (!handle)
+        return EC_ILLEGAL_ARGUMENT;
+
+    uint32_t slot = 0;
+    HO_STATUS status = KiDecodeTempMapHandle(handle, &slot);
+    if (status != EC_SUCCESS)
+        return status;
+
+    status = KeFixmapRelease(slot);
+    if (status == EC_SUCCESS)
+        handle->Token = 0;
+    return status;
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
@@ -606,6 +820,7 @@ KeKvaSelfTest(void)
     if (status != EC_SUCCESS)
         return status;
 
+    // HHDM self-check remains in the diagnostics allowlist on purpose.
     volatile uint64_t *alias = (volatile uint64_t *)(uint64_t)HHDM_PHYS2VIRT(testPhys);
     *alias = 0x6B56414649584D50ULL;
 

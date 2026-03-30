@@ -20,6 +20,14 @@ extern void *gIsrStubTable[];
 static uint8_t GetVectorGateType(uint8_t vectorNumber);
 static uint8_t GetVectorIstIndex(uint8_t vectorNumber);
 
+static inline HO_VIRTUAL_ADDRESS
+ReadCr2(void)
+{
+    uint64_t cr2;
+    __asm__ __volatile__("mov %%cr2, %0" : "=r"(cr2));
+    return (HO_VIRTUAL_ADDRESS)cr2;
+}
+
 static inline void
 LoadIdt(IDT_PTR *pIdtPtr)
 {
@@ -87,7 +95,18 @@ IdtExceptionHandler(void *frame)
 
     if (vectorNumber < 32)
     {
-        KernelHalt(-(int64_t)vectorNumber, dump);
+        HO_CPU_EXCEPTION_CONTEXT context;
+        memset(&context, 0, sizeof(context));
+        context.Frame = dump;
+
+        if (vectorNumber == 14) // #PF
+        {
+            context.HasFaultAddress = TRUE;
+            context.FaultAddress = ReadCr2();
+            context.PageFaultErrorCode = (uint32_t)dump->ErrorCode;
+        }
+
+        KernelHalt(-(int64_t)vectorNumber, &context);
         return;
     }
 

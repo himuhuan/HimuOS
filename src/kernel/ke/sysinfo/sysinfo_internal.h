@@ -59,6 +59,7 @@ HO_STATUS QueryCpuFeatures(void *Buffer, size_t BufferSize, size_t *RequiredSize
 HO_STATUS QueryPageTable(void *Buffer, size_t BufferSize, size_t *RequiredSize);
 HO_STATUS QueryPhysicalMemStats(void *Buffer, size_t BufferSize, size_t *RequiredSize);
 HO_STATUS QueryVirtualLayout(void *Buffer, size_t BufferSize, size_t *RequiredSize);
+HO_STATUS QueryVmmOverview(void *Buffer, size_t BufferSize, size_t *RequiredSize);
 HO_STATUS QueryGdt(void *Buffer, size_t BufferSize, size_t *RequiredSize);
 HO_STATUS QueryTss(void *Buffer, size_t BufferSize, size_t *RequiredSize);
 HO_STATUS QueryIdt(void *Buffer, size_t BufferSize, size_t *RequiredSize);

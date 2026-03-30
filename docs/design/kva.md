@@ -292,7 +292,8 @@
 3. PT HAL 自测完成。
 4. `KeKvaInit` 执行。
 5. `KeKvaSelfTest` 执行。
-6. 之后才继续时间源、时钟事件、线程池与调度器初始化。
+6. `RunMemoryObservabilitySelfTest` 执行（`InitKernel` 中的内存可观测性自测）。
+7. 之后才继续时间源、时钟事件、线程池与调度器初始化。
 
 这一顺序体现了清晰的依赖关系：
 
@@ -329,16 +330,40 @@
 - 线程栈所需的“guard + usable”布局可以表达出来。
 - fixmap 和 page-backed heap 已经具备最小可用语义。
 
+在 `KeKvaSelfTest` 之后，`InitKernel` 还会继续执行 `RunMemoryObservabilitySelfTest`，它会通过真实运行时活动验证 sysinfo 计数是否自洽：
+
+1. 先读取 `KE_SYSINFO_PHYSICAL_MEM_STATS` 与 `KE_SYSINFO_VMM_OVERVIEW` 作为基线。
+2. 执行一次 `KePmmAllocPages + KeTempPhysMapAcquire`，检查 PMM 分配统计、`FixmapActiveSlots`、`ActiveKvaRangeCount` 等计数发生预期变化。
+3. 回收临时映射与物理页，再执行一次 `KeHeapAllocPages`，检查 heap arena 计数与 PMM 计数联动变化。
+4. 全部释放后再次查询，要求关键计数回到基线，确保无泄漏或账本漂移。
+
 ## 可观测性与调试语义
 
 当前实现已经内置了几类调试友好的可观测性：
 
 1. `KeKvaInit` 会打印每个 arena 的虚拟地址范围和页数。
 2. `KeKvaQueryArenaInfo` 提供总体空闲页和活跃分配数量。
-3. 线程创建日志会直接输出线程栈 usable base 与 guard base。
-4. 线程回收路径在释放 KVA 栈失败时直接触发 panic，避免 silent corruption。
+3. `KeKvaQueryUsageInfo` 暴露 `ActiveRangeCount`、`FixmapTotalSlots` 与 `FixmapActiveSlots`，供 `KE_SYSINFO_VMM_OVERVIEW` 汇总。
+4. `KeDiagnoseVirtualAddress` 会把 imported-region、PT 映射状态与 KVA 归属信息组合成统一诊断结构。
+5. 页故障蓝屏输出新增 `CR2`、`PFERR` 位域，以及 `VMM imported / VMM pt / VMM kva` 三层诊断，能区分 imported 区域、guard page、active fixmap、active heap 或未映射 hole。
+6. 线程创建日志会直接输出线程栈 usable base 与 guard base。
+7. 线程回收路径在释放 KVA 栈失败时直接触发 panic，避免 silent corruption。
 
 这说明 `KE_KVA` 当前被视为内核关键基础设施，而不是“尽力而为”的辅助模块。
+
+## HHDM 使用策略（当前冻结）
+
+围绕 KVA 与 PMM 的协作，当前实现把 HHDM 使用范围收敛为“启动/诊断优先，运行期 RAM 默认走受控别名或 KVA ownership”：
+
+1. 允许继续使用 HHDM 的角色：
+   - boot handoff 与 boot capsule / memory map 访问；
+   - ACPI 表发现与固定硬件映射初始化；
+   - 早期 bring-up 的栈/TSS handoff；
+   - PT HAL 内部与自测；
+   - 诊断/自测路径（例如 `KeKvaSelfTest` 中保留的一次 HHDM 交叉校验）。
+2. 运行期“短生命周期”物理页访问，优先使用 `KeTempPhysMapAcquire` / `KeTempPhysMapRelease`（基于 fixmap）。
+3. 运行期“长生命周期”内存所有权，优先使用 KVA/heap 托管（`KeHeapAllocPages`、KVA range）。
+4. MMIO 相关 carve-out 仍按硬件映射语义独立处理，不与普通 RAM ownership 混用；更细策略留待后续变更单独冻结。
 
 ## 当前限制与后续工作
 

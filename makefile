@@ -82,7 +82,7 @@ KRN_BUILDROOT := build/kernel$(if $(strip $(BUILD_FLAVOR)),/$(BUILD_FLAVOR),)
 KRN_OBJDIR    := $(KRN_BUILDROOT)/obj
 KRN_BINDIR    := $(KRN_BUILDROOT)/bin
 
-VALID_TEST_MODULES := schedule guard_wait owned_exit irql_wait irql_sleep irql_yield irql_exit list
+VALID_TEST_MODULES := schedule guard_wait owned_exit irql_wait irql_sleep irql_yield irql_exit pf_imported pf_guard pf_fixmap pf_heap list
 TEST_MODULE_GOALS  := $(filter-out test,$(MAKECMDGOALS))
 TEST_MODULE        := $(if $(strip $(TEST_MODULE_GOALS)),$(firstword $(TEST_MODULE_GOALS)),list)
 TEST_BUILD_FLAVOR  := test-$(TEST_MODULE)
@@ -94,14 +94,18 @@ TEST_DEFINE_irql_wait := HO_DEMO_TEST_IRQL_WAIT
 TEST_DEFINE_irql_sleep := HO_DEMO_TEST_IRQL_SLEEP
 TEST_DEFINE_irql_yield := HO_DEMO_TEST_IRQL_YIELD
 TEST_DEFINE_irql_exit := HO_DEMO_TEST_IRQL_EXIT
+TEST_DEFINE_pf_imported := HO_DEMO_TEST_PF_IMPORTED
+TEST_DEFINE_pf_guard := HO_DEMO_TEST_PF_GUARD
+TEST_DEFINE_pf_fixmap := HO_DEMO_TEST_PF_FIXMAP
+TEST_DEFINE_pf_heap := HO_DEMO_TEST_PF_HEAP
 
 ifneq ($(filter test,$(MAKECMDGOALS)),)
 ifneq ($(words $(TEST_MODULE_GOALS)),0)
 ifneq ($(words $(TEST_MODULE_GOALS)),1)
-$(error Usage: make test <module>. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit. Use `make test` or `make test list` to inspect supported modules)
+$(error Usage: make test <module>. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap. Use `make test` or `make test list` to inspect supported modules)
 endif
 ifneq ($(filter $(TEST_MODULE),$(VALID_TEST_MODULES)), $(TEST_MODULE))
-$(error Unknown test module '$(TEST_MODULE)'. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit. Use `make test list` to inspect supported modules)
+$(error Unknown test module '$(TEST_MODULE)'. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap. Use `make test list` to inspect supported modules)
 endif
 endif
 endif
@@ -176,6 +180,7 @@ SRCS_KERNEL_C := \
     src/kernel/demo/guard.c                             \
     src/kernel/demo/irql.c                              \
     src/kernel/demo/mutex.c                             \
+    src/kernel/demo/pagefault.c                         \
     src/kernel/demo/semaphore.c                         \
     src/kernel/demo/thread.c                            \
     src/kernel/init/cpu.c                               \
@@ -314,9 +319,14 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  irql_sleep - panic demo: sleep while holding DISPATCH_LEVEL guard"
 	@echo "  irql_yield - panic demo: yield while holding DISPATCH_LEVEL guard"
 	@echo "  irql_exit  - panic demo: thread exit while holding DISPATCH_LEVEL guard"
+	@echo "  pf_imported - page-fault demo: NX execute fault in imported kernel-data region"
+	@echo "  pf_guard    - page-fault demo: access thread stack guard page"
+	@echo "  pf_fixmap   - page-fault demo: NX execute fault in active fixmap slot"
+	@echo "  pf_heap     - page-fault demo: NX execute fault in heap-backed KVA page"
 	@echo "Usage:"
 	@echo "  make test schedule   # run the scheduler demo suite"
 	@echo "  make test irql_wait  # run a dispatch-guard misuse panic regression"
+	@echo "  make test pf_heap    # run heap-backed page-fault observability demo"
 	@echo "  make test            # list available test modules"
 else
 	@echo "Starting test module: $(TEST_MODULE)"

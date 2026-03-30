@@ -95,6 +95,52 @@ typedef struct KE_KVA_ARENA_INFO
     BOOL OverlapsImportedRegions;
 } KE_KVA_ARENA_INFO;
 
+typedef struct KE_KVA_USAGE_INFO
+{
+    uint64_t ActiveRangeCount;
+    uint64_t FixmapTotalSlots;
+    uint64_t FixmapActiveSlots;
+} KE_KVA_USAGE_INFO;
+
+typedef struct KE_TEMP_PHYS_MAP_HANDLE
+{
+    uint32_t Token;
+} KE_TEMP_PHYS_MAP_HANDLE;
+
+typedef enum KE_KVA_ADDRESS_KIND
+{
+    KE_KVA_ADDRESS_OUTSIDE = 0,
+    KE_KVA_ADDRESS_FREE_HOLE,
+    KE_KVA_ADDRESS_GUARD_PAGE,
+    KE_KVA_ADDRESS_ACTIVE_STACK,
+    KE_KVA_ADDRESS_ACTIVE_FIXMAP,
+    KE_KVA_ADDRESS_ACTIVE_HEAP,
+    KE_KVA_ADDRESS_UNKNOWN,
+} KE_KVA_ADDRESS_KIND;
+
+typedef struct KE_KVA_ADDRESS_INFO
+{
+    KE_KVA_ADDRESS_KIND Kind;
+    BOOL InKvaArena;
+    KE_KVA_ARENA_TYPE Arena;
+    HO_VIRTUAL_ADDRESS ArenaBase;
+    HO_VIRTUAL_ADDRESS ArenaEndExclusive;
+    uint64_t ArenaPageIndex;
+    BOOL HasRange;
+    KE_KVA_RANGE Range;
+} KE_KVA_ADDRESS_INFO;
+
+typedef struct KE_VA_DIAGNOSIS
+{
+    HO_VIRTUAL_ADDRESS VirtualAddress;
+    const KE_IMPORTED_REGION *ImportedRegion;
+    BOOL ImportedRegionMatched;
+    HO_STATUS PtStatus;
+    KE_PT_MAPPING PtMapping;
+    HO_STATUS KvaStatus;
+    KE_KVA_ADDRESS_INFO KvaInfo;
+} KE_VA_DIAGNOSIS;
+
 HO_KERNEL_API HO_NODISCARD HO_STATUS KePmmInitFromBootMemoryMap(struct BOOT_CAPSULE *capsule);
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS KePmmAllocPages(uint64_t count,
@@ -185,6 +231,16 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS KePtProtectPage(const KE_KERNEL_ADDRESS_SPA
 HO_KERNEL_API HO_NODISCARD HO_STATUS KePtSelfTest(void);
 
 /**
+ * Diagnose an arbitrary kernel virtual address by composing imported-region, PT, and KVA state.
+ *
+ * The routine is best-effort and keeps per-layer status fields in KE_VA_DIAGNOSIS so callers can still print useful
+ * context if PT or KVA initialization has not happened yet.
+ */
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeDiagnoseVirtualAddress(const KE_KERNEL_ADDRESS_SPACE *space,
+                                                              HO_VIRTUAL_ADDRESS virtAddr,
+                                                              KE_VA_DIAGNOSIS *outDiagnosis);
+
+/**
  * Initialize the kernel virtual address allocator and its arena records.
  *
  * Callers that depend on heap-backed page allocation (for example KePool via
@@ -217,6 +273,10 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaQueryRange(HO_VIRTUAL_ADDRESS usableBa
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaQueryArenaInfo(KE_KVA_ARENA_TYPE arena, KE_KVA_ARENA_INFO *outInfo);
 
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaQueryUsageInfo(KE_KVA_USAGE_INFO *outInfo);
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaClassifyAddress(HO_VIRTUAL_ADDRESS virtAddr, KE_KVA_ADDRESS_INFO *outInfo);
+
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaValidateLayout(void);
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaSelfTest(void);
@@ -227,6 +287,20 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS KeFixmapAcquire(HO_PHYSICAL_ADDRESS physAdd
                                                      HO_VIRTUAL_ADDRESS *outVirtAddr);
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeFixmapRelease(uint32_t slot);
+
+/**
+ * Acquire a short-lived runtime alias for one physical page through fixmap.
+ *
+ * This wrapper keeps runtime callers from adopting direct HHDM aliases as
+ * ownership addresses and returns an opaque release handle instead of exposing
+ * slot identifiers directly.
+ */
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeTempPhysMapAcquire(HO_PHYSICAL_ADDRESS physAddr,
+                                                          uint64_t attributes,
+                                                          KE_TEMP_PHYS_MAP_HANDLE *outHandle,
+                                                          HO_VIRTUAL_ADDRESS *outVirtAddr);
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeTempPhysMapRelease(KE_TEMP_PHYS_MAP_HANDLE *handle);
 
 /**
  * Allocate heap-backed kernel virtual pages from the KVA heap arena.

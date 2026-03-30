@@ -31,6 +31,10 @@
 #define HO_DEMO_TEST_IRQL_SLEEP 9
 #define HO_DEMO_TEST_IRQL_YIELD 10
 #define HO_DEMO_TEST_IRQL_EXIT  11
+#define HO_DEMO_TEST_PF_IMPORTED 12
+#define HO_DEMO_TEST_PF_GUARD    13
+#define HO_DEMO_TEST_PF_FIXMAP   14
+#define HO_DEMO_TEST_PF_HEAP     15
 
 #ifndef HO_DEMO_TEST_SELECTION
 #define HO_DEMO_TEST_SELECTION HO_DEMO_TEST_NONE
@@ -70,6 +74,10 @@ void DispatchGuardWaitViolationThread(void *arg);
 void DispatchGuardSleepViolationThread(void *arg);
 void DispatchGuardYieldViolationThread(void *arg);
 void DispatchGuardExitViolationThread(void *arg);
+void PageFaultImportedThread(void *arg);
+void PageFaultGuardThread(void *arg);
+void PageFaultFixmapThread(void *arg);
+void PageFaultHeapThread(void *arg);
 
 void RunIrqlSelfTest(void);
 void RunScheduleDemo(void);
@@ -83,3 +91,7 @@ void RunDispatchGuardWaitDemo(void);
 void RunDispatchGuardSleepDemo(void);
 void RunDispatchGuardYieldDemo(void);
 void RunDispatchGuardExitDemo(void);
+void RunPageFaultImportedDemo(void);
+void RunPageFaultGuardDemo(void);
+void RunPageFaultFixmapDemo(void);
+void RunPageFaultHeapDemo(void);

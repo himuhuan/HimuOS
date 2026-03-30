@@ -37,6 +37,14 @@ typedef struct HO_PANIC_CONTEXT
     void *BasePointer;        // RBP at the point of assertion failure
 } HO_PANIC_CONTEXT;
 
+typedef struct HO_CPU_EXCEPTION_CONTEXT
+{
+    void *Frame; // INTERRUPT_FRAME*
+    HO_VIRTUAL_ADDRESS FaultAddress;
+    uint32_t PageFaultErrorCode;
+    BOOL HasFaultAddress;
+} HO_CPU_EXCEPTION_CONTEXT;
+
 /**
  * @brief Triggers a kernel panic with the specified error code.
  *
@@ -82,7 +90,7 @@ typedef struct HO_PANIC_CONTEXT
  * @param dump Pointer to a CPU dump context.
  * @remarks dump can be varied based on the value of ec:
  * - If ec > 0, dump is expected to be `HO_PANIC_CONTEXT`.
- * - If ec <= 0, dump is expected to be `INTERRUPT_FRAME`.
+ * - If ec <= 0, dump is expected to be `HO_CPU_EXCEPTION_CONTEXT`.
  */
 HO_PUBLIC_API HO_NORETURN void KernelHalt(int64_t ec, void *dump);
 

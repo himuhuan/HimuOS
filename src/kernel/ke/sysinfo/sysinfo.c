@@ -112,6 +112,9 @@ KeQuerySystemInformation(KE_SYSINFO_CLASS Class, void *Buffer, size_t BufferSize
     case KE_SYSINFO_SCHEDULER:
         return QueryScheduler(Buffer, BufferSize, RequiredSize);
 
+    case KE_SYSINFO_VMM_OVERVIEW:
+        return QueryVmmOverview(Buffer, BufferSize, RequiredSize);
+
     default:
         return EC_ILLEGAL_ARGUMENT;
     }
