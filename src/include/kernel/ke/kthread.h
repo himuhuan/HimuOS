@@ -11,6 +11,7 @@
 
 #include <_hobase.h>
 #include <lib/common/linked_list.h>
+#include <kernel/ke/mm.h>
 #include <kernel/ke/pool.h>
 #include <kernel/ke/irql.h>
 #include <kernel/ke/dispatcher.h>
@@ -66,6 +67,7 @@ typedef struct KTHREAD
     uint64_t StackSize;      // Usable stack size in bytes
     uint64_t StackGuardBase; // Lowest guard-page virtual address (0 if not KVA-managed)
     BOOL StackOwnedByKva;
+    KE_KVA_RANGE StackRange;
 
     uint8_t Priority; // Reserved for multi-priority extension
     uint64_t Quantum; // Time slice remaining (nanoseconds)

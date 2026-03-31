@@ -233,13 +233,13 @@ KVA 的内部账本由两部分组成：
 当前 fixmap 路径是：
 
 1. `KeFixmapAcquire()`
-   从 fixmap arena 保留 1 页 KVA range，并把指定物理页映射进去。
+   从 fixmap arena 保留 1 页 KVA range，并把指定物理页映射进去；返回的是可用于 release 的 opaque handle，而不是可长期缓存的裸 slot。
 2. `KeTempPhysMapAcquire()`
-   再在上层包一层 opaque handle，避免调用方直接持有 slot 编号。
+   当前只是对同一 fixmap-handle 语义的专用命名包装，强调“这是运行期 RAM 的短生命周期 alias”。
 3. `KeTempPhysMapRelease()`
-   基于 token 中编码的 slot + generation 安全回收临时映射。
+   基于 token 中编码的 slot + 64-bit generation 安全回收临时映射。
 
-`generation` 追踪是本分支最后一个提交补上的能力，它让“旧 handle 释放了新一轮复用的 slot”这种 ABA 风险被显式拒绝。
+`generation` 追踪采用“单调递增、耗尽即拒绝继续复用”的策略，它让“旧 handle 释放了新一轮复用的 slot”这种 ABA 风险被显式拒绝，而不是仅仅推迟到 wraparound 之后。
 
 当前语义是：
 
@@ -287,7 +287,7 @@ heap 目前还不是 malloc/slab，而是页级接口：
    - `StackSize`
    - `StackGuardBase`
    - `StackOwnedByKva`
-4. 线程退出回收时，通过 `KeKvaReleaseRange(thread->StackBase)` 一次性回收栈虚拟区间与其物理 backing。
+4. `KTHREAD` 还保留原始 `StackRange` handle，线程退出回收时通过 `KeKvaReleaseRangeHandle(&thread->StackRange)` 一次性回收栈虚拟区间与其物理 backing。
 
 这一步的意义很大：
 
@@ -307,6 +307,8 @@ heap 目前还不是 malloc/slab，而是页级接口：
   返回 PMM 的 `Total/Free/Allocated/Reserved` 四元统计。
 - `KE_SYSINFO_VMM_OVERVIEW`
   返回 imported region 数量、stack/fixmap/heap 三个 arena 的总页数/空闲页数/活跃分配数，以及活跃 range 数和 fixmap 槽位使用量。
+- `KE_SYSINFO_ACTIVE_KVA_RANGES`
+  返回一个固定上限、显式 `Truncated` 的活跃 KVA range 快照，使用稳定的 arena/虚拟地址区间语义承载当前 stack、fixmap、heap-backed range。
 
 这样内存系统开始具备统一可查询的状态面，而不再只依赖零散日志。
 
@@ -314,13 +316,15 @@ heap 目前还不是 malloc/slab，而是页级接口：
 
 `RunMemoryObservabilitySelfTest()` 会联动验证：
 
-1. 先读取 PMM/VMM 基线统计。
+1. 先读取 PMM/VMM 基线统计与 bounded KVA active-range 快照。
 2. 申请 1 个 PMM 物理页，并通过 `KeTempPhysMapAcquire()` 建立 fixmap alias。
-3. 检查 fixmap 激活后，物理统计和 VMM 统计是否同步变化。
+3. 检查 fixmap 激活后，物理统计、VMM 统计和 active-range 快照是否同步变化。
 4. 释放临时映射与物理页。
 5. 再做一次 `KeHeapAllocPages()`。
-6. 检查 heap 分配是否推动 PMM/VMM 计数变化。
-7. 最后回收资源并确认所有统计回归基线。
+6. 检查 heap 分配是否推动 PMM/VMM 计数变化，并在 bounded range view 中出现对应 heap range。
+7. `KeClockEventInit()` 之后检查 `KE_SYSINFO_CLOCK_EVENT` 是否暴露 source/vector/frequency 与 `MinDeltaNs/MaxDeltaNs`。
+8. `KeSchedulerInit()` 之后检查 `KE_SYSINFO_SCHEDULER` 是否反映 idle 基线（无 ready/sleep backlog、无 pending deadline）。
+9. 最后回收资源并确认所有统计回归基线。
 
 这让本分支第一次具备了“账本能否闭环”的自动验证。
 
@@ -333,7 +337,7 @@ heap 目前还不是 malloc/slab，而是页级接口：
 - fixmap page fault
 - heap page fault
 
-同时，CPU exception 输出现在遵循“两阶段”契约：始终先输出寄存器转储、`CR2` 与 `PFERR` 位信息；当 vector 14 已切换到 dedicated `IST2` page-fault diagnostic stack 后，再追加 `VMM imported / VMM pt / VMM kva` 三层 richer diagnosis，用于区分 imported 地址、guard page、active fixmap、active heap 或未映射 hole。它们主要用于 bring-up 和 VMM 诊断演练。
+同时，CPU exception 输出现在遵循“两阶段”契约：始终先输出寄存器转储、`CR2` 与 `PFERR` 位信息；当 vector 14 已切换到 dedicated `IST2` page-fault diagnostic stack 后，再追加 `VMM imported / VMM pt / VMM kva` 三层 richer diagnosis，用于区分 imported 地址、guard page、active fixmap、active heap 或未映射 hole。若某层尚未可用，则明确打印 `unavailable` 状态而不是猜测成功结果。这些信息既服务 bring-up，也作为 page-fault regression profile 的稳定诊断锚点。
 
 ## 12. 当前实现边界
 

@@ -87,6 +87,7 @@ KeThreadCreate(KTHREAD **outThread, KTHREAD_ENTRY entryPoint, void *arg)
     thread->StackSize = KE_THREAD_STACK_SIZE;
     thread->StackGuardBase = stackRange.BaseAddress;
     thread->StackOwnedByKva = TRUE;
+    thread->StackRange = stackRange;
 
     thread->Priority = 0;
     thread->Quantum = KE_DEFAULT_QUANTUM_NS;

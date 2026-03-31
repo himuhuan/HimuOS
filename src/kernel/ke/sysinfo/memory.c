@@ -162,3 +162,46 @@ QueryVmmOverview(void *Buffer, size_t BufferSize, size_t *RequiredSize)
     info->FixmapActiveSlots = usageInfo.FixmapActiveSlots;
     return EC_SUCCESS;
 }
+
+HO_STATUS
+QueryActiveKvaRanges(void *Buffer, size_t BufferSize, size_t *RequiredSize)
+{
+    const size_t required = sizeof(SYSINFO_ACTIVE_KVA_RANGES);
+
+    if (RequiredSize)
+        *RequiredSize = required;
+
+    if (!Buffer)
+        return EC_SUCCESS;
+
+    if (BufferSize < required)
+        return EC_NOT_ENOUGH_MEMORY;
+
+    KE_KVA_ACTIVE_RANGE_SNAPSHOT snapshot;
+    HO_STATUS status = KeKvaQueryActiveRanges(&snapshot);
+    if (status != EC_SUCCESS)
+        return status;
+
+    SYSINFO_ACTIVE_KVA_RANGES *info = (SYSINFO_ACTIVE_KVA_RANGES *)Buffer;
+    memset(info, 0, sizeof(*info));
+    info->TotalActiveRangeCount = snapshot.TotalActiveRangeCount;
+    info->ReturnedRangeCount = snapshot.ReturnedRangeCount;
+    info->Truncated = snapshot.Truncated;
+
+    for (uint32_t idx = 0; idx < snapshot.ReturnedRangeCount; ++idx)
+    {
+        info->Ranges[idx].Arena = snapshot.Ranges[idx].Arena;
+        info->Ranges[idx].RecordId = snapshot.Ranges[idx].RecordId;
+        info->Ranges[idx].Generation = snapshot.Ranges[idx].Generation;
+        info->Ranges[idx].BaseAddress = snapshot.Ranges[idx].BaseAddress;
+        info->Ranges[idx].EndAddressExclusive = snapshot.Ranges[idx].EndAddressExclusive;
+        info->Ranges[idx].UsableBase = snapshot.Ranges[idx].UsableBase;
+        info->Ranges[idx].UsableEndExclusive = snapshot.Ranges[idx].UsableEndExclusive;
+        info->Ranges[idx].TotalPages = snapshot.Ranges[idx].TotalPages;
+        info->Ranges[idx].UsablePages = snapshot.Ranges[idx].UsablePages;
+        info->Ranges[idx].GuardLowerPages = snapshot.Ranges[idx].GuardLowerPages;
+        info->Ranges[idx].GuardUpperPages = snapshot.Ranges[idx].GuardUpperPages;
+    }
+
+    return EC_SUCCESS;
+}

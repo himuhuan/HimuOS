@@ -38,6 +38,7 @@ HO_DEBUG_BUILD ?= 1
 HO_ENABLE_TIMESTAMP_LOG ?= $(HO_DEBUG_BUILD)
 SUDO ?= sudo
 QEMU_CPU_FLAGS ?= host,+invtsc
+QEMU_DISPLAY ?= gtk
 
 ifeq ($(strip $(SUDO_PASSWORD)),)
 SUDO_RUN := $(SUDO)
@@ -304,6 +305,7 @@ run: copy
 		-m 512M \
 		-bios "$(OVMF_CODE)" \
 		-net none \
+		-display $(QEMU_DISPLAY) \
 		-cpu $(QEMU_CPU_FLAGS) \
 		-enable-kvm \
 		-drive file=fat:rw:esp,index=0,format=vvfat \
@@ -323,6 +325,11 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  pf_guard    - page-fault demo: access thread stack guard page"
 	@echo "  pf_fixmap   - page-fault demo: NX execute fault in active fixmap slot"
 	@echo "  pf_heap     - page-fault demo: NX execute fault in heap-backed KVA page"
+	@echo "Recommended explicit workflow:"
+	@echo "  make clean"
+	@echo "  bear -- make all BUILD_FLAVOR=test-schedule HO_DEMO_TEST_NAME=schedule HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_SCHEDULE"
+	@echo "  BUILD_FLAVOR=test-schedule HO_DEMO_TEST_NAME=schedule HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_SCHEDULE \\"
+	@echo "      bash scripts/qemu_capture.sh 30 /tmp/himuos-schedule.log"
 	@echo "Usage:"
 	@echo "  make test schedule   # run the scheduler demo suite"
 	@echo "  make test irql_wait  # run a dispatch-guard misuse panic regression"
@@ -347,6 +354,7 @@ debug: copy
 		-m 512M \
 		-bios "$(OVMF_CODE)" \
 		-net none \
+		-display $(QEMU_DISPLAY) \
 		-cpu $(QEMU_CPU_FLAGS) \
 		-drive file=fat:rw:esp,index=0,format=vvfat \
 		-serial stdio \

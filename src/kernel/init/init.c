@@ -28,6 +28,30 @@ KiQueryVmmOverview(SYSINFO_VMM_OVERVIEW *outOverview)
 }
 
 static HO_STATUS
+KiQuerySchedulerInfo(KE_SYSINFO_SCHEDULER_DATA *outInfo)
+{
+    if (!outInfo)
+        return EC_ILLEGAL_ARGUMENT;
+    return KeQuerySystemInformation(KE_SYSINFO_SCHEDULER, outInfo, sizeof(*outInfo), NULL);
+}
+
+static HO_STATUS
+KiQueryClockEventInfo(SYSINFO_CLOCK_EVENT *outInfo)
+{
+    if (!outInfo)
+        return EC_ILLEGAL_ARGUMENT;
+    return KeQuerySystemInformation(KE_SYSINFO_CLOCK_EVENT, outInfo, sizeof(*outInfo), NULL);
+}
+
+static HO_STATUS
+KiQueryActiveKvaRanges(SYSINFO_ACTIVE_KVA_RANGES *outInfo)
+{
+    if (!outInfo)
+        return EC_ILLEGAL_ARGUMENT;
+    return KeQuerySystemInformation(KE_SYSINFO_ACTIVE_KVA_RANGES, outInfo, sizeof(*outInfo), NULL);
+}
+
+static HO_STATUS
 RunMemoryObservabilitySelfTest(void)
 {
     SYSINFO_PHYSICAL_MEM_STATS basePhysical = {0};
@@ -47,11 +71,18 @@ RunMemoryObservabilitySelfTest(void)
     HO_VIRTUAL_ADDRESS tempVirt = 0;
     HO_VIRTUAL_ADDRESS heapVirt = 0;
     BOOL heapAllocated = FALSE;
+    SYSINFO_ACTIVE_KVA_RANGES baseRanges = {0};
+    SYSINFO_ACTIVE_KVA_RANGES fixmapRanges = {0};
+    SYSINFO_ACTIVE_KVA_RANGES heapRanges = {0};
+    SYSINFO_ACTIVE_KVA_RANGES finalRanges = {0};
 
     HO_STATUS status = KiQueryPhysicalStats(&basePhysical);
     if (status != EC_SUCCESS)
         return status;
     status = KiQueryVmmOverview(&baseVmm);
+    if (status != EC_SUCCESS)
+        return status;
+    status = KiQueryActiveKvaRanges(&baseRanges);
     if (status != EC_SUCCESS)
         return status;
 
@@ -79,6 +110,9 @@ RunMemoryObservabilitySelfTest(void)
     status = KiQueryVmmOverview(&fixmapVmm);
     if (status != EC_SUCCESS)
         goto cleanup;
+    status = KiQueryActiveKvaRanges(&fixmapRanges);
+    if (status != EC_SUCCESS)
+        goto cleanup;
 
     if (fixmapPhysical.AllocatedBytes < basePhysical.AllocatedBytes + PAGE_4KB ||
         fixmapPhysical.FreeBytes + PAGE_4KB > basePhysical.FreeBytes)
@@ -89,6 +123,26 @@ RunMemoryObservabilitySelfTest(void)
     if (fixmapVmm.FixmapActiveSlots != baseVmm.FixmapActiveSlots + 1 ||
         fixmapVmm.FixmapArena.ActiveAllocations != baseVmm.FixmapArena.ActiveAllocations + 1 ||
         fixmapVmm.ActiveKvaRangeCount < baseVmm.ActiveKvaRangeCount + 1)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+    if (fixmapRanges.TotalActiveRangeCount < baseRanges.TotalActiveRangeCount + 1)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+
+    BOOL foundFixmapRange = FALSE;
+    for (uint32_t idx = 0; idx < fixmapRanges.ReturnedRangeCount; ++idx)
+    {
+        if (fixmapRanges.Ranges[idx].Arena == KE_KVA_ARENA_FIXMAP && fixmapRanges.Ranges[idx].UsableBase == tempVirt)
+        {
+            foundFixmapRange = TRUE;
+            break;
+        }
+    }
+    if (!foundFixmapRange && !fixmapRanges.Truncated)
     {
         status = EC_INVALID_STATE;
         goto cleanup;
@@ -124,8 +178,12 @@ RunMemoryObservabilitySelfTest(void)
     status = KiQueryVmmOverview(&heapVmm);
     if (status != EC_SUCCESS)
         goto cleanup;
+    status = KiQueryActiveKvaRanges(&heapRanges);
+    if (status != EC_SUCCESS)
+        goto cleanup;
 
-    if (heapPhysical.AllocatedBytes < basePhysical.AllocatedBytes + PAGE_4KB || heapPhysical.FreeBytes > basePhysical.FreeBytes)
+    if (heapPhysical.AllocatedBytes < basePhysical.AllocatedBytes + PAGE_4KB ||
+        heapPhysical.FreeBytes > basePhysical.FreeBytes)
     {
         status = EC_INVALID_STATE;
         goto cleanup;
@@ -133,6 +191,26 @@ RunMemoryObservabilitySelfTest(void)
     if (heapVmm.HeapArena.ActiveAllocations != baseVmm.HeapArena.ActiveAllocations + 1 ||
         heapVmm.ActiveKvaRangeCount < baseVmm.ActiveKvaRangeCount + 1 ||
         heapVmm.FixmapActiveSlots != baseVmm.FixmapActiveSlots)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+    if (heapRanges.TotalActiveRangeCount < baseRanges.TotalActiveRangeCount + 1)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+
+    BOOL foundHeapRange = FALSE;
+    for (uint32_t idx = 0; idx < heapRanges.ReturnedRangeCount; ++idx)
+    {
+        if (heapRanges.Ranges[idx].Arena == KE_KVA_ARENA_HEAP && heapRanges.Ranges[idx].UsableBase == heapVirt)
+        {
+            foundHeapRange = TRUE;
+            break;
+        }
+    }
+    if (!foundHeapRange && !heapRanges.Truncated)
     {
         status = EC_INVALID_STATE;
         goto cleanup;
@@ -149,9 +227,13 @@ RunMemoryObservabilitySelfTest(void)
     status = KiQueryVmmOverview(&finalVmm);
     if (status != EC_SUCCESS)
         goto cleanup;
+    status = KiQueryActiveKvaRanges(&finalRanges);
+    if (status != EC_SUCCESS)
+        goto cleanup;
 
     if (finalPhysical.TotalBytes != basePhysical.TotalBytes || finalPhysical.FreeBytes != basePhysical.FreeBytes ||
-        finalPhysical.AllocatedBytes != basePhysical.AllocatedBytes || finalPhysical.ReservedBytes != basePhysical.ReservedBytes)
+        finalPhysical.AllocatedBytes != basePhysical.AllocatedBytes ||
+        finalPhysical.ReservedBytes != basePhysical.ReservedBytes)
     {
         status = EC_INVALID_STATE;
         goto cleanup;
@@ -171,9 +253,16 @@ RunMemoryObservabilitySelfTest(void)
         status = EC_INVALID_STATE;
         goto cleanup;
     }
+    if (finalRanges.TotalActiveRangeCount != baseRanges.TotalActiveRangeCount ||
+        finalRanges.ReturnedRangeCount != baseRanges.ReturnedRangeCount ||
+        finalRanges.Truncated != baseRanges.Truncated)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
 
-    klog(KLOG_LEVEL_INFO,
-         "[OBS] memory observability self-test OK: pmm/vmm counters tracked fixmap+heap activity and recovered\n");
+    klog(KLOG_LEVEL_INFO, "[OBS] memory observability self-test OK: pmm/vmm counters and bounded KVA snapshots tracked "
+                          "fixmap+heap activity\n");
     return EC_SUCCESS;
 
 cleanup:
@@ -187,8 +276,7 @@ cleanup:
         }
         else
         {
-            klog(KLOG_LEVEL_ERROR,
-                 "[OBS] cleanup preserved PMM page %p because temp-map release failed (%s, %p)\n",
+            klog(KLOG_LEVEL_ERROR, "[OBS] cleanup preserved PMM page %p because temp-map release failed (%s, %p)\n",
                  (void *)(uint64_t)tempPhys, KrGetStatusMessage(cleanupStatus), cleanupStatus);
         }
 
@@ -226,6 +314,41 @@ cleanup:
     }
 
     return status;
+}
+
+static HO_STATUS
+RunClockEventObservabilitySelfTest(void)
+{
+    SYSINFO_CLOCK_EVENT info = {0};
+    HO_STATUS status = KiQueryClockEventInfo(&info);
+    if (status != EC_SUCCESS)
+        return status;
+
+    if (!info.Ready || info.FreqHz == 0 || info.VectorNumber == 0 || info.SourceName[0] == '\0')
+        return EC_INVALID_STATE;
+
+    if (info.MinDeltaNs == 0 || info.MaxDeltaNs == 0 || info.MinDeltaNs > info.MaxDeltaNs)
+        return EC_INVALID_STATE;
+
+    return EC_SUCCESS;
+}
+
+static HO_STATUS
+RunSchedulerObservabilitySelfTest(void)
+{
+    KE_SYSINFO_SCHEDULER_DATA info = {0};
+    HO_STATUS status = KiQuerySchedulerInfo(&info);
+    if (status != EC_SUCCESS)
+        return status;
+
+    if (!info.SchedulerEnabled || info.CurrentThreadId != 0 || info.IdleThreadId != 0 || info.ReadyQueueDepth != 0 ||
+        info.SleepQueueDepth != 0 || info.EarliestWakeDeadline != 0 || info.NextProgrammedDeadline != 0 ||
+        info.ActiveThreadCount != 1 || info.TotalThreadsCreated != 1)
+    {
+        return EC_INVALID_STATE;
+    }
+
+    return EC_SUCCESS;
 }
 
 void
@@ -308,7 +431,8 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
             // Runtime RAM smoke test should use a temporary fixmap alias, not a persistent HHDM ownership address.
             KE_TEMP_PHYS_MAP_HANDLE tempMap = {0};
             HO_VIRTUAL_ADDRESS tempVirt = 0;
-            initStatus = KeTempPhysMapAcquire(testPage, PTE_WRITABLE | PTE_GLOBAL | PTE_NO_EXECUTE, &tempMap, &tempVirt);
+            initStatus =
+                KeTempPhysMapAcquire(testPage, PTE_WRITABLE | PTE_GLOBAL | PTE_NO_EXECUTE, &tempMap, &tempVirt);
             if (initStatus != EC_SUCCESS)
             {
                 (void)KePmmFreePages(testPage, 1);
@@ -355,6 +479,12 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
         HO_KPANIC(initStatus, "Failed to initialize clock event");
     }
 
+    initStatus = RunClockEventObservabilitySelfTest();
+    if (initStatus != EC_SUCCESS)
+    {
+        HO_KPANIC(initStatus, "Clock-event observability self-test failed");
+    }
+
     // ---- KTHREAD Object Pool ----
     // Depends on KeKvaInit(): KeKThreadPoolInit() -> KePoolInit() ->
     // KeHeapAllocPages().
@@ -387,6 +517,12 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
     if (initStatus != EC_SUCCESS)
     {
         HO_KPANIC(initStatus, "Failed to initialize scheduler");
+    }
+
+    initStatus = RunSchedulerObservabilitySelfTest();
+    if (initStatus != EC_SUCCESS)
+    {
+        HO_KPANIC(initStatus, "Scheduler observability self-test failed");
     }
 }
 

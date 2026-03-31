@@ -34,12 +34,17 @@ KeQuerySchedulerInfo(KE_SYSINFO_SCHEDULER_DATA *out)
     if (!out)
         return EC_ILLEGAL_ARGUMENT;
 
+    KE_CRITICAL_SECTION criticalSection = {0};
+    KeEnterCriticalSection(&criticalSection);
     memset(out, 0, sizeof(*out));
 
     out->SchedulerEnabled = gSchedulerEnabled;
 
     if (!gSchedulerEnabled)
+    {
+        KeLeaveCriticalSection(&criticalSection);
         return EC_SUCCESS;
+    }
 
     out->CurrentThreadId = gCurrentThread ? gCurrentThread->ThreadId : 0;
     out->IdleThreadId = gIdleThread ? gIdleThread->ThreadId : 0;
@@ -60,5 +65,6 @@ KeQuerySchedulerInfo(KE_SYSINFO_SCHEDULER_DATA *out)
     out->TotalThreadsCreated = gStats.TotalThreadsCreated;
     out->ActiveThreadCount = gStats.ActiveThreadCount;
 
+    KeLeaveCriticalSection(&criticalSection);
     return EC_SUCCESS;
 }

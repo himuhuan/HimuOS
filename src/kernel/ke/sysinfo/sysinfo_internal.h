@@ -68,3 +68,4 @@ HO_STATUS QueryUptime(void *Buffer, size_t BufferSize, size_t *RequiredSize);
 HO_STATUS QuerySystemVersion(void *Buffer, size_t BufferSize, size_t *RequiredSize);
 HO_STATUS QueryClockEvent(void *Buffer, size_t BufferSize, size_t *RequiredSize);
 HO_STATUS QueryScheduler(void *Buffer, size_t BufferSize, size_t *RequiredSize);
+HO_STATUS QueryActiveKvaRanges(void *Buffer, size_t BufferSize, size_t *RequiredSize);
