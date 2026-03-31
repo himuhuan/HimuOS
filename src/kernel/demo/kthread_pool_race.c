@@ -310,11 +310,32 @@ KiRunCreateReapRegression(void)
 }
 
 static void
+KiRunOversizedObjectRegression(void)
+{
+    klog(KLOG_LEVEL_INFO, "[TEST] oversize objectSize regression start\n");
+
+    KE_POOL oversizePool = {0};
+    // objectSize = 8192 (2 * PAGE_4KB / 2) exceeds single-page capacity.
+    // KePoolInit must reject it with EC_ILLEGAL_ARGUMENT, not underflow.
+    HO_STATUS status = KePoolInit(&oversizePool, 8192, 1, "oversize-regression");
+    HO_KASSERT(status == EC_ILLEGAL_ARGUMENT, status);
+    HO_KASSERT(oversizePool.Magic != KE_POOL_MAGIC_ALIVE, EC_INVALID_STATE);
+
+    // Also verify the exact boundary: objectSize == PAGE_4KB (4096).
+    status = KePoolInit(&oversizePool, 4096, 1, "page-boundary-regression");
+    HO_KASSERT(status == EC_ILLEGAL_ARGUMENT, status);
+    HO_KASSERT(oversizePool.Magic != KE_POOL_MAGIC_ALIVE, EC_INVALID_STATE);
+
+    klog(KLOG_LEVEL_INFO, "[TEST] oversize objectSize regression passed\n");
+}
+
+static void
 KthreadPoolRaceControllerThread(void *arg)
 {
     (void)arg;
 
     klog(KLOG_LEVEL_INFO, "[TEST] KTHREAD pool race regression controller start\n");
+    KiRunOversizedObjectRegression();
     KiRunPoolInterleavingRegression();
     KiRunThreadIdRegression();
     KiRunCreateReapRegression();

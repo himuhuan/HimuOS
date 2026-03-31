@@ -35,15 +35,47 @@ typedef struct KE_POOL_FREE_NODE
     struct KE_POOL_FREE_NODE *Next;
 } KE_POOL_FREE_NODE;
 
+/**
+ * @brief Intrusive singly-linked list node tracking each backing page
+ *        acquired by a pool. Stored at the very beginning of the page.
+ *
+ * Because every slot is at least sizeof(void*)-aligned and the first
+ * slot starts after this header, the header does not overlap any slot.
+ * The header occupies sizeof(void*) bytes (one pointer) which is
+ * deducted from the usable slot area of the page.
+ */
+typedef struct KE_POOL_PAGE_NODE
+{
+    struct KE_POOL_PAGE_NODE *Next;
+} KE_POOL_PAGE_NODE;
+
+#define KE_POOL_MAGIC_ALIVE 0x504F4F4CU /* "POOL" */
+#define KE_POOL_MAGIC_DEAD  0x44454144U /* "DEAD" */
+
 typedef struct KE_POOL
 {
+    uint32_t Magic;
     KE_POOL_FREE_NODE *FreeList;
+    KE_POOL_PAGE_NODE *PageList;
     size_t SlotSize;
     uint32_t SlotsPerPage;
     uint32_t TotalSlots;
     uint32_t UsedSlots;
+    uint32_t PeakUsedSlots;
+    uint32_t FailedGrows;
+    uint32_t PageCount;
     const char *Name;
 } KE_POOL;
+
+typedef struct KE_POOL_STATS
+{
+    uint32_t TotalSlots;
+    uint32_t UsedSlots;
+    uint32_t FreeSlots;
+    uint32_t PageCount;
+    uint32_t PeakUsedSlots;
+    uint32_t FailedGrowCount;
+} KE_POOL_STATS;
 
 /**
  * @brief Initialize an object pool.
@@ -59,6 +91,10 @@ typedef struct KE_POOL
  *
  * The kernel heap foundation must already be initialized (via KeKvaInit())
  * before this call can succeed.
+ *
+ * CONCURRENCY: The caller must ensure no other thread is concurrently
+ * calling KePoolInit, KePoolAlloc, KePoolFree, or KePoolDestroy on the
+ * same pool structure.  Typically called once during single-threaded boot.
  */
 HO_KERNEL_API HO_STATUS KePoolInit(KE_POOL *pool, size_t objectSize, uint32_t initialCapacity, const char *name);
 
@@ -80,3 +116,29 @@ HO_KERNEL_API void *KePoolAlloc(KE_POOL *pool);
  * underlying backing page back to the KVA heap foundation.
  */
 HO_KERNEL_API void KePoolFree(KE_POOL *pool, void *object);
+
+/**
+ * @brief Destroy an object pool, releasing all backing pages to the KVA
+ *        heap foundation.
+ * @param pool Pool to destroy. Must have been successfully initialized
+ *             via KePoolInit() and must have UsedSlots == 0.
+ * @return EC_SUCCESS on success, EC_INVALID_STATE if the pool still has
+ *         outstanding allocations or is not in an initialized state.
+ *
+ * After successful destroy the pool must be re-initialized with
+ * KePoolInit() before any further KePoolAlloc() calls.
+ *
+ * CONCURRENCY: The caller must ensure the pool is fully quiesced —
+ * no concurrent KePoolAlloc, KePoolFree, or KePoolInit calls may be
+ * in flight on the same pool.  Concurrent KePoolAlloc attempts that
+ * are already past the fast-path Magic check will safely observe the
+ * DEAD state inside the critical section and return NULL.
+ */
+HO_KERNEL_API HO_STATUS KePoolDestroy(KE_POOL *pool);
+
+/**
+ * @brief Take a consistent snapshot of pool statistics.
+ * @param pool Pool to query. Must be alive (initialized, not destroyed).
+ * @param stats Output structure filled with the snapshot.
+ */
+HO_KERNEL_API void KePoolQueryStats(const KE_POOL *pool, KE_POOL_STATS *stats);
