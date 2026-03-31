@@ -35,6 +35,7 @@
 #define HO_DEMO_TEST_PF_GUARD    13
 #define HO_DEMO_TEST_PF_FIXMAP   14
 #define HO_DEMO_TEST_PF_HEAP     15
+#define HO_DEMO_TEST_KTHREAD_POOL_RACE 16
 
 #ifndef HO_DEMO_TEST_SELECTION
 #define HO_DEMO_TEST_SELECTION HO_DEMO_TEST_NONE
@@ -95,3 +96,4 @@ void RunPageFaultImportedDemo(void);
 void RunPageFaultGuardDemo(void);
 void RunPageFaultFixmapDemo(void);
 void RunPageFaultHeapDemo(void);
+void RunKthreadPoolRaceDemo(void);

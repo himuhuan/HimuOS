@@ -8,6 +8,7 @@
  */
 
 #include <kernel/ke/kthread.h>
+#include <kernel/ke/critical_section.h>
 #include <kernel/ke/irql.h>
 #include <kernel/ke/scheduler.h>
 #include <kernel/ke/mm.h>
@@ -30,6 +31,20 @@ static uint32_t gNextThreadId = 1;
 
 extern void KiThreadTrampoline(void);
 
+static uint32_t
+KiAllocateThreadId(void)
+{
+    KE_CRITICAL_SECTION criticalSection = {0};
+    uint32_t threadId;
+
+    KeEnterCriticalSection(&criticalSection);
+    HO_KASSERT(gNextThreadId != 0, EC_OUT_OF_RESOURCE);
+    threadId = gNextThreadId++;
+    KeLeaveCriticalSection(&criticalSection);
+
+    return threadId;
+}
+
 // ─────────────────────────────────────────────────────────────
 // Pool init
 // ─────────────────────────────────────────────────────────────
@@ -45,6 +60,8 @@ KeThreadCreate(KTHREAD **outThread, KTHREAD_ENTRY entryPoint, void *arg)
 {
     if (!outThread || !entryPoint)
         return EC_ILLEGAL_ARGUMENT;
+
+    *outThread = NULL;
 
     KTHREAD *thread = (KTHREAD *)KePoolAlloc(&gKThreadPool);
     if (!thread)
@@ -76,7 +93,7 @@ KeThreadCreate(KTHREAD **outThread, KTHREAD_ENTRY entryPoint, void *arg)
     *sp = (uint64_t)KiThreadTrampoline; // RET target for KiSwitchContext
 
     // Initialize KTHREAD
-    thread->ThreadId = gNextThreadId++;
+    thread->ThreadId = KiAllocateThreadId();
     thread->State = KTHREAD_STATE_NEW;
 
     memset(&thread->Context, 0, sizeof(KTHREAD_CONTEXT));
@@ -87,6 +104,7 @@ KeThreadCreate(KTHREAD **outThread, KTHREAD_ENTRY entryPoint, void *arg)
     thread->StackSize = KE_THREAD_STACK_SIZE;
     thread->StackGuardBase = stackRange.BaseAddress;
     thread->StackOwnedByKva = TRUE;
+    thread->StackRange = stackRange;
 
     thread->Priority = 0;
     thread->Quantum = KE_DEFAULT_QUANTUM_NS;

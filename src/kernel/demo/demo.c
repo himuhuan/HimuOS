@@ -101,6 +101,11 @@ RunKernelDemos(void)
     {
         RunPageFaultHeapDemo();
     }
+
+    if (HO_DEMO_TEST_SELECTION == HO_DEMO_TEST_KTHREAD_POOL_RACE)
+    {
+        RunKthreadPoolRaceDemo();
+    }
 }
 
 void

@@ -39,6 +39,58 @@
 | 显示器    | 支持彩色的文本界面                                 |
 | 设备支持   | 标准 VGA 显示器、标准QWERTY键盘输入支持；MMIO 支持         |
 
+## 回归 profile 与推荐执行流程
+
+HimuOS 当前把内核 demo/test profile 视为稳定的 regression profile。推荐流程始终是：
+
+```bash
+make clean
+bear -- make all BUILD_FLAVOR=<flavor> HO_DEMO_TEST_NAME=<profile> HO_DEMO_TEST_DEFINE=<define>
+
+BUILD_FLAVOR=<flavor> HO_DEMO_TEST_NAME=<profile> HO_DEMO_TEST_DEFINE=<define> \
+    bash scripts/qemu_capture.sh 30 /tmp/himuos-<profile>.log
+```
+
+其中 `scripts/qemu_capture.sh` 是主运行与串口捕获入口；不要把隐式 `make run` 或 `make test` 当作默认验证路径。
+
+### 稳定 profile 标识符
+
+| Profile | Build flavor | Define | Outcome class | Intent |
+| ------ | ------ | ------ | ------ | ------ |
+| `schedule` | `test-schedule` | `HO_DEMO_TEST_SCHEDULE` | clean pass with continued boot/idle | scheduler smoke coverage, thread/event/semaphore/mutex 基线路径 |
+| `guard_wait` | `test-guard_wait` | `HO_DEMO_TEST_GUARD_WAIT` | diagnosable contract violation or panic | critical-section guard misuse |
+| `owned_exit` | `test-owned_exit` | `HO_DEMO_TEST_OWNED_EXIT` | diagnosable contract violation or panic | exit while owning a mutex |
+| `irql_wait` | `test-irql_wait` | `HO_DEMO_TEST_IRQL_WAIT` | diagnosable contract violation or panic | wait at `DISPATCH_LEVEL` |
+| `irql_sleep` | `test-irql_sleep` | `HO_DEMO_TEST_IRQL_SLEEP` | diagnosable contract violation or panic | sleep at `DISPATCH_LEVEL` |
+| `irql_yield` | `test-irql_yield` | `HO_DEMO_TEST_IRQL_YIELD` | diagnosable contract violation or panic | yield at `DISPATCH_LEVEL` |
+| `irql_exit` | `test-irql_exit` | `HO_DEMO_TEST_IRQL_EXIT` | diagnosable contract violation or panic | thread exit at `DISPATCH_LEVEL` |
+| `pf_imported` | `test-pf_imported` | `HO_DEMO_TEST_PF_IMPORTED` | intentional fatal page-fault halt with bounded diagnostics | imported kernel-data NX fault diagnosis |
+| `pf_guard` | `test-pf_guard` | `HO_DEMO_TEST_PF_GUARD` | intentional fatal page-fault halt with bounded diagnostics | stack guard-page diagnosis |
+| `pf_fixmap` | `test-pf_fixmap` | `HO_DEMO_TEST_PF_FIXMAP` | intentional fatal page-fault halt with bounded diagnostics | active fixmap alias diagnosis |
+| `pf_heap` | `test-pf_heap` | `HO_DEMO_TEST_PF_HEAP` | intentional fatal page-fault halt with bounded diagnostics | heap-backed KVA diagnosis |
+
+### 例子
+
+```bash
+# clean-pass profile
+make clean
+bear -- make all BUILD_FLAVOR=test-schedule HO_DEMO_TEST_NAME=schedule HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_SCHEDULE
+BUILD_FLAVOR=test-schedule HO_DEMO_TEST_NAME=schedule HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_SCHEDULE \
+    bash scripts/qemu_capture.sh 30 /tmp/himuos-schedule.log
+
+# guard-misuse profile
+make clean
+bear -- make all BUILD_FLAVOR=test-guard_wait HO_DEMO_TEST_NAME=guard_wait HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_GUARD_WAIT
+BUILD_FLAVOR=test-guard_wait HO_DEMO_TEST_NAME=guard_wait HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_GUARD_WAIT \
+    bash scripts/qemu_capture.sh 30 /tmp/himuos-guard-wait.log
+
+# page-fault profile
+make clean
+bear -- make all BUILD_FLAVOR=test-pf_guard HO_DEMO_TEST_NAME=pf_guard HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_PF_GUARD
+BUILD_FLAVOR=test-pf_guard HO_DEMO_TEST_NAME=pf_guard HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_PF_GUARD \
+    bash scripts/qemu_capture.sh 30 /tmp/himuos-pf-guard.log
+```
+
 ## 版权与许可
 
 本项目遵循 GNU 通用公共许可证 (GPL) 第 3 版或更高版本发布。您可以自由地使用、修改和分发本项目的代码。

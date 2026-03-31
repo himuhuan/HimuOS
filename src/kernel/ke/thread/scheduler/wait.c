@@ -130,7 +130,8 @@ KiCompleteWait(KWAIT_BLOCK *block, HO_STATUS status)
     KTHREAD *thread = CONTAINING_RECORD(block, KTHREAD, WaitBlock);
     thread->State = KTHREAD_STATE_READY;
     LinkedListInsertTail(&gReadyQueue, &thread->ReadyLink);
-    gStats.SleepWakeCount++;
+    if (status == EC_TIMEOUT)
+        gStats.SleepWakeCount++;
 
     klog(KLOG_LEVEL_DEBUG, "[SCHED] Thread %u wait completed (%s)\n", thread->ThreadId,
          status == EC_SUCCESS ? "signaled" : "timeout");

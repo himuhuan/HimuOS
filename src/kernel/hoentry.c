@@ -15,6 +15,7 @@
 #include <kernel/ke/sysinfo.h>
 #include <kernel/ke/scheduler.h>
 #include <kernel/demo.h>
+#include "demo/demo_internal.h"
 
 static void PrintBootBanner(void);
 
@@ -69,6 +70,7 @@ PrintBootBanner(void)
         kprintf("  %-24s %s %s\n", "Build", ver.BuildDate, ver.BuildTime);
     }
     kprintf("  %-24s %s\n", "------------------------", "------------------------------------------");
+    kprintf("  %-24s %s\n", "Active Profile", HO_DEMO_TEST_SELECTION_NAME);
 
     kprintf("Copyright(c) 2024-2025 Himu, ONLY FOR EDUCATIONAL PURPOSES.\n\n");
 }

@@ -76,6 +76,7 @@ typedef struct KE_KVA_RANGE
 {
     KE_KVA_ARENA_TYPE Arena;
     uint32_t RecordId;
+    uint64_t Generation;
     HO_VIRTUAL_ADDRESS BaseAddress;
     HO_VIRTUAL_ADDRESS UsableBase;
     uint64_t TotalPages;
@@ -102,9 +103,34 @@ typedef struct KE_KVA_USAGE_INFO
     uint64_t FixmapActiveSlots;
 } KE_KVA_USAGE_INFO;
 
+#define KE_KVA_ACTIVE_RANGE_SNAPSHOT_MAX 16U
+
+typedef struct KE_KVA_ACTIVE_RANGE_ENTRY
+{
+    KE_KVA_ARENA_TYPE Arena;
+    uint32_t RecordId;
+    uint64_t Generation;
+    HO_VIRTUAL_ADDRESS BaseAddress;
+    HO_VIRTUAL_ADDRESS EndAddressExclusive;
+    HO_VIRTUAL_ADDRESS UsableBase;
+    HO_VIRTUAL_ADDRESS UsableEndExclusive;
+    uint64_t TotalPages;
+    uint64_t UsablePages;
+    uint64_t GuardLowerPages;
+    uint64_t GuardUpperPages;
+} KE_KVA_ACTIVE_RANGE_ENTRY;
+
+typedef struct KE_KVA_ACTIVE_RANGE_SNAPSHOT
+{
+    uint64_t TotalActiveRangeCount;
+    uint32_t ReturnedRangeCount;
+    BOOL Truncated;
+    KE_KVA_ACTIVE_RANGE_ENTRY Ranges[KE_KVA_ACTIVE_RANGE_SNAPSHOT_MAX];
+} KE_KVA_ACTIVE_RANGE_SNAPSHOT;
+
 typedef struct KE_TEMP_PHYS_MAP_HANDLE
 {
-    uint32_t Token;
+    uint64_t Token;
 } KE_TEMP_PHYS_MAP_HANDLE;
 
 typedef enum KE_KVA_ADDRESS_KIND
@@ -268,6 +294,21 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaMapPage(const KE_KVA_RANGE *range,
  */
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaMapOwnedPages(const KE_KVA_RANGE *range, uint64_t attributes);
 
+/**
+ * Release the exact live range described by a previously returned handle.
+ *
+ * This validates the slot, generation, and layout fields before teardown so a
+ * stale `KE_KVA_RANGE` cannot release a recycled allocation.
+ */
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaReleaseRangeHandle(const KE_KVA_RANGE *range);
+
+/**
+ * Release the current range that owns @usableBase.
+ *
+ * This is an address-based convenience API. Callers that need recycle-safe
+ * ownership semantics should retain the original `KE_KVA_RANGE` handle and use
+ * `KeKvaReleaseRangeHandle()`.
+ */
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaReleaseRange(HO_VIRTUAL_ADDRESS usableBase);
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaQueryRange(HO_VIRTUAL_ADDRESS usableBase, KE_KVA_RANGE *outRange);
@@ -275,6 +316,15 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaQueryRange(HO_VIRTUAL_ADDRESS usableBa
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaQueryArenaInfo(KE_KVA_ARENA_TYPE arena, KE_KVA_ARENA_INFO *outInfo);
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaQueryUsageInfo(KE_KVA_USAGE_INFO *outInfo);
+
+/**
+ * Copy a bounded, internally consistent snapshot of active KVA ranges.
+ *
+ * The allocator serializes range-table publication and recycle while this
+ * snapshot is assembled, so returned entries never expose partially
+ * initialized or already-recycled records.
+ */
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaQueryActiveRanges(KE_KVA_ACTIVE_RANGE_SNAPSHOT *outSnapshot);
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaClassifyAddress(HO_VIRTUAL_ADDRESS virtAddr, KE_KVA_ADDRESS_INFO *outInfo);
 
@@ -284,10 +334,10 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS KeKvaSelfTest(void);
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeFixmapAcquire(HO_PHYSICAL_ADDRESS physAddr,
                                                      uint64_t attributes,
-                                                     uint32_t *outSlot,
+                                                     KE_TEMP_PHYS_MAP_HANDLE *outHandle,
                                                      HO_VIRTUAL_ADDRESS *outVirtAddr);
 
-HO_KERNEL_API HO_NODISCARD HO_STATUS KeFixmapRelease(uint32_t slot);
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeFixmapRelease(KE_TEMP_PHYS_MAP_HANDLE *handle);
 
 /**
  * Acquire a short-lived runtime alias for one physical page through fixmap.

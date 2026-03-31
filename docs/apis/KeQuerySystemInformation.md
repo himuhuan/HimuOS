@@ -41,6 +41,7 @@ HO_STATUS HO_KERNEL_API KeQuerySystemInformation(
 | `KE_SYSINFO_CLOCK_EVENT` | SYSINFO_CLOCK_EVENT | 当前时钟事件设备状态 |
 | `KE_SYSINFO_SCHEDULER` | KE_SYSINFO_SCHEDULER_DATA | 调度器状态快照 |
 | `KE_SYSINFO_VMM_OVERVIEW` | SYSINFO_VMM_OVERVIEW | VMM 总览（imported/KVA/fixmap） |
+| `KE_SYSINFO_ACTIVE_KVA_RANGES` | SYSINFO_ACTIVE_KVA_RANGES | 活跃 KVA range 的有界快照 |
 
 ## 返回结构体
 
@@ -108,6 +109,85 @@ typedef struct SYSINFO_VMM_OVERVIEW {
 - `ActiveKvaRangeCount/Fixmap*` 来自 `KeKvaQueryUsageInfo()`。
 - 若地址空间或 KVA 尚未初始化，查询返回 `EC_INVALID_STATE`。
 
+### SYSINFO_ACTIVE_KVA_RANGES
+
+```c
+#define SYSINFO_ACTIVE_KVA_RANGE_MAX 16U
+
+typedef struct SYSINFO_ACTIVE_KVA_RANGE {
+    KE_KVA_ARENA_TYPE Arena;
+    uint32_t RecordId;
+    uint64_t Generation;
+    HO_VIRTUAL_ADDRESS BaseAddress;
+    HO_VIRTUAL_ADDRESS EndAddressExclusive;
+    HO_VIRTUAL_ADDRESS UsableBase;
+    HO_VIRTUAL_ADDRESS UsableEndExclusive;
+    uint64_t TotalPages;
+    uint64_t UsablePages;
+    uint64_t GuardLowerPages;
+    uint64_t GuardUpperPages;
+} SYSINFO_ACTIVE_KVA_RANGE;
+
+typedef struct SYSINFO_ACTIVE_KVA_RANGES {
+    uint64_t TotalActiveRangeCount;
+    uint32_t ReturnedRangeCount;
+    BOOL Truncated;
+    SYSINFO_ACTIVE_KVA_RANGE Ranges[SYSINFO_ACTIVE_KVA_RANGE_MAX];
+} SYSINFO_ACTIVE_KVA_RANGES;
+```
+
+说明：
+- 该查询返回一个固定上限为 `16` 条记录的稳定快照，用 arena 与虚拟地址范围语义描述当前活跃 KVA range。
+- `RecordId + 64-bit Generation` 共同标识当前这一次 live range 实例；仅凭 `RecordId` 不能跨释放/复用周期充当稳定所有权句柄。
+- `TotalActiveRangeCount` 表示系统中当前活跃 range 总数，`ReturnedRangeCount` 表示本次快照实际返回条数。
+- 当活跃 range 多于快照容量时，`Truncated == TRUE`，调用者必须把它解释为“有更多活跃 range 未被当前快照承载”，而不是“不存在更多 range”。
+- KVA 未初始化时该查询返回 `EC_INVALID_STATE`；它不会输出部分伪造记录。
+
+### SYSINFO_CLOCK_EVENT
+
+```c
+typedef struct SYSINFO_CLOCK_EVENT {
+    BOOL Ready;
+    uint64_t FreqHz;
+    uint64_t InterruptCount;
+    uint64_t MinDeltaNs;
+    uint64_t MaxDeltaNs;
+    uint8_t VectorNumber;
+    char SourceName[SYSINFO_TIME_SOURCE_NAME_LEN];
+} SYSINFO_CLOCK_EVENT;
+```
+
+说明：
+- `Ready == FALSE` 时，查询仍返回 `EC_SUCCESS`，但不会伪造 source/vector/frequency 或 one-shot envelope。
+- `MinDeltaNs/MaxDeltaNs` 描述活动 clock-event 设备当前支持的 one-shot 编程边界。
+- scheduler 自己打算驱动的下一次 deadline 仍通过 `KE_SYSINFO_SCHEDULER.NextProgrammedDeadline` 查询，而不是塞回 clock-event 设备快照。
+
+### KE_SYSINFO_SCHEDULER_DATA
+
+```c
+typedef struct KE_SYSINFO_SCHEDULER_DATA {
+    BOOL SchedulerEnabled;
+    uint32_t CurrentThreadId;
+    uint32_t IdleThreadId;
+    uint32_t ReadyQueueDepth;
+    uint32_t SleepQueueDepth;
+    uint32_t ActiveThreadCount;
+    uint64_t EarliestWakeDeadline;
+    uint64_t NextProgrammedDeadline;
+    uint64_t ContextSwitchCount;
+    uint64_t PreemptionCount;
+    uint64_t YieldCount;
+    uint64_t SleepWakeCount;
+    uint64_t TotalThreadsCreated;
+} KE_SYSINFO_SCHEDULER_DATA;
+```
+
+说明：
+- `SleepQueueDepth` 表示全局 timeout-backed queue 的深度，覆盖 `KeSleep()` 和带有限 deadline 的 dispatcher wait。
+- `EarliestWakeDeadline` 是 timeout queue 队首最早绝对 deadline；无等待项时为 `0`。
+- `NextProgrammedDeadline` 反映 scheduler 当前打算驱动的下一次绝对 deadline；系统真正 idle 且无 timeout-backed wait 时为 `0`。
+- `SleepWakeCount` 统计 timeout 路径唤醒次数，不把对象 signal 立即满足计入 timeout 唤醒。
+
 ### SYSINFO_UPTIME
 
 ```c
@@ -131,15 +211,18 @@ typedef struct SYSINFO_UPTIME {
 以下接口不属于 `KeQuerySystemInformation`，但与本次内存可观测性变更配套：
 
 - `KeDiagnoseVirtualAddress()`：组合 imported-region、PT query、KVA 分类及各层状态，返回统一的 `KE_VA_DIAGNOSIS`。
-- 页故障蓝屏输出：在 vector-14 下始终先输出寄存器转储、`CR2` 与 `PFERR` 位域；只有进入 dedicated `IST2` 安全诊断上下文后，才追加 `VMM imported / VMM pt / VMM kva` 三层诊断，用于区分 imported 地址、guard page、active fixmap、active heap 或未映射空洞。
+- 页故障蓝屏输出：在 vector-14 下始终先输出寄存器转储、`CR2` 与 `PFERR` 位域；只有进入 dedicated `IST2` 安全诊断上下文后，才追加 `VMM imported / VMM pt / VMM kva` 三层诊断。若某层不可用，输出会显式标示 `unavailable`，而不是猜测成功分类。
 
 ## 启动期联动验证
 
-`InitKernel` 中新增 `RunMemoryObservabilitySelfTest()`，会在启动时验证：
+`InitKernel` 中的 observability self-test 会在启动时验证：
 
 1. `KE_SYSINFO_PHYSICAL_MEM_STATS` 与 `KE_SYSINFO_VMM_OVERVIEW` 可成功查询并建立基线。
-2. 临时 fixmap 映射与 heap 分配会推动 PMM/VMM 计数按预期变化。
-3. 资源释放后计数回归基线，确保无泄漏和账本漂移。
+2. `KE_SYSINFO_ACTIVE_KVA_RANGES` 能以有界快照方式反映 fixmap 与 heap 的真实活跃 range，并在需要时通过 `Truncated` 表达省略。
+3. 临时 fixmap 映射与 heap 分配会推动 PMM/VMM 计数按预期变化。
+4. clock-event 就绪后，`KE_SYSINFO_CLOCK_EVENT` 会暴露 source/vector/frequency 与有效的 `MinDeltaNs/MaxDeltaNs` 编程边界。
+5. scheduler 初始化后，`KE_SYSINFO_SCHEDULER` 会反映 idle 基线：`CurrentThreadId == IdleThreadId == 0`、无 ready/sleep backlog、无 pending deadline。
+6. 资源释放后计数回归基线，确保无泄漏和账本漂移。
 
 ## 使用示例
 

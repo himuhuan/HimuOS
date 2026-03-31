@@ -108,6 +108,8 @@ QueryClockEvent(void *Buffer, size_t BufferSize, size_t *RequiredSize)
 
     info->FreqHz = KeClockEventGetFrequency();
     info->InterruptCount = KeClockEventGetInterruptCount();
+    info->MinDeltaNs = KeClockEventGetMinDeltaNs();
+    info->MaxDeltaNs = KeClockEventGetMaxDeltaNs();
     info->VectorNumber = KeClockEventGetVector();
 
     const char *name = KeClockEventGetSourceName();

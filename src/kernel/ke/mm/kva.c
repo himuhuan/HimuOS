@@ -7,29 +7,31 @@
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
+#include <kernel/ke/critical_section.h>
 #include <kernel/ke/mm.h>
 #include <kernel/hodbg.h>
 #include <libc/string.h>
 
-#define KE_KVA_STACK_ARENA_BASE   HO_ALIGN_UP((KRNL_IST2_STACK_VA + HO_STACK_SIZE + PAGE_4KB), PAGE_2MB)
-#define KE_KVA_STACK_ARENA_SIZE   (32ULL * 1024ULL * 1024ULL)
-#define KE_KVA_HEAP_ARENA_BASE    HO_ALIGN_UP((KE_KVA_STACK_ARENA_BASE + KE_KVA_STACK_ARENA_SIZE), PAGE_2MB)
-#define KE_KVA_HEAP_ARENA_SIZE    (64ULL * 1024ULL * 1024ULL)
-#define KE_KVA_FIXMAP_ARENA_SIZE  (64ULL * PAGE_4KB)
-#define KE_KVA_FIXMAP_ARENA_BASE  (HHDM_BASE_VA - KE_KVA_FIXMAP_ARENA_SIZE)
+#define KE_KVA_STACK_ARENA_BASE           HO_ALIGN_UP((KRNL_IST2_STACK_VA + HO_STACK_SIZE + PAGE_4KB), PAGE_2MB)
+#define KE_KVA_STACK_ARENA_SIZE           (32ULL * 1024ULL * 1024ULL)
+#define KE_KVA_HEAP_ARENA_BASE            HO_ALIGN_UP((KE_KVA_STACK_ARENA_BASE + KE_KVA_STACK_ARENA_SIZE), PAGE_2MB)
+#define KE_KVA_HEAP_ARENA_SIZE            (64ULL * 1024ULL * 1024ULL)
+#define KE_KVA_FIXMAP_ARENA_SIZE          (64ULL * PAGE_4KB)
+#define KE_KVA_FIXMAP_ARENA_BASE          (HHDM_BASE_VA - KE_KVA_FIXMAP_ARENA_SIZE)
 
-#define KE_KVA_STACK_ARENA_PAGES  (KE_KVA_STACK_ARENA_SIZE / PAGE_4KB)
-#define KE_KVA_FIXMAP_ARENA_PAGES (KE_KVA_FIXMAP_ARENA_SIZE / PAGE_4KB)
-#define KE_KVA_HEAP_ARENA_PAGES   (KE_KVA_HEAP_ARENA_SIZE / PAGE_4KB)
+#define KE_KVA_STACK_ARENA_PAGES          (KE_KVA_STACK_ARENA_SIZE / PAGE_4KB)
+#define KE_KVA_FIXMAP_ARENA_PAGES         (KE_KVA_FIXMAP_ARENA_SIZE / PAGE_4KB)
+#define KE_KVA_HEAP_ARENA_PAGES           (KE_KVA_HEAP_ARENA_SIZE / PAGE_4KB)
 
-#define KE_KVA_MAX_RANGES         512U
-#define KE_KVA_PAGE_STATE_FREE    0U
-#define KE_KVA_PAGE_STATE_ALLOC   1U
-#define KE_KVA_PAGE_STATE_GUARD   2U
-#define KE_KVA_DEFAULT_PAGE_ATTRS (PTE_WRITABLE | PTE_GLOBAL | PTE_NO_EXECUTE)
+#define KE_KVA_MAX_RANGES                 512U
+#define KE_KVA_PAGE_STATE_FREE            0U
+#define KE_KVA_PAGE_STATE_ALLOC           1U
+#define KE_KVA_PAGE_STATE_GUARD           2U
+#define KE_KVA_PAGE_STATE_RETIRED         3U
+#define KE_KVA_DEFAULT_PAGE_ATTRS         (PTE_WRITABLE | PTE_GLOBAL | PTE_NO_EXECUTE)
 #define KE_TEMP_MAP_TOKEN_SLOT_BITS       6U
-#define KE_TEMP_MAP_TOKEN_SLOT_MASK       ((1U << KE_TEMP_MAP_TOKEN_SLOT_BITS) - 1U)
-#define KE_TEMP_MAP_TOKEN_GENERATION_MASK 0x03FFFFFFU
+#define KE_TEMP_MAP_TOKEN_SLOT_MASK       ((1ULL << KE_TEMP_MAP_TOKEN_SLOT_BITS) - 1ULL)
+#define KE_TEMP_MAP_TOKEN_GENERATION_MASK ((1ULL << (64U - KE_TEMP_MAP_TOKEN_SLOT_BITS)) - 1ULL)
 
 typedef struct KE_KVA_ARENA_STATE
 {
@@ -46,6 +48,7 @@ typedef struct KE_KVA_RANGE_RECORD
     BOOL OwnsPhysicalBacking;
     KE_KVA_ARENA_TYPE Arena;
     uint32_t RecordId;
+    uint64_t Generation;
     uint64_t BasePageIndex;
     uint64_t TotalPages;
     uint64_t UsablePages;
@@ -58,7 +61,8 @@ static KE_KVA_RANGE_RECORD gKvaRanges[KE_KVA_MAX_RANGES];
 static uint8_t gStackArenaStates[KE_KVA_STACK_ARENA_PAGES];
 static uint8_t gFixmapArenaStates[KE_KVA_FIXMAP_ARENA_PAGES];
 static uint8_t gHeapArenaStates[KE_KVA_HEAP_ARENA_PAGES];
-static uint32_t gFixmapSlotGenerations[KE_KVA_FIXMAP_ARENA_PAGES];
+static uint64_t gFixmapSlotGenerations[KE_KVA_FIXMAP_ARENA_PAGES];
+static uint64_t gKvaRangeGenerationCounter = 1ULL;
 static BOOL gKvaInitialized = FALSE;
 
 static inline KE_KVA_ARENA_STATE *
@@ -75,6 +79,27 @@ KiKvaRecordUsableBase(const KE_KVA_ARENA_STATE *arena, const KE_KVA_RANGE_RECORD
     return arena->BaseAddress + (record->BasePageIndex + record->GuardLowerPages) * PAGE_4KB;
 }
 
+static inline BOOL
+KiKvaFixmapSlotRetired(uint64_t pageIndex)
+{
+    return pageIndex < KE_KVA_FIXMAP_ARENA_PAGES && gFixmapSlotGenerations[pageIndex] >= KE_TEMP_MAP_TOKEN_GENERATION_MASK;
+}
+
+static uint64_t
+KiKvaNextRangeGeneration(void)
+{
+    if (gKvaRangeGenerationCounter == 0)
+        return 0;
+
+    uint64_t generation = gKvaRangeGenerationCounter;
+    if (generation == 0xFFFFFFFFFFFFFFFFULL)
+        gKvaRangeGenerationCounter = 0;
+    else
+        gKvaRangeGenerationCounter++;
+
+    return generation;
+}
+
 static HO_STATUS
 KiKvaFillRangeFromRecord(const KE_KVA_RANGE_RECORD *record, KE_KVA_RANGE *outRange)
 {
@@ -88,12 +113,39 @@ KiKvaFillRangeFromRecord(const KE_KVA_RANGE_RECORD *record, KE_KVA_RANGE *outRan
     memset(outRange, 0, sizeof(*outRange));
     outRange->Arena = record->Arena;
     outRange->RecordId = record->RecordId;
+    outRange->Generation = record->Generation;
     outRange->BaseAddress = arena->BaseAddress + record->BasePageIndex * PAGE_4KB;
     outRange->UsableBase = KiKvaRecordUsableBase(arena, record);
     outRange->TotalPages = record->TotalPages;
     outRange->UsablePages = record->UsablePages;
     outRange->GuardLowerPages = record->GuardLowerPages;
     outRange->GuardUpperPages = record->GuardUpperPages;
+    return EC_SUCCESS;
+}
+
+static HO_STATUS
+KiKvaFillActiveRangeEntry(const KE_KVA_RANGE_RECORD *record, KE_KVA_ACTIVE_RANGE_ENTRY *outEntry)
+{
+    if (!record || !outEntry)
+        return EC_ILLEGAL_ARGUMENT;
+
+    KE_KVA_RANGE range;
+    HO_STATUS status = KiKvaFillRangeFromRecord(record, &range);
+    if (status != EC_SUCCESS)
+        return status;
+
+    memset(outEntry, 0, sizeof(*outEntry));
+    outEntry->Arena = range.Arena;
+    outEntry->RecordId = range.RecordId;
+    outEntry->Generation = range.Generation;
+    outEntry->BaseAddress = range.BaseAddress;
+    outEntry->EndAddressExclusive = range.BaseAddress + range.TotalPages * PAGE_4KB;
+    outEntry->UsableBase = range.UsableBase;
+    outEntry->UsableEndExclusive = range.UsableBase + range.UsablePages * PAGE_4KB;
+    outEntry->TotalPages = range.TotalPages;
+    outEntry->UsablePages = range.UsablePages;
+    outEntry->GuardLowerPages = range.GuardLowerPages;
+    outEntry->GuardUpperPages = range.GuardUpperPages;
     return EC_SUCCESS;
 }
 
@@ -181,15 +233,15 @@ KiKvaLocateArenaByAddress(HO_VIRTUAL_ADDRESS virtAddr,
 }
 
 static HO_STATUS
-KiDecodeTempMapHandle(const KE_TEMP_PHYS_MAP_HANDLE *handle, uint32_t *outSlot, uint32_t *outGeneration)
+KiDecodeTempMapHandle(const KE_TEMP_PHYS_MAP_HANDLE *handle, uint32_t *outSlot, uint64_t *outGeneration)
 {
     if (!handle || !outSlot || !outGeneration)
         return EC_ILLEGAL_ARGUMENT;
     if (handle->Token == 0)
         return EC_INVALID_STATE;
 
-    uint32_t slot = handle->Token & KE_TEMP_MAP_TOKEN_SLOT_MASK;
-    uint32_t generation = handle->Token >> KE_TEMP_MAP_TOKEN_SLOT_BITS;
+    uint32_t slot = (uint32_t)(handle->Token & KE_TEMP_MAP_TOKEN_SLOT_MASK);
+    uint64_t generation = handle->Token >> KE_TEMP_MAP_TOKEN_SLOT_BITS;
     if (slot >= KE_KVA_FIXMAP_ARENA_PAGES || generation == 0 || generation > KE_TEMP_MAP_TOKEN_GENERATION_MASK)
         return EC_ILLEGAL_ARGUMENT;
 
@@ -198,22 +250,20 @@ KiDecodeTempMapHandle(const KE_TEMP_PHYS_MAP_HANDLE *handle, uint32_t *outSlot, 
     return EC_SUCCESS;
 }
 
-static uint32_t
+static uint64_t
 KiNextFixmapSlotGeneration(uint32_t slot)
 {
     if (slot >= KE_KVA_FIXMAP_ARENA_PAGES)
         return 0;
+    if (gFixmapSlotGenerations[slot] >= KE_TEMP_MAP_TOKEN_GENERATION_MASK)
+        return 0;
 
-    uint32_t generation = (gFixmapSlotGenerations[slot] + 1U) & KE_TEMP_MAP_TOKEN_GENERATION_MASK;
-    if (generation == 0)
-        generation = 1U;
-
-    gFixmapSlotGenerations[slot] = generation;
-    return generation;
+    gFixmapSlotGenerations[slot]++;
+    return gFixmapSlotGenerations[slot];
 }
 
-static uint32_t
-KiEncodeTempMapToken(uint32_t slot, uint32_t generation)
+static uint64_t
+KiEncodeTempMapToken(uint32_t slot, uint64_t generation)
 {
     if (slot >= KE_KVA_FIXMAP_ARENA_PAGES)
         return 0;
@@ -228,20 +278,85 @@ KiKvaFindRecordById(const KE_KVA_RANGE *range)
 {
     if (!range || range->RecordId == 0 || range->RecordId > KE_KVA_MAX_RANGES)
         return NULL;
+    if (range->Generation == 0)
+        return NULL;
 
     KE_KVA_RANGE_RECORD *record = &gKvaRanges[range->RecordId - 1];
     if (!record->InUse)
         return NULL;
     if (record->Arena != range->Arena)
         return NULL;
+    if (record->Generation != range->Generation)
+        return NULL;
 
     KE_KVA_ARENA_STATE *arena = KiKvaArenaState(record->Arena);
     if (!arena)
         return NULL;
+    HO_VIRTUAL_ADDRESS baseAddress = arena->BaseAddress + record->BasePageIndex * PAGE_4KB;
+    if (baseAddress != range->BaseAddress)
+        return NULL;
     if (KiKvaRecordUsableBase(arena, record) != range->UsableBase)
         return NULL;
+    if (record->TotalPages != range->TotalPages || record->UsablePages != range->UsablePages ||
+        record->GuardLowerPages != range->GuardLowerPages || record->GuardUpperPages != range->GuardUpperPages)
+    {
+        return NULL;
+    }
 
     return record;
+}
+
+static HO_STATUS
+KiKvaReleaseRecord(KE_KVA_RANGE_RECORD *record, const KE_KVA_ARENA_STATE *arena)
+{
+    if (!record || !arena)
+        return EC_ILLEGAL_ARGUMENT;
+
+    HO_VIRTUAL_ADDRESS usableBase = KiKvaRecordUsableBase(arena, record);
+    BOOL teardownStarted = FALSE;
+    uint8_t releasedPageState = KE_KVA_PAGE_STATE_FREE;
+    if (record->Arena == KE_KVA_ARENA_FIXMAP && record->TotalPages == 1 && KiKvaFixmapSlotRetired(record->BasePageIndex))
+        releasedPageState = KE_KVA_PAGE_STATE_RETIRED;
+
+    for (uint64_t pageIdx = 0; pageIdx < record->UsablePages; ++pageIdx)
+    {
+        HO_VIRTUAL_ADDRESS virtAddr = usableBase + pageIdx * PAGE_4KB;
+        KE_PT_MAPPING mapping;
+        HO_STATUS status = KePtQueryPage(KeGetKernelAddressSpace(), virtAddr, &mapping);
+        if (status != EC_SUCCESS)
+        {
+            if (teardownStarted)
+                HO_KPANIC(status, "KVA teardown failed after partial progress");
+            return status;
+        }
+        if (!mapping.Present)
+            continue;
+        if (mapping.Level != 1)
+        {
+            if (teardownStarted)
+                HO_KPANIC(EC_NOT_SUPPORTED, "KVA teardown hit non-leaf mapping after partial progress");
+            return EC_NOT_SUPPORTED;
+        }
+
+        teardownStarted = TRUE;
+        status = KePtUnmapPage(KeGetKernelAddressSpace(), virtAddr);
+        if (status != EC_SUCCESS)
+            HO_KPANIC(status, "KVA teardown failed after unmapping started");
+
+        if (record->OwnsPhysicalBacking)
+        {
+            status = KePmmFreePages(mapping.PhysicalBase, 1);
+            if (status != EC_SUCCESS)
+                HO_KPANIC(status, "KVA teardown failed after physical free sequence started");
+        }
+    }
+
+    for (uint64_t pageIdx = 0; pageIdx < record->TotalPages; ++pageIdx)
+        arena->PageStates[record->BasePageIndex + pageIdx] = releasedPageState;
+
+    memset(record, 0, sizeof(*record));
+    record->RecordId = (uint32_t)(record - gKvaRanges) + 1;
+    return EC_SUCCESS;
 }
 
 static BOOL
@@ -376,6 +491,7 @@ KeKvaInit(void)
     for (uint32_t idx = 0; idx < KE_KVA_MAX_RANGES; ++idx)
         gKvaRanges[idx].RecordId = idx + 1;
     memset(gFixmapSlotGenerations, 0, sizeof(gFixmapSlotGenerations));
+    gKvaRangeGenerationCounter = 1ULL;
 
     gKvaInitialized = TRUE;
 
@@ -407,9 +523,18 @@ KeKvaAllocRange(KE_KVA_ARENA_TYPE arenaType,
     if (!arena)
         return EC_ILLEGAL_ARGUMENT;
 
-    uint64_t totalPages = guardLowerPages + usablePages + guardUpperPages;
+    if (guardLowerPages > 0xFFFFFFFFFFFFFFFFULL - usablePages)
+        return EC_OUT_OF_RESOURCE;
+    uint64_t totalPages = guardLowerPages + usablePages;
+    if (guardUpperPages > 0xFFFFFFFFFFFFFFFFULL - totalPages)
+        return EC_OUT_OF_RESOURCE;
+    totalPages += guardUpperPages;
     if (totalPages == 0 || totalPages > arena->PageCount)
         return EC_OUT_OF_RESOURCE;
+
+    KE_CRITICAL_SECTION criticalSection = {0};
+    HO_STATUS status = EC_OUT_OF_RESOURCE;
+    KeEnterCriticalSection(&criticalSection);
 
     KE_KVA_RANGE_RECORD *record = NULL;
     for (uint32_t idx = 0; idx < KE_KVA_MAX_RANGES; ++idx)
@@ -421,7 +546,7 @@ KeKvaAllocRange(KE_KVA_ARENA_TYPE arenaType,
         }
     }
     if (!record)
-        return EC_OUT_OF_RESOURCE;
+        goto cleanup;
 
     for (uint64_t basePage = 0; basePage + totalPages <= arena->PageCount; ++basePage)
     {
@@ -437,6 +562,13 @@ KeKvaAllocRange(KE_KVA_ARENA_TYPE arenaType,
         if (!available)
             continue;
 
+        uint64_t generation = KiKvaNextRangeGeneration();
+        if (generation == 0)
+        {
+            status = EC_OUT_OF_RESOURCE;
+            goto cleanup;
+        }
+
         for (uint64_t offset = 0; offset < totalPages; ++offset)
         {
             uint64_t pageIndex = basePage + offset;
@@ -445,20 +577,24 @@ KeKvaAllocRange(KE_KVA_ARENA_TYPE arenaType,
         }
 
         memset(record, 0, sizeof(*record));
-        record->InUse = TRUE;
         record->OwnsPhysicalBacking = ownsPhysicalBacking;
         record->Arena = arenaType;
         record->RecordId = (uint32_t)(record - gKvaRanges) + 1;
+        record->Generation = generation;
         record->BasePageIndex = basePage;
         record->TotalPages = totalPages;
         record->UsablePages = usablePages;
         record->GuardLowerPages = guardLowerPages;
         record->GuardUpperPages = guardUpperPages;
+        record->InUse = TRUE;
 
-        return KiKvaFillRangeFromRecord(record, outRange);
+        status = KiKvaFillRangeFromRecord(record, outRange);
+        goto cleanup;
     }
 
-    return EC_OUT_OF_RESOURCE;
+cleanup:
+    KeLeaveCriticalSection(&criticalSection);
+    return status;
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
@@ -469,14 +605,28 @@ KeKvaMapPage(const KE_KVA_RANGE *range, uint64_t usablePageIndex, HO_PHYSICAL_AD
     if (!range)
         return EC_ILLEGAL_ARGUMENT;
 
+    KE_CRITICAL_SECTION criticalSection = {0};
+    HO_STATUS status = EC_SUCCESS;
+    KeEnterCriticalSection(&criticalSection);
+
     KE_KVA_RANGE_RECORD *record = KiKvaFindRecordById(range);
     if (!record)
-        return EC_INVALID_STATE;
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
     if (usablePageIndex >= record->UsablePages)
-        return EC_ILLEGAL_ARGUMENT;
+    {
+        status = EC_ILLEGAL_ARGUMENT;
+        goto cleanup;
+    }
 
     HO_VIRTUAL_ADDRESS virtAddr = range->UsableBase + usablePageIndex * PAGE_4KB;
-    return KePtMapPage(KeGetKernelAddressSpace(), virtAddr, physAddr, attributes);
+    status = KePtMapPage(KeGetKernelAddressSpace(), virtAddr, physAddr, attributes);
+
+cleanup:
+    KeLeaveCriticalSection(&criticalSection);
+    return status;
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
@@ -487,17 +637,28 @@ KeKvaMapOwnedPages(const KE_KVA_RANGE *range, uint64_t attributes)
     if (!range)
         return EC_ILLEGAL_ARGUMENT;
 
+    KE_CRITICAL_SECTION criticalSection = {0};
+    HO_STATUS status = EC_SUCCESS;
+    uint64_t usablePages = 0;
+
+    KeEnterCriticalSection(&criticalSection);
     KE_KVA_RANGE_RECORD *record = KiKvaFindRecordById(range);
     if (!record || !record->OwnsPhysicalBacking)
-        return EC_INVALID_STATE;
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+    usablePages = record->UsablePages;
+    KeLeaveCriticalSection(&criticalSection);
+    criticalSection.Active = FALSE;
 
-    for (uint64_t pageIdx = 0; pageIdx < record->UsablePages; ++pageIdx)
+    for (uint64_t pageIdx = 0; pageIdx < usablePages; ++pageIdx)
     {
         HO_PHYSICAL_ADDRESS physAddr = 0;
-        HO_STATUS status = KePmmAllocPages(1, NULL, &physAddr);
+        status = KePmmAllocPages(1, NULL, &physAddr);
         if (status != EC_SUCCESS)
         {
-            HO_STATUS cleanupStatus = KeKvaReleaseRange(range->UsableBase);
+            HO_STATUS cleanupStatus = KeKvaReleaseRangeHandle(range);
             if (cleanupStatus != EC_SUCCESS)
                 return cleanupStatus;
             return status;
@@ -507,7 +668,7 @@ KeKvaMapOwnedPages(const KE_KVA_RANGE *range, uint64_t attributes)
         if (status != EC_SUCCESS)
         {
             (void)KePmmFreePages(physAddr, 1);
-            HO_STATUS cleanupStatus = KeKvaReleaseRange(range->UsableBase);
+            HO_STATUS cleanupStatus = KeKvaReleaseRangeHandle(range);
             if (cleanupStatus != EC_SUCCESS)
                 return cleanupStatus;
             return status;
@@ -515,6 +676,43 @@ KeKvaMapOwnedPages(const KE_KVA_RANGE *range, uint64_t attributes)
     }
 
     return EC_SUCCESS;
+
+cleanup:
+    KeLeaveCriticalSection(&criticalSection);
+    return status;
+}
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS
+KeKvaReleaseRangeHandle(const KE_KVA_RANGE *range)
+{
+    if (!gKvaInitialized)
+        return EC_INVALID_STATE;
+    if (!range)
+        return EC_ILLEGAL_ARGUMENT;
+
+    KE_CRITICAL_SECTION criticalSection = {0};
+    HO_STATUS status = EC_SUCCESS;
+    KeEnterCriticalSection(&criticalSection);
+
+    KE_KVA_RANGE_RECORD *record = KiKvaFindRecordById(range);
+    if (!record)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+
+    KE_KVA_ARENA_STATE *arena = KiKvaArenaState(record->Arena);
+    if (!arena)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+
+    status = KiKvaReleaseRecord(record, arena);
+
+cleanup:
+    KeLeaveCriticalSection(&criticalSection);
+    return status;
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
@@ -525,44 +723,29 @@ KeKvaReleaseRange(HO_VIRTUAL_ADDRESS usableBase)
     if (!HO_IS_ALIGNED(usableBase, PAGE_4KB))
         return EC_ILLEGAL_ARGUMENT;
 
+    KE_CRITICAL_SECTION criticalSection = {0};
+    HO_STATUS status = EC_SUCCESS;
+    KeEnterCriticalSection(&criticalSection);
+
     KE_KVA_RANGE_RECORD *record = KiKvaFindRecordByUsableBase(usableBase);
     if (!record)
-        return EC_INVALID_STATE;
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
 
     KE_KVA_ARENA_STATE *arena = KiKvaArenaState(record->Arena);
     if (!arena)
-        return EC_INVALID_STATE;
-
-    for (uint64_t pageIdx = 0; pageIdx < record->UsablePages; ++pageIdx)
     {
-        HO_VIRTUAL_ADDRESS virtAddr = usableBase + pageIdx * PAGE_4KB;
-        KE_PT_MAPPING mapping;
-        HO_STATUS status = KePtQueryPage(KeGetKernelAddressSpace(), virtAddr, &mapping);
-        if (status != EC_SUCCESS)
-            return status;
-        if (!mapping.Present)
-            continue;
-        if (mapping.Level != 1)
-            return EC_NOT_SUPPORTED;
-
-        status = KePtUnmapPage(KeGetKernelAddressSpace(), virtAddr);
-        if (status != EC_SUCCESS)
-            return status;
-
-        if (record->OwnsPhysicalBacking)
-        {
-            status = KePmmFreePages(mapping.PhysicalBase, 1);
-            if (status != EC_SUCCESS)
-                return status;
-        }
+        status = EC_INVALID_STATE;
+        goto cleanup;
     }
 
-    for (uint64_t pageIdx = 0; pageIdx < record->TotalPages; ++pageIdx)
-        arena->PageStates[record->BasePageIndex + pageIdx] = KE_KVA_PAGE_STATE_FREE;
+    status = KiKvaReleaseRecord(record, arena);
 
-    memset(record, 0, sizeof(*record));
-    record->RecordId = (uint32_t)(record - gKvaRanges) + 1;
-    return EC_SUCCESS;
+cleanup:
+    KeLeaveCriticalSection(&criticalSection);
+    return status;
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
@@ -573,11 +756,22 @@ KeKvaQueryRange(HO_VIRTUAL_ADDRESS usableBase, KE_KVA_RANGE *outRange)
     if (!outRange)
         return EC_ILLEGAL_ARGUMENT;
 
+    KE_CRITICAL_SECTION criticalSection = {0};
+    HO_STATUS status = EC_SUCCESS;
+    KeEnterCriticalSection(&criticalSection);
+
     KE_KVA_RANGE_RECORD *record = KiKvaFindRecordByUsableBase(usableBase);
     if (!record)
-        return EC_INVALID_STATE;
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
 
-    return KiKvaFillRangeFromRecord(record, outRange);
+    status = KiKvaFillRangeFromRecord(record, outRange);
+
+cleanup:
+    KeLeaveCriticalSection(&criticalSection);
+    return status;
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
@@ -588,9 +782,16 @@ KeKvaQueryArenaInfo(KE_KVA_ARENA_TYPE arenaType, KE_KVA_ARENA_INFO *outInfo)
     if (!outInfo)
         return EC_ILLEGAL_ARGUMENT;
 
+    KE_CRITICAL_SECTION criticalSection = {0};
+    HO_STATUS status = EC_SUCCESS;
+    KeEnterCriticalSection(&criticalSection);
+
     KE_KVA_ARENA_STATE *arena = KiKvaArenaState(arenaType);
     if (!arena)
-        return EC_ILLEGAL_ARGUMENT;
+    {
+        status = EC_ILLEGAL_ARGUMENT;
+        goto cleanup;
+    }
 
     memset(outInfo, 0, sizeof(*outInfo));
     outInfo->Arena = arenaType;
@@ -601,7 +802,10 @@ KeKvaQueryArenaInfo(KE_KVA_ARENA_TYPE arenaType, KE_KVA_ARENA_INFO *outInfo)
     outInfo->ActiveAllocations = KiKvaCountActiveRanges(arenaType);
     outInfo->OverlapsImportedRegions = KiKvaArenaOverlapsImportedRegions(
         KeGetKernelAddressSpace(), outInfo->BaseAddress, outInfo->EndAddressExclusive);
-    return EC_SUCCESS;
+
+cleanup:
+    KeLeaveCriticalSection(&criticalSection);
+    return status;
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
@@ -612,11 +816,57 @@ KeKvaQueryUsageInfo(KE_KVA_USAGE_INFO *outInfo)
     if (!outInfo)
         return EC_ILLEGAL_ARGUMENT;
 
+    KE_CRITICAL_SECTION criticalSection = {0};
+    KeEnterCriticalSection(&criticalSection);
+
     memset(outInfo, 0, sizeof(*outInfo));
     outInfo->ActiveRangeCount = KiKvaCountAllActiveRanges();
     outInfo->FixmapTotalSlots = gKvaArenas[KE_KVA_ARENA_FIXMAP].PageCount;
     outInfo->FixmapActiveSlots = KiKvaCountActiveRanges(KE_KVA_ARENA_FIXMAP);
+    KeLeaveCriticalSection(&criticalSection);
     return EC_SUCCESS;
+}
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS
+KeKvaQueryActiveRanges(KE_KVA_ACTIVE_RANGE_SNAPSHOT *outSnapshot)
+{
+    if (!gKvaInitialized)
+        return EC_INVALID_STATE;
+    if (!outSnapshot)
+        return EC_ILLEGAL_ARGUMENT;
+
+    KE_CRITICAL_SECTION criticalSection = {0};
+    HO_STATUS status = EC_SUCCESS;
+    KeEnterCriticalSection(&criticalSection);
+
+    memset(outSnapshot, 0, sizeof(*outSnapshot));
+    outSnapshot->TotalActiveRangeCount = KiKvaCountAllActiveRanges();
+
+    uint32_t returned = 0;
+    for (uint32_t idx = 0; idx < KE_KVA_MAX_RANGES; ++idx)
+    {
+        if (!gKvaRanges[idx].InUse)
+            continue;
+
+        if (returned >= KE_KVA_ACTIVE_RANGE_SNAPSHOT_MAX)
+        {
+            outSnapshot->Truncated = TRUE;
+            break;
+        }
+
+        status = KiKvaFillActiveRangeEntry(&gKvaRanges[idx], &outSnapshot->Ranges[returned]);
+        if (status != EC_SUCCESS)
+            goto cleanup;
+
+        returned++;
+    }
+
+    outSnapshot->ReturnedRangeCount = returned;
+    outSnapshot->Truncated = outSnapshot->Truncated || (returned < outSnapshot->TotalActiveRangeCount);
+
+cleanup:
+    KeLeaveCriticalSection(&criticalSection);
+    return status;
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
@@ -627,6 +877,10 @@ KeKvaClassifyAddress(HO_VIRTUAL_ADDRESS virtAddr, KE_KVA_ADDRESS_INFO *outInfo)
     if (!outInfo)
         return EC_ILLEGAL_ARGUMENT;
 
+    KE_CRITICAL_SECTION criticalSection = {0};
+    HO_STATUS status = EC_SUCCESS;
+    KeEnterCriticalSection(&criticalSection);
+
     memset(outInfo, 0, sizeof(*outInfo));
     outInfo->Kind = KE_KVA_ADDRESS_OUTSIDE;
     outInfo->Arena = KE_KVA_ARENA_MAX;
@@ -635,7 +889,7 @@ KeKvaClassifyAddress(HO_VIRTUAL_ADDRESS virtAddr, KE_KVA_ADDRESS_INFO *outInfo)
     KE_KVA_ARENA_STATE *arena = NULL;
     uint64_t pageIndex = 0;
     if (!KiKvaLocateArenaByAddress(virtAddr, &arenaType, &arena, &pageIndex))
-        return EC_SUCCESS;
+        goto cleanup;
 
     outInfo->InKvaArena = TRUE;
     outInfo->Arena = arenaType;
@@ -647,7 +901,7 @@ KeKvaClassifyAddress(HO_VIRTUAL_ADDRESS virtAddr, KE_KVA_ADDRESS_INFO *outInfo)
     if (pageState == KE_KVA_PAGE_STATE_FREE)
     {
         outInfo->Kind = KE_KVA_ADDRESS_FREE_HOLE;
-        return EC_SUCCESS;
+        goto cleanup;
     }
 
     KE_KVA_RANGE_RECORD *record = KiKvaFindRecordByAddress(arenaType, virtAddr);
@@ -665,28 +919,34 @@ KeKvaClassifyAddress(HO_VIRTUAL_ADDRESS virtAddr, KE_KVA_ADDRESS_INFO *outInfo)
         {
             outInfo->Kind = KE_KVA_ADDRESS_UNKNOWN;
         }
-        return EC_INVALID_STATE;
+        status = EC_INVALID_STATE;
+        goto cleanup;
     }
 
-    HO_STATUS status = KiKvaFillRangeFromRecord(record, &outInfo->Range);
+    status = KiKvaFillRangeFromRecord(record, &outInfo->Range);
     if (status != EC_SUCCESS)
-        return status;
+        goto cleanup;
     outInfo->HasRange = TRUE;
 
     if (pageState == KE_KVA_PAGE_STATE_GUARD)
     {
         outInfo->Kind = KE_KVA_ADDRESS_GUARD_PAGE;
-        return EC_SUCCESS;
+        goto cleanup;
     }
 
     if (pageState == KE_KVA_PAGE_STATE_ALLOC)
     {
         outInfo->Kind = KiKvaAddressKindFromArena(arenaType);
-        return outInfo->Kind == KE_KVA_ADDRESS_UNKNOWN ? EC_INVALID_STATE : EC_SUCCESS;
+        status = outInfo->Kind == KE_KVA_ADDRESS_UNKNOWN ? EC_INVALID_STATE : EC_SUCCESS;
+        goto cleanup;
     }
 
     outInfo->Kind = KE_KVA_ADDRESS_UNKNOWN;
-    return EC_INVALID_STATE;
+    status = EC_INVALID_STATE;
+
+cleanup:
+    KeLeaveCriticalSection(&criticalSection);
+    return status;
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
@@ -706,54 +966,111 @@ KeKvaValidateLayout(void)
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
-KeFixmapAcquire(HO_PHYSICAL_ADDRESS physAddr, uint64_t attributes, uint32_t *outSlot, HO_VIRTUAL_ADDRESS *outVirtAddr)
+KeFixmapAcquire(HO_PHYSICAL_ADDRESS physAddr,
+                uint64_t attributes,
+                KE_TEMP_PHYS_MAP_HANDLE *outHandle,
+                HO_VIRTUAL_ADDRESS *outVirtAddr)
 {
     if (!gKvaInitialized)
         return EC_INVALID_STATE;
-    if (!outSlot || !outVirtAddr || !HO_IS_ALIGNED(physAddr, PAGE_4KB))
+    if (!outHandle || !outVirtAddr || !HO_IS_ALIGNED(physAddr, PAGE_4KB))
         return EC_ILLEGAL_ARGUMENT;
 
-    KE_KVA_RANGE range;
-    HO_STATUS status = KeKvaAllocRange(KE_KVA_ARENA_FIXMAP, 1, 0, 0, FALSE, &range);
-    if (status != EC_SUCCESS)
-        return status;
+    outHandle->Token = 0;
+    *outVirtAddr = 0;
 
-    status = KeKvaMapPage(&range, 0, physAddr, attributes);
-    if (status != EC_SUCCESS)
+    KE_CRITICAL_SECTION criticalSection = {0};
+    HO_STATUS status = EC_OUT_OF_RESOURCE;
+    KeEnterCriticalSection(&criticalSection);
+
+    KE_KVA_RANGE_RECORD *record = NULL;
+    uint32_t slot = 0;
+    for (uint32_t idx = 0; idx < KE_KVA_MAX_RANGES; ++idx)
     {
-        HO_STATUS cleanupStatus = KeKvaReleaseRange(range.UsableBase);
-        if (cleanupStatus != EC_SUCCESS)
-            return cleanupStatus;
-        return status;
+        if (!gKvaRanges[idx].InUse)
+        {
+            record = &gKvaRanges[idx];
+            break;
+        }
+    }
+    if (!record)
+        goto cleanup;
+
+    KE_KVA_ARENA_STATE *arena = &gKvaArenas[KE_KVA_ARENA_FIXMAP];
+    for (slot = 0; slot < arena->PageCount; ++slot)
+    {
+        if (arena->PageStates[slot] != KE_KVA_PAGE_STATE_FREE)
+            continue;
+        if (KiKvaFixmapSlotRetired(slot))
+        {
+            arena->PageStates[slot] = KE_KVA_PAGE_STATE_RETIRED;
+            continue;
+        }
+
+        uint64_t generation = KiNextFixmapSlotGeneration(slot);
+        if (generation == 0)
+        {
+            arena->PageStates[slot] = KE_KVA_PAGE_STATE_RETIRED;
+            continue;
+        }
+
+        arena->PageStates[slot] = KE_KVA_PAGE_STATE_ALLOC;
+        memset(record, 0, sizeof(*record));
+        record->OwnsPhysicalBacking = FALSE;
+        record->Arena = KE_KVA_ARENA_FIXMAP;
+        record->RecordId = (uint32_t)(record - gKvaRanges) + 1;
+        record->Generation = generation;
+        record->BasePageIndex = slot;
+        record->TotalPages = 1;
+        record->UsablePages = 1;
+        record->GuardLowerPages = 0;
+        record->GuardUpperPages = 0;
+        record->InUse = TRUE;
+
+        KE_KVA_RANGE range;
+        status = KiKvaFillRangeFromRecord(record, &range);
+        if (status != EC_SUCCESS)
+        {
+            arena->PageStates[slot] = KE_KVA_PAGE_STATE_FREE;
+            memset(record, 0, sizeof(*record));
+            record->RecordId = (uint32_t)(record - gKvaRanges) + 1;
+            goto cleanup;
+        }
+
+        outHandle->Token = KiEncodeTempMapToken(slot, generation);
+        if (outHandle->Token == 0)
+        {
+            arena->PageStates[slot] = KE_KVA_PAGE_STATE_FREE;
+            memset(record, 0, sizeof(*record));
+            record->RecordId = (uint32_t)(record - gKvaRanges) + 1;
+            status = EC_INVALID_STATE;
+            goto cleanup;
+        }
+
+        status = KePtMapPage(KeGetKernelAddressSpace(), range.UsableBase, physAddr, attributes);
+        if (status != EC_SUCCESS)
+        {
+            outHandle->Token = 0;
+            arena->PageStates[slot] = KE_KVA_PAGE_STATE_FREE;
+            memset(record, 0, sizeof(*record));
+            record->RecordId = (uint32_t)(record - gKvaRanges) + 1;
+            goto cleanup;
+        }
+
+        *outVirtAddr = range.UsableBase;
+        status = EC_SUCCESS;
+        goto cleanup;
     }
 
-    *outSlot = (uint32_t)((range.UsableBase - KE_KVA_FIXMAP_ARENA_BASE) / PAGE_4KB);
-    if (KiNextFixmapSlotGeneration(*outSlot) == 0)
-    {
-        HO_STATUS cleanupStatus = KeKvaReleaseRange(range.UsableBase);
-        if (cleanupStatus != EC_SUCCESS)
-            return cleanupStatus;
-        return EC_INVALID_STATE;
-    }
-
-    *outVirtAddr = range.UsableBase;
-    return EC_SUCCESS;
+cleanup:
+    KeLeaveCriticalSection(&criticalSection);
+    return status;
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
-KeFixmapRelease(uint32_t slot)
+KeFixmapRelease(KE_TEMP_PHYS_MAP_HANDLE *handle)
 {
-    if (!gKvaInitialized)
-        return EC_INVALID_STATE;
-    if (slot >= KE_KVA_FIXMAP_ARENA_PAGES)
-        return EC_ILLEGAL_ARGUMENT;
-
-    HO_VIRTUAL_ADDRESS usableBase = KE_KVA_FIXMAP_ARENA_BASE + (uint64_t)slot * PAGE_4KB;
-    KE_KVA_RANGE_RECORD *record = KiKvaFindRecordByUsableBase(usableBase);
-    if (!record || record->Arena != KE_KVA_ARENA_FIXMAP)
-        return EC_INVALID_STATE;
-
-    return KeKvaReleaseRange(usableBase);
+    return KeTempPhysMapRelease(handle);
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
@@ -765,22 +1082,9 @@ KeTempPhysMapAcquire(HO_PHYSICAL_ADDRESS physAddr,
     if (!outHandle || !outVirtAddr || !HO_IS_ALIGNED(physAddr, PAGE_4KB))
         return EC_ILLEGAL_ARGUMENT;
 
-    uint32_t slot = 0;
-    HO_STATUS status = KeFixmapAcquire(physAddr, attributes, &slot, outVirtAddr);
-    if (status != EC_SUCCESS)
-        return status;
-
-    uint32_t generation = gFixmapSlotGenerations[slot];
-    outHandle->Token = KiEncodeTempMapToken(slot, generation);
-    if (outHandle->Token == 0)
-    {
-        HO_STATUS cleanupStatus = KeFixmapRelease(slot);
-        if (cleanupStatus != EC_SUCCESS)
-            return cleanupStatus;
-        return EC_INVALID_STATE;
-    }
-
-    return EC_SUCCESS;
+    outHandle->Token = 0;
+    *outVirtAddr = 0;
+    return KeFixmapAcquire(physAddr, attributes, outHandle, outVirtAddr);
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
@@ -790,19 +1094,29 @@ KeTempPhysMapRelease(KE_TEMP_PHYS_MAP_HANDLE *handle)
         return EC_ILLEGAL_ARGUMENT;
 
     uint32_t slot = 0;
-    uint32_t generation = 0;
+    uint64_t generation = 0;
     HO_STATUS status = KiDecodeTempMapHandle(handle, &slot, &generation);
     if (status != EC_SUCCESS)
         return status;
 
+    KE_CRITICAL_SECTION criticalSection = {0};
+    KeEnterCriticalSection(&criticalSection);
+
     HO_VIRTUAL_ADDRESS usableBase = KE_KVA_FIXMAP_ARENA_BASE + (uint64_t)slot * PAGE_4KB;
     KE_KVA_RANGE_RECORD *record = KiKvaFindRecordByUsableBase(usableBase);
     if (!record || record->Arena != KE_KVA_ARENA_FIXMAP)
+    {
+        KeLeaveCriticalSection(&criticalSection);
         return EC_INVALID_STATE;
+    }
     if (gFixmapSlotGenerations[slot] != generation)
+    {
+        KeLeaveCriticalSection(&criticalSection);
         return EC_INVALID_STATE;
+    }
 
-    status = KeFixmapRelease(slot);
+    status = KiKvaReleaseRecord(record, KiKvaArenaState(record->Arena));
+    KeLeaveCriticalSection(&criticalSection);
     if (status == EC_SUCCESS)
         handle->Token = 0;
     return status;
@@ -867,7 +1181,7 @@ KeKvaSelfTest(void)
     if (!mapping.Present || mapping.Level != 1)
         return EC_INVALID_STATE;
 
-    status = KeKvaReleaseRange(stackRange.UsableBase);
+    status = KeKvaReleaseRangeHandle(&stackRange);
     if (status != EC_SUCCESS)
         return status;
 
@@ -880,8 +1194,8 @@ KeKvaSelfTest(void)
     volatile uint64_t *alias = (volatile uint64_t *)(uint64_t)HHDM_PHYS2VIRT(testPhys);
     *alias = 0x6B56414649584D50ULL;
 
-    uint32_t slotA = 0;
-    uint32_t slotB = 0;
+    KE_TEMP_PHYS_MAP_HANDLE fixHandleA = {0};
+    KE_TEMP_PHYS_MAP_HANDLE fixHandleB = {0};
     HO_VIRTUAL_ADDRESS fixVirtA = 0;
     HO_VIRTUAL_ADDRESS fixVirtB = 0;
     KE_TEMP_PHYS_MAP_HANDLE tempHandleA = {0};
@@ -892,7 +1206,7 @@ KeKvaSelfTest(void)
     HO_VIRTUAL_ADDRESS reusedTempVirt = 0;
     HO_VIRTUAL_ADDRESS heapVirt = 0;
 
-    status = KeFixmapAcquire(testPhys, KE_KVA_DEFAULT_PAGE_ATTRS, &slotA, &fixVirtA);
+    status = KeFixmapAcquire(testPhys, KE_KVA_DEFAULT_PAGE_ATTRS, &fixHandleA, &fixVirtA);
     if (status != EC_SUCCESS)
         goto cleanup_fixmap_phys;
 
@@ -903,12 +1217,12 @@ KeKvaSelfTest(void)
         goto cleanup_fixmap_slot_a;
     }
 
-    status = KeFixmapRelease(slotA);
+    status = KeFixmapRelease(&fixHandleA);
     if (status != EC_SUCCESS)
         goto cleanup_fixmap_phys;
     fixVirtA = 0;
 
-    status = KeFixmapAcquire(testPhys, KE_KVA_DEFAULT_PAGE_ATTRS, &slotB, &fixVirtB);
+    status = KeFixmapAcquire(testPhys, KE_KVA_DEFAULT_PAGE_ATTRS, &fixHandleB, &fixVirtB);
     if (status != EC_SUCCESS)
         goto cleanup_fixmap_phys;
 
@@ -919,7 +1233,7 @@ KeKvaSelfTest(void)
         goto cleanup_fixmap_slot_b;
     }
 
-    status = KeFixmapRelease(slotB);
+    status = KeFixmapRelease(&fixHandleB);
     if (status != EC_SUCCESS)
         goto cleanup_fixmap_phys;
     fixVirtB = 0;
@@ -1005,7 +1319,8 @@ KeKvaSelfTest(void)
         return status;
     testPhys = 0;
 
-    klog(KLOG_LEVEL_INFO, "[KVA] self-test OK: guard pages, fixmap reuse, temp-map ownership, and heap growth verified\n");
+    klog(KLOG_LEVEL_INFO,
+         "[KVA] self-test OK: guard pages, fixmap reuse, temp-map ownership, and heap growth verified\n");
     return EC_SUCCESS;
 
 cleanup_heap:
@@ -1058,7 +1373,7 @@ cleanup_temp_map_a:
 cleanup_fixmap_slot_b:
     if (fixVirtB != 0)
     {
-        HO_STATUS cleanupStatus = KeFixmapRelease(slotB);
+        HO_STATUS cleanupStatus = KeFixmapRelease(&fixHandleB);
         if (cleanupStatus == EC_SUCCESS)
         {
             fixVirtB = 0;
@@ -1066,8 +1381,8 @@ cleanup_fixmap_slot_b:
         else
         {
             klog(KLOG_LEVEL_ERROR,
-                 "[KVA] self-test cleanup preserved PMM page %p because fixmap slot %lu release failed (%s, %p)\n",
-                 (void *)(uint64_t)testPhys, (unsigned long)slotB, KrGetStatusMessage(cleanupStatus), cleanupStatus);
+                 "[KVA] self-test cleanup preserved PMM page %p because fixmap handle B release failed (%s, %p)\n",
+                 (void *)(uint64_t)testPhys, KrGetStatusMessage(cleanupStatus), cleanupStatus);
             if (status == EC_SUCCESS)
                 status = cleanupStatus;
         }
@@ -1075,7 +1390,7 @@ cleanup_fixmap_slot_b:
 cleanup_fixmap_slot_a:
     if (fixVirtA != 0)
     {
-        HO_STATUS cleanupStatus = KeFixmapRelease(slotA);
+        HO_STATUS cleanupStatus = KeFixmapRelease(&fixHandleA);
         if (cleanupStatus == EC_SUCCESS)
         {
             fixVirtA = 0;
@@ -1083,8 +1398,8 @@ cleanup_fixmap_slot_a:
         else
         {
             klog(KLOG_LEVEL_ERROR,
-                 "[KVA] self-test cleanup preserved PMM page %p because fixmap slot %lu release failed (%s, %p)\n",
-                 (void *)(uint64_t)testPhys, (unsigned long)slotA, KrGetStatusMessage(cleanupStatus), cleanupStatus);
+                 "[KVA] self-test cleanup preserved PMM page %p because fixmap handle A release failed (%s, %p)\n",
+                 (void *)(uint64_t)testPhys, KrGetStatusMessage(cleanupStatus), cleanupStatus);
             if (status == EC_SUCCESS)
                 status = cleanupStatus;
         }
@@ -1100,7 +1415,8 @@ cleanup_fixmap_phys:
         }
         else
         {
-            klog(KLOG_LEVEL_ERROR, "[KVA] self-test preserved PMM page %p because a fixmap/temp alias is still active\n",
+            klog(KLOG_LEVEL_ERROR,
+                 "[KVA] self-test preserved PMM page %p because a fixmap/temp alias is still active\n",
                  (void *)(uint64_t)testPhys);
         }
     }

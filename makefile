@@ -38,6 +38,7 @@ HO_DEBUG_BUILD ?= 1
 HO_ENABLE_TIMESTAMP_LOG ?= $(HO_DEBUG_BUILD)
 SUDO ?= sudo
 QEMU_CPU_FLAGS ?= host,+invtsc
+QEMU_DISPLAY ?= gtk
 
 ifeq ($(strip $(SUDO_PASSWORD)),)
 SUDO_RUN := $(SUDO)
@@ -82,7 +83,7 @@ KRN_BUILDROOT := build/kernel$(if $(strip $(BUILD_FLAVOR)),/$(BUILD_FLAVOR),)
 KRN_OBJDIR    := $(KRN_BUILDROOT)/obj
 KRN_BINDIR    := $(KRN_BUILDROOT)/bin
 
-VALID_TEST_MODULES := schedule guard_wait owned_exit irql_wait irql_sleep irql_yield irql_exit pf_imported pf_guard pf_fixmap pf_heap list
+VALID_TEST_MODULES := schedule guard_wait owned_exit irql_wait irql_sleep irql_yield irql_exit pf_imported pf_guard pf_fixmap pf_heap kthread_pool_race list
 TEST_MODULE_GOALS  := $(filter-out test,$(MAKECMDGOALS))
 TEST_MODULE        := $(if $(strip $(TEST_MODULE_GOALS)),$(firstword $(TEST_MODULE_GOALS)),list)
 TEST_BUILD_FLAVOR  := test-$(TEST_MODULE)
@@ -98,14 +99,15 @@ TEST_DEFINE_pf_imported := HO_DEMO_TEST_PF_IMPORTED
 TEST_DEFINE_pf_guard := HO_DEMO_TEST_PF_GUARD
 TEST_DEFINE_pf_fixmap := HO_DEMO_TEST_PF_FIXMAP
 TEST_DEFINE_pf_heap := HO_DEMO_TEST_PF_HEAP
+TEST_DEFINE_kthread_pool_race := HO_DEMO_TEST_KTHREAD_POOL_RACE
 
 ifneq ($(filter test,$(MAKECMDGOALS)),)
 ifneq ($(words $(TEST_MODULE_GOALS)),0)
 ifneq ($(words $(TEST_MODULE_GOALS)),1)
-$(error Usage: make test <module>. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap. Use `make test` or `make test list` to inspect supported modules)
+$(error Usage: make test <module>. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap, kthread_pool_race. Use `make test` or `make test list` to inspect supported modules)
 endif
 ifneq ($(filter $(TEST_MODULE),$(VALID_TEST_MODULES)), $(TEST_MODULE))
-$(error Unknown test module '$(TEST_MODULE)'. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap. Use `make test list` to inspect supported modules)
+$(error Unknown test module '$(TEST_MODULE)'. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap, kthread_pool_race. Use `make test list` to inspect supported modules)
 endif
 endif
 endif
@@ -181,6 +183,7 @@ SRCS_KERNEL_C := \
     src/kernel/demo/irql.c                              \
     src/kernel/demo/mutex.c                             \
     src/kernel/demo/pagefault.c                         \
+	src/kernel/demo/kthread_pool_race.c                 \
     src/kernel/demo/semaphore.c                         \
     src/kernel/demo/thread.c                            \
     src/kernel/init/cpu.c                               \
@@ -304,6 +307,7 @@ run: copy
 		-m 512M \
 		-bios "$(OVMF_CODE)" \
 		-net none \
+		-display $(QEMU_DISPLAY) \
 		-cpu $(QEMU_CPU_FLAGS) \
 		-enable-kvm \
 		-drive file=fat:rw:esp,index=0,format=vvfat \
@@ -323,10 +327,17 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  pf_guard    - page-fault demo: access thread stack guard page"
 	@echo "  pf_fixmap   - page-fault demo: NX execute fault in active fixmap slot"
 	@echo "  pf_heap     - page-fault demo: NX execute fault in heap-backed KVA page"
+	@echo "  kthread_pool_race - regression suite for KTHREAD pool synchronization"
+	@echo "Recommended explicit workflow:"
+	@echo "  make clean"
+	@echo "  bear -- make all BUILD_FLAVOR=test-schedule HO_DEMO_TEST_NAME=schedule HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_SCHEDULE"
+	@echo "  BUILD_FLAVOR=test-schedule HO_DEMO_TEST_NAME=schedule HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_SCHEDULE \\"
+	@echo "      bash scripts/qemu_capture.sh 30 /tmp/himuos-schedule.log"
 	@echo "Usage:"
 	@echo "  make test schedule   # run the scheduler demo suite"
 	@echo "  make test irql_wait  # run a dispatch-guard misuse panic regression"
 	@echo "  make test pf_heap    # run heap-backed page-fault observability demo"
+	@echo "  make test kthread_pool_race # run the KTHREAD pool race regression suite"
 	@echo "  make test            # list available test modules"
 else
 	@echo "Starting test module: $(TEST_MODULE)"
@@ -347,6 +358,7 @@ debug: copy
 		-m 512M \
 		-bios "$(OVMF_CODE)" \
 		-net none \
+		-display $(QEMU_DISPLAY) \
 		-cpu $(QEMU_CPU_FLAGS) \
 		-drive file=fat:rw:esp,index=0,format=vvfat \
 		-serial stdio \

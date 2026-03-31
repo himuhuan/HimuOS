@@ -67,6 +67,7 @@ KeSchedulerInit(void)
     gIdleThread->StackSize = HO_STACK_SIZE;
     gIdleThread->StackGuardBase = 0;
     gIdleThread->StackOwnedByKva = FALSE;
+    memset(&gIdleThread->StackRange, 0, sizeof(gIdleThread->StackRange));
     gIdleThread->Priority = 0;
     gIdleThread->Quantum = 0;
     gIdleThread->OwnedMutexCount = 0;
@@ -322,7 +323,7 @@ KiReapTerminatedThreads(void)
 
         if (thread->StackOwnedByKva)
         {
-            HO_STATUS status = KeKvaReleaseRange(thread->StackBase);
+            HO_STATUS status = KeKvaReleaseRangeHandle(&thread->StackRange);
             if (status != EC_SUCCESS)
             {
                 HO_KPANIC(status, "Failed to release terminated KTHREAD stack");

@@ -83,6 +83,7 @@
 
 - `Arena`
 - `RecordId`
+- `Generation`
 - `BaseAddress`
 - `UsableBase`
 - `TotalPages`
@@ -107,13 +108,14 @@
 - 页数
 - `PageStates`
 
-`PageStates` 是每个 arena 的页粒度真相源。当前实现中每页只有三种状态：
+`PageStates` 是每个 arena 的页粒度真相源。当前实现中每页有四种状态：
 
 - `FREE`
 - `ALLOC`
 - `GUARD`
+- `RETIRED`
 
-这里的 `GUARD` 并不表示“已映射但带保护属性”，而是表示“该页属于已保留 range 的 guard 区，不允许作为可用页再次分配，且通常保持未映射”。
+这里的 `GUARD` 并不表示“已映射但带保护属性”，而是表示“该页属于已保留 range 的 guard 区，不允许作为可用页再次分配，且通常保持未映射”；`RETIRED` 则表示该 fixmap 槽位因 generation 耗尽而永久退出后续分配，但仍保留在 arena 地址空间里供可观测性统计。
 
 ### Range 记录
 
@@ -123,6 +125,7 @@
 - `OwnsPhysicalBacking`
 - `Arena`
 - `RecordId`
+- `Generation`
 - `BasePageIndex`
 - `TotalPages`
 - `UsablePages`
@@ -144,7 +147,7 @@
 
 1. 清零所有 `gKvaRanges` 和各 arena 的 `PageStates`。
 2. 根据预定义常量建立 `stack` / `fixmap` / `heap` 三个 arena 的运行时描述。
-3. 为每个 range record 预先写入稳定的 `RecordId`。
+3. 为每个 range slot 预先写入稳定的 `RecordId`，并在每次重新发布该 slot 时分配新的 `Generation`。
 4. 调用 `KiKvaValidateArena` 校验每个 arena：
    - 不与 imported boot mappings 重叠。
    - 在初始化时要求整段虚拟区间目前均未被映射。
@@ -173,9 +176,9 @@
 
 1. `FREE` 页被挑选出来。
 2. guard 页被标记为 `GUARD`，usable 页被标记为 `ALLOC`。
-3. range record 进入 `InUse`。
+3. range record 在其余字段写完后，以新的 `Generation` 一次性进入 `InUse`。
 4. 可选地，为 usable 页建立 4KB 映射。
-5. 释放时，解除映射并把页状态恢复为 `FREE`。
+5. 释放时，解除映射并把页状态恢复为可再次分配的终态；普通 range 回到 `FREE`，而 generation 已耗尽的 fixmap 槽位进入 `RETIRED`。
 
 ## 核心 API 契约
 
@@ -200,11 +203,15 @@
 
 ### `KeKvaMapOwnedPages`
 
-针对 `OwnsPhysicalBacking = TRUE` 的 range，由 KVA 自行逐页向 PMM 申请物理页并映射。若中途任何一步失败，它会回滚已经建立的部分映射并释放整个 range。这样调用方不需要自己逐页清理半成品状态。
+针对 `OwnsPhysicalBacking = TRUE` 的 range，由 KVA 自行逐页向 PMM 申请物理页并映射。若中途任何一步失败，它会用原始 `KE_KVA_RANGE` handle 回滚已经建立的部分映射并释放整个 range，从而拒绝 stale handle 误拆后来复用到同一 slot/VA 的新 owner。
 
 ### `KeKvaReleaseRange`
 
-按 `usableBase` 查找 range，并回收其全部 usable 页映射；如果该 range 拥有物理 backing，则同时把物理页归还 PMM。最后，它会把 guard 与 usable 页统一恢复为 `FREE`，并清空内部 record。
+按 `usableBase` 查找 range，并回收其全部 usable 页映射；如果该 range 拥有物理 backing，则同时把物理页归还 PMM。最后，它会把 guard 与 usable 页恢复为对应 arena 的可见终态：普通 range 回到 `FREE`，generation 已耗尽的 fixmap 槽位进入 `RETIRED`，然后清空内部 record。
+
+### `KeKvaReleaseRangeHandle`
+
+按完整 `KE_KVA_RANGE` handle 释放原始 live range。它会验证 `RecordId + Generation` 以及区间布局字段，确保 stale handle 不会命中已经复用的 slot；需要严格 ownership 语义的调用方应优先使用这一入口。
 
 ### `KeKvaQueryRange`
 
@@ -234,11 +241,11 @@
 
 这是 fixmap 的专用包装接口：
 
-- `Acquire` 在 fixmap arena 中申请一个单页虚拟槽位。
+- `Acquire` 在 fixmap arena 中申请一个单页虚拟槽位，并返回带 generation 的 opaque handle。
 - 然后把调用方提供的物理页映射到该槽位。
-- `Release` 依据 slot 撤销映射并回收槽位。
+- `Release` 必须匹配当次 handle，才能撤销映射并回收槽位。
 
-它为上层提供的是“稳定 API + 简单 slot 语义”，而不是暴露底层 range record。
+它为上层提供的是“稳定 API + recycle-safe handle 语义”，而不是暴露底层 range record 或可长期缓存的裸 slot。
 
 ### `KeHeapAllocPages` / `KeHeapFreePages`
 
@@ -266,7 +273,7 @@
 2. 调用 `KeKvaMapOwnedPages`，逐页申请物理页并映射到 usable 区间。
 3. 将 `thread->StackBase` 记录为 `UsableBase`，将 `thread->StackGuardBase` 记录为整个 range 的 `BaseAddress`。
 4. 调度器始终使用 `StackBase + StackSize` 作为栈顶。
-5. 线程终止后，IdleThread reaper 调用 `KeKvaReleaseRange(thread->StackBase)` 完成栈的整体回收。
+5. 线程终止后，IdleThread reaper 调用 `KeKvaReleaseRangeHandle(&thread->StackRange)` 完成栈的整体回收。
 
 这个切换的意义在于：
 
@@ -344,10 +351,11 @@
 1. `KeKvaInit` 会打印每个 arena 的虚拟地址范围和页数。
 2. `KeKvaQueryArenaInfo` 提供总体空闲页和活跃分配数量。
 3. `KeKvaQueryUsageInfo` 暴露 `ActiveRangeCount`、`FixmapTotalSlots` 与 `FixmapActiveSlots`，供 `KE_SYSINFO_VMM_OVERVIEW` 汇总。
-4. `KeDiagnoseVirtualAddress` 会把 imported-region、PT 映射状态与 KVA 归属信息组合成统一诊断结构。
-5. 页故障蓝屏输出遵循 base-first 契约：先输出寄存器转储、`CR2`、`PFERR` 位域；只有在 dedicated `IST2` 安全诊断上下文中，才追加 `VMM imported / VMM pt / VMM kva` 三层诊断，区分 imported 区域、guard page、active fixmap、active heap 或未映射 hole。
-6. 线程创建日志会直接输出线程栈 usable base 与 guard base。
-7. 线程回收路径在释放 KVA 栈失败时直接触发 panic，避免 silent corruption。
+4. `KeKvaQueryActiveRanges` 额外提供一个固定容量、显式 `Truncated` 的活跃 range 快照；实现会在复制快照时串行化 `gKvaRanges` 的发布/回收元数据，并返回 `RecordId + 64-bit Generation` 来标识当前这一次 live 实例，让平台代码可以用稳定的 arena 和虚拟区间语义观察当前 stack / fixmap / heap-backed range，而不需要直接碰 allocator 内部表。
+5. `KeDiagnoseVirtualAddress` 会把 imported-region、PT 映射状态与 KVA 归属信息组合成统一诊断结构。
+6. 页故障蓝屏输出遵循 base-first 契约：先输出寄存器转储、`CR2`、`PFERR` 位域；只有在 dedicated `IST2` 安全诊断上下文中，才追加 `VMM imported / VMM pt / VMM kva` 三层诊断。若某层当前不可用，会显式报告 `unavailable`，而不是伪造成功分类。
+7. 线程创建日志会直接输出线程栈 usable base 与 guard base。
+8. 线程回收路径在释放 KVA 栈失败时直接触发 panic，避免 silent corruption。
 
 这说明 `KE_KVA` 当前被视为内核关键基础设施，而不是“尽力而为”的辅助模块。
 

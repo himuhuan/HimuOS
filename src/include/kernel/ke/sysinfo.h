@@ -12,6 +12,7 @@
 #include <_hobase.h>
 #include <arch/amd64/pm.h>
 #include <arch/arch.h>
+#include <kernel/ke/mm.h>
 
 // ─────────────────────────────────────────────────────────────
 // Information Class Enumeration
@@ -34,6 +35,7 @@ typedef enum KE_SYSINFO_CLASS
     KE_SYSINFO_CLOCK_EVENT = 12,
     KE_SYSINFO_SCHEDULER = 13,
     KE_SYSINFO_VMM_OVERVIEW = 14,
+    KE_SYSINFO_ACTIVE_KVA_RANGES = 15,
     KE_SYSINFO_MAX
 } KE_SYSINFO_CLASS;
 
@@ -95,6 +97,31 @@ typedef struct SYSINFO_VMM_OVERVIEW
     uint64_t FixmapActiveSlots;
 } SYSINFO_VMM_OVERVIEW;
 
+#define SYSINFO_ACTIVE_KVA_RANGE_MAX 16U
+
+typedef struct SYSINFO_ACTIVE_KVA_RANGE
+{
+    KE_KVA_ARENA_TYPE Arena;
+    uint32_t RecordId;
+    uint64_t Generation;
+    HO_VIRTUAL_ADDRESS BaseAddress;
+    HO_VIRTUAL_ADDRESS EndAddressExclusive;
+    HO_VIRTUAL_ADDRESS UsableBase;
+    HO_VIRTUAL_ADDRESS UsableEndExclusive;
+    uint64_t TotalPages;
+    uint64_t UsablePages;
+    uint64_t GuardLowerPages;
+    uint64_t GuardUpperPages;
+} SYSINFO_ACTIVE_KVA_RANGE;
+
+typedef struct SYSINFO_ACTIVE_KVA_RANGES
+{
+    uint64_t TotalActiveRangeCount;
+    uint32_t ReturnedRangeCount;
+    BOOL Truncated;
+    SYSINFO_ACTIVE_KVA_RANGE Ranges[SYSINFO_ACTIVE_KVA_RANGE_MAX];
+} SYSINFO_ACTIVE_KVA_RANGES;
+
 // KE_SYSINFO_GDT
 typedef struct SYSINFO_GDT
 {
@@ -143,6 +170,8 @@ typedef struct SYSINFO_CLOCK_EVENT
     BOOL Ready;
     uint64_t FreqHz;
     uint64_t InterruptCount;
+    uint64_t MinDeltaNs;
+    uint64_t MaxDeltaNs;
     uint8_t VectorNumber;
     char SourceName[SYSINFO_TIME_SOURCE_NAME_LEN];
 } SYSINFO_CLOCK_EVENT;
