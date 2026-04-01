@@ -63,6 +63,7 @@ struct KE_CONSOLE_DEVICE; // Opaque
 typedef struct KE_CONSOLE_DEVICE KE_CONSOLE_DEVICE;
 
 HO_PUBLIC_API HO_STATUS ConsoleInit(KE_VIDEO_DRIVER *driver, BITMAP_FONT_INFO *font);
+HO_PUBLIC_API HO_STATUS ConsolePromoteAllocatorStorage(void);
 
 HO_PUBLIC_API KE_CONSOLE_DEVICE *ConsoleGetGlobalDevice(void);
 

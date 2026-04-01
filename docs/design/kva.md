@@ -352,8 +352,8 @@
 2. `KeKvaQueryArenaInfo` 提供总体空闲页和活跃分配数量。
 3. `KeKvaQueryUsageInfo` 暴露 `ActiveRangeCount`、`FixmapTotalSlots` 与 `FixmapActiveSlots`，供 `KE_SYSINFO_VMM_OVERVIEW` 汇总。
 4. `KeKvaQueryActiveRanges` 额外提供一个固定容量、显式 `Truncated` 的活跃 range 快照；实现会在复制快照时串行化 `gKvaRanges` 的发布/回收元数据，并返回 `RecordId + 64-bit Generation` 来标识当前这一次 live 实例，让平台代码可以用稳定的 arena 和虚拟区间语义观察当前 stack / fixmap / heap-backed range，而不需要直接碰 allocator 内部表。
-5. `KeDiagnoseVirtualAddress` 会把 imported-region、PT 映射状态与 KVA 归属信息组合成统一诊断结构。
-6. 页故障蓝屏输出遵循 base-first 契约：先输出寄存器转储、`CR2`、`PFERR` 位域；只有在 dedicated `IST2` 安全诊断上下文中，才追加 `VMM imported / VMM pt / VMM kva` 三层诊断。若某层当前不可用，会显式报告 `unavailable`，而不是伪造成功分类。
+5. `KeDiagnoseVirtualAddress` 会把 imported-region、PT 映射状态与 KVA 归属信息组合成统一诊断结构；当地址已确认为 `active-heap` 时，可追加 allocator-owned 解释层。
+6. 页故障蓝屏输出遵循 base-first 契约：先输出寄存器转储、`CR2`、`PFERR` 位域；只有在 dedicated `IST2` 安全诊断上下文中，才追加 `VMM imported / VMM pt / VMM kva`，并在 `active-heap` 情况下追加 `VMM allocator`。若某层当前不可用，会显式报告 `unavailable`，而不是伪造成功分类。
 7. 线程创建日志会直接输出线程栈 usable base 与 guard base。
 8. 线程回收路径在释放 KVA 栈失败时直接触发 panic，避免 silent corruption。
 
@@ -392,8 +392,8 @@
 5. **Arena 尺寸是静态常量**
    stack / heap / fixmap 的容量目前不是运行期可扩展资源池，而是为第一阶段冻结语义而保留的固定窗口。
 
-6. **Heap 仍然只是页级 foundation**
-   `KeHeapAllocPages` 只是“页式虚拟区间 + backing 页”的封装，尚未提供更高层对象分配策略、碎片整理或多种大小类别管理。
+6. **Heap 仍然是页级 foundation**
+   `KeHeapAllocPages` 仍负责“页式虚拟区间 + backing 页”封装；对象粒度策略已在上层 `KeAllocator` 中实现 first-pass 能力，后续仍可继续演进缓存/策略细节。
 
 后续演进方向可以自然落在以下路径上：
 

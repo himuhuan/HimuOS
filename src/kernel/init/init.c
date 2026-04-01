@@ -334,6 +334,131 @@ RunClockEventObservabilitySelfTest(void)
 }
 
 static HO_STATUS
+RunAllocatorObservabilitySelfTest(void)
+{
+    KE_ALLOCATOR_STATS baseStats = {0};
+    KE_ALLOCATOR_STATS liveStats = {0};
+    KE_ALLOCATOR_STATS finalStats = {0};
+
+    void *smallAlloc = NULL;
+    void *zeroAlloc = NULL;
+    void *largeAlloc = NULL;
+    BOOL hasSmall = FALSE;
+    BOOL hasZero = FALSE;
+    BOOL hasLarge = FALSE;
+
+    HO_STATUS status = KeAllocatorQueryStats(&baseStats);
+    if (status != EC_SUCCESS)
+        return status;
+
+    smallAlloc = kmalloc(24);
+    if (!smallAlloc)
+    {
+        status = EC_OUT_OF_RESOURCE;
+        goto cleanup;
+    }
+    hasSmall = TRUE;
+
+    zeroAlloc = kzalloc(64);
+    if (!zeroAlloc)
+    {
+        status = EC_OUT_OF_RESOURCE;
+        goto cleanup;
+    }
+    hasZero = TRUE;
+
+    largeAlloc = kmalloc(5000);
+    if (!largeAlloc)
+    {
+        status = EC_OUT_OF_RESOURCE;
+        goto cleanup;
+    }
+    hasLarge = TRUE;
+
+    for (uint32_t i = 0; i < 64; ++i)
+    {
+        if (((uint8_t *)zeroAlloc)[i] != 0)
+        {
+            status = EC_INVALID_STATE;
+            goto cleanup;
+        }
+    }
+
+    ((uint8_t *)smallAlloc)[0] = 0x5A;
+    ((uint8_t *)largeAlloc)[0] = 0xA5;
+    ((uint8_t *)largeAlloc)[4096] = 0x11;
+    ((uint8_t *)largeAlloc)[4999] = 0x22;
+
+    status = KeAllocatorQueryStats(&liveStats);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+
+    if (liveStats.LiveAllocationCount != baseStats.LiveAllocationCount + 3 ||
+        liveStats.LiveSmallAllocationCount != baseStats.LiveSmallAllocationCount + 2 ||
+        liveStats.LiveLargeAllocationCount != baseStats.LiveLargeAllocationCount + 1 ||
+        liveStats.BackingBytes < baseStats.BackingBytes + PAGE_4KB ||
+        liveStats.FailedAllocationCount != baseStats.FailedAllocationCount)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+
+    KE_VA_DIAGNOSIS smallDiagnosis = {0};
+    status = KeDiagnoseVirtualAddress(NULL, (HO_VIRTUAL_ADDRESS)(uint64_t)smallAlloc + 8, &smallDiagnosis);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+    if (smallDiagnosis.KvaStatus != EC_SUCCESS || smallDiagnosis.KvaInfo.Kind != KE_KVA_ADDRESS_ACTIVE_HEAP ||
+        smallDiagnosis.AllocatorStatus != EC_SUCCESS || !smallDiagnosis.AllocatorInfo.LiveAllocation ||
+        smallDiagnosis.AllocatorInfo.Kind != KE_ALLOCATOR_ALLOCATION_SMALL ||
+        smallDiagnosis.AllocatorInfo.AllocationBase != (HO_VIRTUAL_ADDRESS)(uint64_t)smallAlloc)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+
+    KE_VA_DIAGNOSIS largeDiagnosis = {0};
+    status = KeDiagnoseVirtualAddress(NULL, (HO_VIRTUAL_ADDRESS)(uint64_t)largeAlloc + 128, &largeDiagnosis);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+    if (largeDiagnosis.KvaStatus != EC_SUCCESS || largeDiagnosis.KvaInfo.Kind != KE_KVA_ADDRESS_ACTIVE_HEAP ||
+        largeDiagnosis.AllocatorStatus != EC_SUCCESS || !largeDiagnosis.AllocatorInfo.LiveAllocation ||
+        largeDiagnosis.AllocatorInfo.Kind != KE_ALLOCATOR_ALLOCATION_LARGE ||
+        largeDiagnosis.AllocatorInfo.AllocationBase != (HO_VIRTUAL_ADDRESS)(uint64_t)largeAlloc ||
+        largeDiagnosis.AllocatorInfo.RequestedSize < 5000)
+    {
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+
+cleanup:
+    if (hasLarge)
+        kfree(largeAlloc);
+    if (hasZero)
+        kfree(zeroAlloc);
+    if (hasSmall)
+        kfree(smallAlloc);
+
+    if (status != EC_SUCCESS)
+        return status;
+
+    status = KeAllocatorQueryStats(&finalStats);
+    if (status != EC_SUCCESS)
+        return status;
+
+    if (finalStats.LiveAllocationCount != baseStats.LiveAllocationCount ||
+        finalStats.LiveSmallAllocationCount != baseStats.LiveSmallAllocationCount ||
+        finalStats.LiveLargeAllocationCount != baseStats.LiveLargeAllocationCount ||
+        finalStats.BackingBytes != baseStats.BackingBytes ||
+        finalStats.FailedAllocationCount != baseStats.FailedAllocationCount)
+    {
+        return EC_INVALID_STATE;
+    }
+
+    klog(KLOG_LEVEL_INFO, "[OBS] allocator observability self-test OK: small/large/stats/diagnosis contracts verified\n");
+    return EC_SUCCESS;
+}
+
+static HO_STATUS
 RunSchedulerObservabilitySelfTest(void)
 {
     KE_SYSINFO_SCHEDULER_DATA info = {0};
@@ -420,6 +545,26 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
     if (initStatus != EC_SUCCESS)
     {
         HO_KPANIC(initStatus, "Memory observability self-test failed");
+    }
+
+    // Bring up allocator layer after KVA+observability are ready and before
+    // pool-backed subsystems, while keeping KePool's existing semantics.
+    initStatus = KeAllocatorInit();
+    if (initStatus != EC_SUCCESS)
+    {
+        HO_KPANIC(initStatus, "Failed to initialize allocator layer");
+    }
+
+    initStatus = RunAllocatorObservabilitySelfTest();
+    if (initStatus != EC_SUCCESS)
+    {
+        HO_KPANIC(initStatus, "Allocator observability self-test failed");
+    }
+
+    initStatus = ConsolePromoteAllocatorStorage();
+    if (initStatus != EC_SUCCESS)
+    {
+        HO_KPANIC(initStatus, "Failed to promote console mux storage onto allocator layer");
     }
 
     // Smoke test: single page alloc/write/read/free

@@ -120,6 +120,21 @@ GetKvaAddressKindName(KE_KVA_ADDRESS_KIND kind)
     }
 }
 
+static const char *
+GetAllocatorAllocationKindName(KE_ALLOCATOR_ALLOCATION_KIND kind)
+{
+    switch (kind)
+    {
+    case KE_ALLOCATOR_ALLOCATION_SMALL:
+        return "small";
+    case KE_ALLOCATOR_ALLOCATION_LARGE:
+        return "large";
+    case KE_ALLOCATOR_ALLOCATION_UNKNOWN:
+    default:
+        return "unknown";
+    }
+}
+
 static void
 PrintImportedRegionDiagnosis(const KE_VA_DIAGNOSIS *diagnosis)
 {
@@ -205,6 +220,38 @@ PrintKvaDiagnosis(const KE_VA_DIAGNOSIS *diagnosis)
 }
 
 static void
+PrintAllocatorDiagnosis(const KE_VA_DIAGNOSIS *diagnosis)
+{
+    if (diagnosis->KvaStatus != EC_SUCCESS || diagnosis->KvaInfo.Kind != KE_KVA_ADDRESS_ACTIVE_HEAP)
+        return;
+
+    if (diagnosis->AllocatorStatus != EC_SUCCESS)
+    {
+        kprintf("VMM allocator: unavailable (%s, %p)\n", KrGetStatusMessage(diagnosis->AllocatorStatus),
+                diagnosis->AllocatorStatus);
+        return;
+    }
+
+    if (!diagnosis->AllocatorInfo.LiveAllocation)
+    {
+        kprintf("VMM allocator: unknown (active heap but no live allocation metadata)\n");
+        return;
+    }
+
+    const char *kindName = GetAllocatorAllocationKindName(diagnosis->AllocatorInfo.Kind);
+    kprintf("VMM allocator: kind=%s req=%lu alloc=[%p - %p) backing=[%p pages=%lu]\n", kindName,
+            diagnosis->AllocatorInfo.RequestedSize, (void *)(uint64_t)diagnosis->AllocatorInfo.AllocationBase,
+            (void *)(uint64_t)diagnosis->AllocatorInfo.AllocationEndExclusive,
+            (void *)(uint64_t)diagnosis->AllocatorInfo.BackingUsableBase, diagnosis->AllocatorInfo.BackingUsablePages);
+
+    if (diagnosis->AllocatorInfo.Kind == KE_ALLOCATOR_ALLOCATION_SMALL)
+    {
+        kprintf("VMM allocator: small classIndex=%u classSize=%u\n", diagnosis->AllocatorInfo.SmallClassIndex,
+                diagnosis->AllocatorInfo.SmallClassSize);
+    }
+}
+
+static void
 PrintPageFaultDiagnosis(const HO_CPU_EXCEPTION_CONTEXT *context)
 {
     if (!context || !context->HasFaultAddress)
@@ -227,6 +274,7 @@ PrintPageFaultDiagnosis(const HO_CPU_EXCEPTION_CONTEXT *context)
     PrintImportedRegionDiagnosis(&diagnosis);
     PrintPtDiagnosis(&diagnosis);
     PrintKvaDiagnosis(&diagnosis);
+    PrintAllocatorDiagnosis(&diagnosis);
 }
 
 static void

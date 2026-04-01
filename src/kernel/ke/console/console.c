@@ -318,6 +318,19 @@ ConsoleInit(KE_VIDEO_DRIVER *driver, BITMAP_FONT_INFO *font)
     return EC_SUCCESS;
 }
 
+HO_PUBLIC_API HO_STATUS
+ConsolePromoteAllocatorStorage(void)
+{
+    if (!gConsoleInitialized)
+        return EC_INVALID_STATE;
+
+#if __HO_DEBUG_BUILD__
+    return KeMuxConSinkPromoteToAllocator(&gMuxConsoleSink);
+#else
+    return EC_SUCCESS;
+#endif
+}
+
 HO_PUBLIC_API KE_CONSOLE_DEVICE *
 ConsoleGetGlobalDevice(void)
 {

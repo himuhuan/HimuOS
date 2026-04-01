@@ -13,7 +13,7 @@
 
 ## 2. 总体分层
 
-当前内存子系统可以理解为五层：
+当前内存子系统可以理解为六层：
 
 1. `KE_PMM`
    负责物理页生命周期，只管理“哪一页可分配、已分配、已保留”。
@@ -23,16 +23,18 @@
    负责对 imported root 做最小页表操作：查询、4KB 建图、拆图、改保护。
 4. `KE_KVA`
    负责管理内核虚拟地址 arena，并把“保留虚拟地址”和“提交物理页”拆开。
-5. 上层 consumers
-   包括线程栈、临时物理页映射、页级 heap、`KePool`、KTHREAD 池，以及 sysinfo/故障诊断路径。
+5. 页级 heap foundation
+   由 `KeHeapAllocPages()/KeHeapFreePages()` 提供稳定页级内核地址与 backing 生命周期。
+6. 上层 allocator / consumers
+   包括 `KeAllocator`、`KePool`、KTHREAD 池，以及 sysinfo/故障诊断路径。
 
 职责边界也很明确：
 
 - PMM 不负责虚拟地址。
 - imported root/PT HAL 不负责分配策略。
 - KVA 不负责多地址空间切换，也不负责用户态。
-- heap 目前是页级接口，还不是通用小对象分配器。
-- 对象池只复用页级 heap，不反向管理页表。
+- heap foundation 维持页级接口；对象粒度由上层 `KeAllocator`（以及固定池 `KePool`）承担。
+- 对象池只复用页级 heap foundation，不反向管理页表。
 
 ## 3. 启动顺序与依赖关系
 
@@ -44,7 +46,10 @@
 4. `KeKvaInit()`
 5. `KeKvaSelfTest()`
 6. `RunMemoryObservabilitySelfTest()`
-7. 依赖 heap foundation 的子系统初始化，例如 `KeKThreadPoolInit()`
+7. `KeAllocatorInit()`
+8. `RunAllocatorObservabilitySelfTest()`
+9. `ConsolePromoteAllocatorStorage()`
+10. 依赖 heap foundation 的 pool-backed 子系统初始化，例如 `KeKThreadPoolInit()`
 
 这个顺序表达了当前实现的核心约束：
 
@@ -52,7 +57,9 @@
 - imported address space 必须先建立，因为 KVA 需要验证自己的 arena 没有和已有导入映射重叠。
 - PT HAL 先自检，确保最基本的页表读写能力可靠。
 - KVA 再初始化，因为它依赖 imported root 的“空洞”来安放 stack/fixmap/heap arena。
-- `KePool` 和 KTHREAD 池最后启动，因为 pool 扩容已经改为走 `KeHeapAllocPages()`。
+- allocator 层在 KVA 与 memory observability 自检之后初始化，并先通过 allocator observability 自检。
+- `ConsolePromoteAllocatorStorage()` 只在 allocator 自检成功后触发，避免早期 console 路径提前依赖 allocator。
+- `KePool` 和 KTHREAD 池最后启动，因为 pool 扩容已经改为走 `KeHeapAllocPages()`，且本次保持与 `KeAllocator` 并列共存。
 
 ## 4. PMM：Ke 层的物理页资源边界
 
@@ -247,9 +254,9 @@ KVA 的内部账本由两部分组成：
 - slot 可复用，但 release 必须匹配当次 generation。
 - runtime RAM 的临时访问优先走 temp map，而不是直接长期持有 HHDM 别名。
 
-## 9. 页级 heap：KVA 管 VA，PMM 提供 backing
+## 9. 页级 heap foundation 与 KeAllocator 分层
 
-heap 目前还不是 malloc/slab，而是页级接口：
+`KeHeapAllocPages/KeHeapFreePages` 仍是页级 foundation：
 
 - `KeHeapAllocPages(pageCount, &virt)`
 - `KeHeapFreePages(baseVirt)`
@@ -260,7 +267,15 @@ heap 目前还不是 malloc/slab，而是页级接口：
 2. 用 `KeKvaMapOwnedPages()` 逐页向 PMM 申请物理页并映射。
 3. 释放时通过 `KeKvaReleaseRange()` 逆向 unmap 并释放物理页。
 
-因此，heap 的真正价值在于提供“稳定的、非 HHDM 的、KVA 管理的页级内核地址”，而不是对象粒度接口。
+因此，heap 的价值是提供“稳定的、非 HHDM 的、KVA 管理的页级内核地址”。
+对象粒度分配由其上的 `KeAllocator` 承担，而不是由 heap foundation 直接承担。
+
+当前 `KeAllocator` 行为：
+
+1. small 请求走固定 size class（`16/32/64/128/256/512/1024`）。
+2. large 请求走 dedicated heap-backed range fallback。
+3. `KeAllocatorQueryStats()` 提供 live allocation / small / large / backing / failure 快照。
+4. `KePool` 与 `KeAllocator` 并列共存，`KePool` 固定大小对象池语义不变。
 
 ## 10. KePool 与 KTHREAD：上层 consumer 的接入方式
 
@@ -328,6 +343,15 @@ heap 目前还不是 malloc/slab，而是页级接口：
 
 这让本分支第一次具备了“账本能否闭环”的自动验证。
 
+`RunAllocatorObservabilitySelfTest()` 进一步补齐 allocator 层闭环：
+
+1. 以 `KeAllocatorQueryStats()` 建立 allocator 基线。
+2. 执行 small/large 分配与 `kzalloc` 零初始化校验。
+3. 校验 `LiveAllocationCount/LiveSmallAllocationCount/LiveLargeAllocationCount/BackingBytes/FailedAllocationCount` 的联动变化。
+4. 通过 `KeDiagnoseVirtualAddress()` 验证 active-heap 地址可追加 allocator-owned meaning。
+5. 释放后要求 allocator 统计回到基线。
+6. 仅在该自检成功后，执行 `ConsolePromoteAllocatorStorage()`，把 `MUX_CONSOLE_SINK` 从 bootstrap 存储提升到 allocator-owned storage。
+
 ### 11.3 页故障演示与安全诊断异常信息
 
 分支还增加了 page-fault demo：
@@ -337,7 +361,7 @@ heap 目前还不是 malloc/slab，而是页级接口：
 - fixmap page fault
 - heap page fault
 
-同时，CPU exception 输出现在遵循“两阶段”契约：始终先输出寄存器转储、`CR2` 与 `PFERR` 位信息；当 vector 14 已切换到 dedicated `IST2` page-fault diagnostic stack 后，再追加 `VMM imported / VMM pt / VMM kva` 三层 richer diagnosis，用于区分 imported 地址、guard page、active fixmap、active heap 或未映射 hole。若某层尚未可用，则明确打印 `unavailable` 状态而不是猜测成功结果。这些信息既服务 bring-up，也作为 page-fault regression profile 的稳定诊断锚点。
+同时，CPU exception 输出现在遵循“两阶段”契约：始终先输出寄存器转储、`CR2` 与 `PFERR` 位信息；当 vector 14 已切换到 dedicated `IST2` page-fault diagnostic stack 后，再追加 `VMM imported / VMM pt / VMM kva`。若地址已被判定为 `active-heap`，再追加 `VMM allocator` 解释层，用于关联 live small/large allocation metadata。若某层尚未可用，则明确打印 `unavailable` 状态而不是猜测成功结果。这些信息既服务 bring-up，也作为 page-fault regression profile 的稳定诊断锚点。
 
 ## 12. 当前实现边界
 
@@ -351,10 +375,10 @@ heap 目前还不是 malloc/slab，而是页级接口：
    当前只有活动 CR3 上的本地 `invlpg`。
 4. KVA arena 是静态布局
    没有动态扩展、回收压缩或更复杂的 address-space policy。
-5. heap 只有页级接口
-   还不是通用堆，也没有分层 allocator/slab。
-6. pool 只回收 slot，不回收 backing page
-   当前没有 shrink/destroy。
+5. allocator 仍是 first-pass 形态
+   已有 small size class + large fallback + 基础诊断/统计，但还没有 per-CPU fast path、cache/magazine、更细粒度策略调优。
+6. pool 只回收 slot，不回收 backing page（除 destroy）
+   日常 `KePoolFree()` 不做按页 shrink，完整页回收由 `KePoolDestroy()` 统一处理。
 7. 仍允许部分 HHDM 访问存在
    尤其是在 boot 交接、页表 helper、自检和某些诊断路径中，HHDM 仍是受控逃生口。
 
@@ -365,7 +389,7 @@ heap 目前还不是 malloc/slab，而是页级接口：
 1. 在 imported root 之上引入真正的 address-space 对象生命周期。
 2. 支持 large page 识别之外的拆分、重映射和更细粒度保护。
 3. 为 KVA 引入更丰富的区间管理策略，而不只是一维 first-fit。
-4. 在 heap 之上再构建通用 kernel heap / slab 分配器。
+4. 在现有 `KeAllocator` 基础上继续演进更完整的 kernel heap / slab / cache 策略。
 5. 将当前单 CPU 的 safe page-fault diagnostic IST 扩展为 SMP / per-CPU 友好的异常栈模型。
 6. 在 SMP 阶段补齐跨核同步和 TLB shootdown。
 
@@ -373,6 +397,6 @@ heap 目前还不是 malloc/slab，而是页级接口：
 
 `feature/vmm-subsystem` 的核心成果，不是简单“新增几个内存 API”，而是把 HimuOS `Ke` 层的内存路径重组为一条清晰链路：
 
-`Boot memory map -> PMM -> imported kernel address space -> PT HAL -> KVA -> fixmap/heap/pool/thread stack -> sysinfo/self-test`
+`Boot memory map -> PMM -> imported kernel address space -> PT HAL -> KVA -> page-backed heap foundation -> KeAllocator / KePool / KTHREAD stack -> sysinfo/self-test`
 
 到这一步，HimuOS 已经具备了一个可解释、可观测、可继续扩展的内核内存骨架。后续无论是做更完整的 VMM、kernel heap，还是把异常诊断与用户态内存模型接上，都会明显比之前“PMM + HHDM 直用”的阶段更稳。
