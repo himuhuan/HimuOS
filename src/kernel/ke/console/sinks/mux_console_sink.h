@@ -17,9 +17,13 @@
 HO_INTERNAL_STRUCT typedef struct
 {
     KE_CONSOLE_SINK Base;
-    KE_CONSOLE_SINK *Sinks[MAX_MUX_SINKS];
+    KE_CONSOLE_SINK *BootstrapSinks[MAX_MUX_SINKS];
+    KE_CONSOLE_SINK **Sinks;
+    size_t SinkCapacity;
     size_t SinkCount;
+    BOOL UsesAllocatorStorage;
 } MUX_CONSOLE_SINK;
 
 HO_KERNEL_API HO_STATUS KeMuxConSinkInit(MUX_CONSOLE_SINK *muxSink);
 HO_KERNEL_API HO_STATUS KeMuxConSinkAddSink(MUX_CONSOLE_SINK *muxSink, KE_CONSOLE_SINK *sink);
+HO_KERNEL_API HO_STATUS KeMuxConSinkPromoteToAllocator(MUX_CONSOLE_SINK *muxSink);

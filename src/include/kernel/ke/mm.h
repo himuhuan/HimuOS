@@ -156,6 +156,26 @@ typedef struct KE_KVA_ADDRESS_INFO
     KE_KVA_RANGE Range;
 } KE_KVA_ADDRESS_INFO;
 
+typedef enum KE_ALLOCATOR_ALLOCATION_KIND
+{
+    KE_ALLOCATOR_ALLOCATION_UNKNOWN = 0,
+    KE_ALLOCATOR_ALLOCATION_SMALL,
+    KE_ALLOCATOR_ALLOCATION_LARGE,
+} KE_ALLOCATOR_ALLOCATION_KIND;
+
+typedef struct KE_ALLOCATOR_ADDRESS_INFO
+{
+    BOOL LiveAllocation;
+    KE_ALLOCATOR_ALLOCATION_KIND Kind;
+    HO_VIRTUAL_ADDRESS AllocationBase;
+    HO_VIRTUAL_ADDRESS AllocationEndExclusive;
+    uint64_t RequestedSize;
+    HO_VIRTUAL_ADDRESS BackingUsableBase;
+    uint64_t BackingUsablePages;
+    uint32_t SmallClassIndex;
+    uint32_t SmallClassSize;
+} KE_ALLOCATOR_ADDRESS_INFO;
+
 typedef struct KE_VA_DIAGNOSIS
 {
     HO_VIRTUAL_ADDRESS VirtualAddress;
@@ -166,7 +186,18 @@ typedef struct KE_VA_DIAGNOSIS
     KE_PT_MAPPING PtMapping;
     HO_STATUS KvaStatus;
     KE_KVA_ADDRESS_INFO KvaInfo;
+    HO_STATUS AllocatorStatus;
+    KE_ALLOCATOR_ADDRESS_INFO AllocatorInfo;
 } KE_VA_DIAGNOSIS;
+
+typedef struct KE_ALLOCATOR_STATS
+{
+    uint64_t LiveAllocationCount;
+    uint64_t LiveSmallAllocationCount;
+    uint64_t LiveLargeAllocationCount;
+    uint64_t BackingBytes;
+    uint64_t FailedAllocationCount;
+} KE_ALLOCATOR_STATS;
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS KePmmInitFromBootMemoryMap(struct BOOT_CAPSULE *capsule);
 
@@ -366,3 +397,46 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS KeHeapAllocPages(uint64_t pageCount, HO_VIR
  * Release a previous KeHeapAllocPages() allocation by its usable base address.
  */
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeHeapFreePages(HO_VIRTUAL_ADDRESS baseVirt);
+
+/**
+ * Initialize the kernel allocator layer on top of the heap foundation.
+ *
+ * Phase-one bootstrap only publishes allocator initialization state and a
+ * stable accounting query surface. Allocation internals are introduced in a
+ * later phase.
+ */
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeAllocatorInit(void);
+
+/**
+ * Query allocator accounting snapshot.
+ *
+ * Returns EC_INVALID_STATE before KeAllocatorInit() has succeeded.
+ */
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeAllocatorQueryStats(KE_ALLOCATOR_STATS *outStats);
+
+/**
+ * Diagnose allocator-owned meaning for a virtual address.
+ *
+ * The caller should use this as an appended interpretation layer after KVA
+ * classification has already established that the address is in active heap
+ * backing.
+ */
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeAllocatorDiagnoseAddress(HO_VIRTUAL_ADDRESS virtAddr,
+                                                                KE_ALLOCATOR_ADDRESS_INFO *outInfo);
+
+/**
+ * Allocate a kernel-owned object buffer from allocator-managed storage.
+ */
+HO_KERNEL_API void *kmalloc(size_t size);
+
+/**
+ * Allocate a zeroed kernel-owned object buffer from allocator-managed storage.
+ */
+HO_KERNEL_API void *kzalloc(size_t size);
+
+/**
+ * Free a previous allocator allocation.
+ *
+ * Passing NULL is always a no-op.
+ */
+HO_KERNEL_API void kfree(void *ptr);

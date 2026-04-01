@@ -40,7 +40,7 @@ HO_STATUS HO_KERNEL_API KeQuerySystemInformation(
 | `KE_SYSINFO_SYSTEM_VERSION` | SYSINFO_SYSTEM_VERSION | 系统版本信息 |
 | `KE_SYSINFO_CLOCK_EVENT` | SYSINFO_CLOCK_EVENT | 当前时钟事件设备状态 |
 | `KE_SYSINFO_SCHEDULER` | KE_SYSINFO_SCHEDULER_DATA | 调度器状态快照 |
-| `KE_SYSINFO_VMM_OVERVIEW` | SYSINFO_VMM_OVERVIEW | VMM 总览（imported/KVA/fixmap） |
+| `KE_SYSINFO_VMM_OVERVIEW` | SYSINFO_VMM_OVERVIEW | VMM 总览（imported/KVA/fixmap/heap） |
 | `KE_SYSINFO_ACTIVE_KVA_RANGES` | SYSINFO_ACTIVE_KVA_RANGES | 活跃 KVA range 的有界快照 |
 
 ## 返回结构体
@@ -211,7 +211,7 @@ typedef struct SYSINFO_UPTIME {
 以下接口不属于 `KeQuerySystemInformation`，但与本次内存可观测性变更配套：
 
 - `KeDiagnoseVirtualAddress()`：组合 imported-region、PT query、KVA 分类及各层状态，返回统一的 `KE_VA_DIAGNOSIS`。
-- 页故障蓝屏输出：在 vector-14 下始终先输出寄存器转储、`CR2` 与 `PFERR` 位域；只有进入 dedicated `IST2` 安全诊断上下文后，才追加 `VMM imported / VMM pt / VMM kva` 三层诊断。若某层不可用，输出会显式标示 `unavailable`，而不是猜测成功分类。
+- 页故障蓝屏输出：在 vector-14 下始终先输出寄存器转储、`CR2` 与 `PFERR` 位域；只有进入 dedicated `IST2` 安全诊断上下文后，才追加 `VMM imported / VMM pt / VMM kva`。若地址已被 KVA 判定为 `active-heap`，再追加 `VMM allocator` 解释层。若某层不可用，输出会显式标示 `unavailable`，而不是猜测成功分类。
 
 ## 启动期联动验证
 
@@ -220,9 +220,11 @@ typedef struct SYSINFO_UPTIME {
 1. `KE_SYSINFO_PHYSICAL_MEM_STATS` 与 `KE_SYSINFO_VMM_OVERVIEW` 可成功查询并建立基线。
 2. `KE_SYSINFO_ACTIVE_KVA_RANGES` 能以有界快照方式反映 fixmap 与 heap 的真实活跃 range，并在需要时通过 `Truncated` 表达省略。
 3. 临时 fixmap 映射与 heap 分配会推动 PMM/VMM 计数按预期变化。
-4. clock-event 就绪后，`KE_SYSINFO_CLOCK_EVENT` 会暴露 source/vector/frequency 与有效的 `MinDeltaNs/MaxDeltaNs` 编程边界。
-5. scheduler 初始化后，`KE_SYSINFO_SCHEDULER` 会反映 idle 基线：`CurrentThreadId == IdleThreadId == 0`、无 ready/sleep backlog、无 pending deadline。
-6. 资源释放后计数回归基线，确保无泄漏和账本漂移。
+4. allocator 自检会覆盖 small/large 分配、`kzalloc` 零初始化、统计变化、allocator-aware diagnosis 与释放后回基线。
+5. allocator 自检通过后，`ConsolePromoteAllocatorStorage()` 才会把 mux sink 列表提升到 allocator-owned storage。
+6. clock-event 就绪后，`KE_SYSINFO_CLOCK_EVENT` 会暴露 source/vector/frequency 与有效的 `MinDeltaNs/MaxDeltaNs` 编程边界。
+7. scheduler 初始化后，`KE_SYSINFO_SCHEDULER` 会反映 idle 基线：`CurrentThreadId == IdleThreadId == 0`、无 ready/sleep backlog、无 pending deadline。
+8. 所有联动验证完成后，关键计数回归基线，确保无泄漏和账本漂移。
 
 ## 使用示例
 

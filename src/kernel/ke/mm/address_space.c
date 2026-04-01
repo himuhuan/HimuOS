@@ -435,6 +435,7 @@ KeDiagnoseVirtualAddress(const KE_KERNEL_ADDRESS_SPACE *space, HO_VIRTUAL_ADDRES
     outDiagnosis->ImportedStatus = EC_INVALID_STATE;
     outDiagnosis->PtStatus = EC_INVALID_STATE;
     outDiagnosis->KvaStatus = EC_INVALID_STATE;
+    outDiagnosis->AllocatorStatus = EC_INVALID_STATE;
 
     const KE_KERNEL_ADDRESS_SPACE *effectiveSpace = space;
     if (!effectiveSpace)
@@ -449,6 +450,10 @@ KeDiagnoseVirtualAddress(const KE_KERNEL_ADDRESS_SPACE *space, HO_VIRTUAL_ADDRES
     }
 
     outDiagnosis->KvaStatus = KeKvaClassifyAddress(virtAddr, &outDiagnosis->KvaInfo);
+    if (outDiagnosis->KvaStatus == EC_SUCCESS && outDiagnosis->KvaInfo.Kind == KE_KVA_ADDRESS_ACTIVE_HEAP)
+    {
+        outDiagnosis->AllocatorStatus = KeAllocatorDiagnoseAddress(virtAddr, &outDiagnosis->AllocatorInfo);
+    }
     return EC_SUCCESS;
 }
 
