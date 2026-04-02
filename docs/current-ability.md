@@ -64,6 +64,8 @@
 
 这里的用户态能力只指独立 `user_hello` profile 下的最小执行路径与 raw syscall 入口，不应外推为完整进程地址空间、正式系统调用子系统或 Ex 层对象模型。
 
+更具体地说，当前 `user_hello` 只是一条 bootstrap/staging 性质的脚手架测试路径，用来验证“最小用户页映射 -> 首次进入 Ring 3 -> raw syscall -> 线程终止/回收”这条最小证据链。现阶段共享 imported root 仍保留 boot 阶段遗留的低 2GB identity mapping，因此 bootstrap 固定用户窗口需要显式避开该区域；这属于当前 bring-up 模型的临时约束，不代表长期用户虚拟地址布局合同。后续引入真实 ELF 加载器与正式用户地址空间时，系统预期会为用户态重建或派生独立页表根，并以干净的 low-half 布局替代当前 fixed bootstrap window，因此这条 staging 限制与长期目标并不冲突。
+
 它已经不只是“能启动的内核骨架”，而是具备以下连续能力链：
 
 1. UEFI Loader 把内核与启动环境交给内核
