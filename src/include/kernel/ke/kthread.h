@@ -15,6 +15,7 @@
 #include <kernel/ke/pool.h>
 #include <kernel/ke/irql.h>
 #include <kernel/ke/dispatcher.h>
+#include <kernel/ke/event.h>
 
 // ─────────────────────────────────────────────────────────────
 // Thread entry point
@@ -34,6 +35,19 @@ typedef enum KTHREAD_STATE
     KTHREAD_STATE_BLOCKED,
     KTHREAD_STATE_TERMINATED
 } KTHREAD_STATE;
+
+typedef enum KTHREAD_TERMINATION_MODE
+{
+    KTHREAD_TERMINATION_MODE_DETACHED = 0,
+    KTHREAD_TERMINATION_MODE_JOINABLE
+} KTHREAD_TERMINATION_MODE;
+
+typedef enum KTHREAD_TERMINATION_CLAIM_STATE
+{
+    KTHREAD_TERMINATION_CLAIM_STATE_UNCLAIMED = 0,
+    KTHREAD_TERMINATION_CLAIM_STATE_JOIN_IN_PROGRESS,
+    KTHREAD_TERMINATION_CLAIM_STATE_CONSUMED
+} KTHREAD_TERMINATION_CLAIM_STATE;
 
 // ─────────────────────────────────────────────────────────────
 // Context switch structure (callee-saved registers only)
@@ -75,6 +89,9 @@ typedef struct KTHREAD
     KE_IRQL_STATE IrqlState;
 
     KWAIT_BLOCK WaitBlock; // Embedded wait record for unified wait model
+    KEVENT TerminationCompletion;
+    KTHREAD_TERMINATION_MODE TerminationMode;
+    KTHREAD_TERMINATION_CLAIM_STATE TerminationClaimState;
 
     LINKED_LIST_TAG ReadyLink; // Ready queue / terminated list intrusive node
 

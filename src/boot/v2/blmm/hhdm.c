@@ -66,8 +66,8 @@ MapFullHhdmFromMemoryMap(HOB_BALLOC *allocator,
         status = BootMappingManifestRecord(capsule, &record);
         if (EFI_ERROR(status))
         {
-            LOG_ERROR("Failed to record HHDM manifest entry at descriptor=%u type=%u phys=%p: %k\r\n", idx,
-                      desc->Type, (void *)(UINTN)mapPhysStart, status);
+            LOG_ERROR("Failed to record HHDM manifest entry at descriptor=%u type=%u phys=%p: %k\r\n", idx, desc->Type,
+                      (void *)(UINTN)mapPhysStart, status);
             return status;
         }
 

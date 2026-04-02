@@ -62,11 +62,14 @@ typedef struct KE_SYSINFO_SCHEDULER_DATA
 HO_KERNEL_API HO_STATUS KeSchedulerInit(void);
 
 HO_KERNEL_API HO_STATUS KeThreadCreate(KTHREAD **outThread, KTHREAD_ENTRY entryPoint, void *arg);
+HO_KERNEL_API HO_STATUS KeThreadCreateJoinable(KTHREAD **outThread, KTHREAD_ENTRY entryPoint, void *arg);
 HO_KERNEL_API HO_STATUS KeThreadStart(KTHREAD *thread);
 
 HO_KERNEL_API void KeYield(void);
 HO_KERNEL_API void KeSleep(uint64_t durationNs);
 HO_KERNEL_API HO_NORETURN void KeThreadExit(void);
+HO_KERNEL_API HO_STATUS KeThreadJoin(KTHREAD *thread, uint64_t timeoutNs);
+HO_KERNEL_API HO_STATUS KeThreadDetach(KTHREAD *thread);
 
 /**
  * @brief Wait for a single dispatcher object to become signaled.

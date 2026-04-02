@@ -12,12 +12,12 @@
 #include <kernel/hodbg.h>
 #include <libc/string.h>
 
-#define KE_ALLOC_SMALL_CLASS_COUNT      7U
-#define KE_ALLOC_LARGE_RECORD_CAPACITY  128U
-#define KE_ALLOC_SMALL_PAGE_MAGIC       0x414C534DU /* "ALSM" */
-#define KE_ALLOC_SMALL_PAGE_RETIRED     0x414C5352U /* "ALSR" */
-#define KE_ALLOC_SLOT_STATE_FREE        0xA110C0DEU
-#define KE_ALLOC_SLOT_STATE_ALLOCATED   0xA110CA7EU
+#define KE_ALLOC_SMALL_CLASS_COUNT     7U
+#define KE_ALLOC_LARGE_RECORD_CAPACITY 128U
+#define KE_ALLOC_SMALL_PAGE_MAGIC      0x414C534DU /* "ALSM" */
+#define KE_ALLOC_SMALL_PAGE_RETIRED    0x414C5352U /* "ALSR" */
+#define KE_ALLOC_SLOT_STATE_FREE       0xA110C0DEU
+#define KE_ALLOC_SLOT_STATE_ALLOCATED  0xA110CA7EU
 
 typedef struct KE_ALLOC_SMALL_PAGE KE_ALLOC_SMALL_PAGE;
 
@@ -475,7 +475,8 @@ KiAllocatorDiagnoseLargeLocked(HO_VIRTUAL_ADDRESS virtAddr, KE_ALLOCATOR_ADDRESS
         if (!record->InUse)
             continue;
 
-        HO_VIRTUAL_ADDRESS allocationEnd = KiAllocatorEndFromLength(record->UserPointer, (uint64_t)record->RequestedSize);
+        HO_VIRTUAL_ADDRESS allocationEnd =
+            KiAllocatorEndFromLength(record->UserPointer, (uint64_t)record->RequestedSize);
         if (virtAddr < record->UserPointer || virtAddr >= allocationEnd)
             continue;
 

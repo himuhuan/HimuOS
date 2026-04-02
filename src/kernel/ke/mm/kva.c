@@ -82,7 +82,8 @@ KiKvaRecordUsableBase(const KE_KVA_ARENA_STATE *arena, const KE_KVA_RANGE_RECORD
 static inline BOOL
 KiKvaFixmapSlotRetired(uint64_t pageIndex)
 {
-    return pageIndex < KE_KVA_FIXMAP_ARENA_PAGES && gFixmapSlotGenerations[pageIndex] >= KE_TEMP_MAP_TOKEN_GENERATION_MASK;
+    return pageIndex < KE_KVA_FIXMAP_ARENA_PAGES &&
+           gFixmapSlotGenerations[pageIndex] >= KE_TEMP_MAP_TOKEN_GENERATION_MASK;
 }
 
 static uint64_t
@@ -315,7 +316,8 @@ KiKvaReleaseRecord(KE_KVA_RANGE_RECORD *record, const KE_KVA_ARENA_STATE *arena)
     HO_VIRTUAL_ADDRESS usableBase = KiKvaRecordUsableBase(arena, record);
     BOOL teardownStarted = FALSE;
     uint8_t releasedPageState = KE_KVA_PAGE_STATE_FREE;
-    if (record->Arena == KE_KVA_ARENA_FIXMAP && record->TotalPages == 1 && KiKvaFixmapSlotRetired(record->BasePageIndex))
+    if (record->Arena == KE_KVA_ARENA_FIXMAP && record->TotalPages == 1 &&
+        KiKvaFixmapSlotRetired(record->BasePageIndex))
         releasedPageState = KE_KVA_PAGE_STATE_RETIRED;
 
     for (uint64_t pageIdx = 0; pageIdx < record->UsablePages; ++pageIdx)

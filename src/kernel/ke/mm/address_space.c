@@ -425,7 +425,9 @@ KePtQueryPage(const KE_KERNEL_ADDRESS_SPACE *space, HO_VIRTUAL_ADDRESS virtAddr,
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
-KeDiagnoseVirtualAddress(const KE_KERNEL_ADDRESS_SPACE *space, HO_VIRTUAL_ADDRESS virtAddr, KE_VA_DIAGNOSIS *outDiagnosis)
+KeDiagnoseVirtualAddress(const KE_KERNEL_ADDRESS_SPACE *space,
+                         HO_VIRTUAL_ADDRESS virtAddr,
+                         KE_VA_DIAGNOSIS *outDiagnosis)
 {
     if (!outDiagnosis)
         return EC_ILLEGAL_ARGUMENT;
@@ -446,7 +448,8 @@ KeDiagnoseVirtualAddress(const KE_KERNEL_ADDRESS_SPACE *space, HO_VIRTUAL_ADDRES
         outDiagnosis->ImportedRegion = KeFindImportedRegion(effectiveSpace, virtAddr);
         outDiagnosis->ImportedRegionMatched = outDiagnosis->ImportedRegion != NULL;
         outDiagnosis->ImportedStatus = EC_SUCCESS;
-        outDiagnosis->PtStatus = KePtQueryPage(effectiveSpace, HO_ALIGN_DOWN(virtAddr, PAGE_4KB), &outDiagnosis->PtMapping);
+        outDiagnosis->PtStatus =
+            KePtQueryPage(effectiveSpace, HO_ALIGN_DOWN(virtAddr, PAGE_4KB), &outDiagnosis->PtMapping);
     }
 
     outDiagnosis->KvaStatus = KeKvaClassifyAddress(virtAddr, &outDiagnosis->KvaInfo);

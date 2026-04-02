@@ -45,18 +45,30 @@ KiAllocateThreadId(void)
     return threadId;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Pool init
-// ─────────────────────────────────────────────────────────────
-
-HO_KERNEL_API HO_STATUS
-KeKThreadPoolInit(void)
+static void
+KiInitializeThreadWaitBlock(KTHREAD *thread)
 {
-    return KePoolInit(&gKThreadPool, sizeof(KTHREAD), MAX_KTHREADS, "KTHREAD");
+    thread->WaitBlock.Dispatcher = NULL;
+    LinkedListInit(&thread->WaitBlock.WaitListLink);
+    LinkedListInit(&thread->WaitBlock.TimeoutLink);
+    thread->WaitBlock.DeadlineNs = 0;
+    thread->WaitBlock.CompletionStatus = EC_SUCCESS;
+    thread->WaitBlock.Completed = FALSE;
 }
 
-HO_KERNEL_API HO_STATUS
-KeThreadCreate(KTHREAD **outThread, KTHREAD_ENTRY entryPoint, void *arg)
+static void
+KiInitializeThreadTerminationMetadata(KTHREAD *thread, KTHREAD_TERMINATION_MODE terminationMode)
+{
+    KeInitializeEvent(&thread->TerminationCompletion, FALSE);
+    thread->TerminationMode = terminationMode;
+    thread->TerminationClaimState = KTHREAD_TERMINATION_CLAIM_STATE_UNCLAIMED;
+}
+
+static HO_STATUS
+KiThreadCreateInternal(KTHREAD **outThread,
+                       KTHREAD_ENTRY entryPoint,
+                       void *arg,
+                       KTHREAD_TERMINATION_MODE terminationMode)
 {
     if (!outThread || !entryPoint)
         return EC_ILLEGAL_ARGUMENT;
@@ -111,14 +123,8 @@ KeThreadCreate(KTHREAD **outThread, KTHREAD_ENTRY entryPoint, void *arg)
     thread->OwnedMutexCount = 0;
     KeInitializeIrqlState(&thread->IrqlState);
 
-    // Initialize embedded wait block
-    thread->WaitBlock.Dispatcher = NULL;
-    LinkedListInit(&thread->WaitBlock.WaitListLink);
-    LinkedListInit(&thread->WaitBlock.TimeoutLink);
-    thread->WaitBlock.DeadlineNs = 0;
-    thread->WaitBlock.CompletionStatus = EC_SUCCESS;
-    thread->WaitBlock.Completed = FALSE;
-
+    KiInitializeThreadWaitBlock(thread);
+    KiInitializeThreadTerminationMetadata(thread, terminationMode);
     LinkedListInit(&thread->ReadyLink);
 
     thread->EntryPoint = entryPoint;
@@ -130,4 +136,26 @@ KeThreadCreate(KTHREAD **outThread, KTHREAD_ENTRY entryPoint, void *arg)
     klog(KLOG_LEVEL_INFO, "[SCHED] Thread %u created (entry=%p stack=%p guard=%p)\n", thread->ThreadId,
          (void *)entryPoint, (void *)thread->StackBase, (void *)thread->StackGuardBase);
     return EC_SUCCESS;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Pool init
+// ─────────────────────────────────────────────────────────────
+
+HO_KERNEL_API HO_STATUS
+KeKThreadPoolInit(void)
+{
+    return KePoolInit(&gKThreadPool, sizeof(KTHREAD), MAX_KTHREADS, "KTHREAD");
+}
+
+HO_KERNEL_API HO_STATUS
+KeThreadCreate(KTHREAD **outThread, KTHREAD_ENTRY entryPoint, void *arg)
+{
+    return KiThreadCreateInternal(outThread, entryPoint, arg, KTHREAD_TERMINATION_MODE_DETACHED);
+}
+
+HO_KERNEL_API HO_STATUS
+KeThreadCreateJoinable(KTHREAD **outThread, KTHREAD_ENTRY entryPoint, void *arg)
+{
+    return KiThreadCreateInternal(outThread, entryPoint, arg, KTHREAD_TERMINATION_MODE_JOINABLE);
 }

@@ -454,7 +454,8 @@ cleanup:
         return EC_INVALID_STATE;
     }
 
-    klog(KLOG_LEVEL_INFO, "[OBS] allocator observability self-test OK: small/large/stats/diagnosis contracts verified\n");
+    klog(KLOG_LEVEL_INFO,
+         "[OBS] allocator observability self-test OK: small/large/stats/diagnosis contracts verified\n");
     return EC_SUCCESS;
 }
 

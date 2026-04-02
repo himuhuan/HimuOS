@@ -1,6 +1,6 @@
 #include "blmm_internal.h"
 
-#define MIN_MEMMAP_PAGES 3 // 12KB for memory map at least
+#define MIN_MEMMAP_PAGES                 3 // 12KB for memory map at least
 
 #define BOOT_MAPPING_FIXED_ENTRY_BUDGET  10U
 #define BOOT_MAPPING_EXTRA_SLACK_ENTRIES 8U
@@ -118,8 +118,10 @@ BootMappingManifestRecord(BOOT_CAPSULE *capsule, const BOOT_MAPPING_RECORD_PARAM
         return EFI_INVALID_PARAMETER;
 
     BOOT_MAPPING_MANIFEST_HEADER *manifest = BootGetMappingManifest(capsule);
-    if (!manifest || manifest->Magic != BOOT_MAPPING_MANIFEST_MAGIC || manifest->Version != BOOT_MAPPING_MANIFEST_VERSION ||
-        manifest->EntrySize != sizeof(BOOT_MAPPING_MANIFEST_ENTRY) || manifest->HeaderSize != BootMappingManifestHeaderSize())
+    if (!manifest || manifest->Magic != BOOT_MAPPING_MANIFEST_MAGIC ||
+        manifest->Version != BOOT_MAPPING_MANIFEST_VERSION ||
+        manifest->EntrySize != sizeof(BOOT_MAPPING_MANIFEST_ENTRY) ||
+        manifest->HeaderSize != BootMappingManifestHeaderSize())
         return EFI_INVALID_PARAMETER;
 
     if (manifest->EntryCount >= manifest->EntryCapacity)
@@ -233,7 +235,8 @@ DumpBootMappingManifestSummary(const BOOT_CAPSULE *capsule)
         }
     }
 
-    LOG_INFO("Boot Mapping Manifest: phys=%p size=%u used=%u entries=%u/%u (identity=%u hhdm=%u boot=%u kernel=%u acpi=%u mmio=%u)\r\n",
+    LOG_INFO("Boot Mapping Manifest: phys=%p size=%u used=%u entries=%u/%u (identity=%u hhdm=%u boot=%u kernel=%u "
+             "acpi=%u mmio=%u)\r\n",
              (void *)(UINTN)capsule->ManifestPhys, (UINT64)manifest->TotalSize,
              (UINT64)BootMappingManifestUsedSize(manifest), (UINT64)manifest->EntryCount,
              (UINT64)manifest->EntryCapacity, (UINT64)identityCount, (UINT64)hhdmCount, (UINT64)bootCount,
