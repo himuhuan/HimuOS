@@ -22,7 +22,7 @@
 
 ## 当前已支持的功能
 
-整体上，HimuOS 当前已经是一个**以 Ke 层为主的教学原型系统**：启动、内存、时间、控制台、中断、调度、同步、诊断、回归 profile 都已经具备明确实现。
+整体上，HimuOS 当前已经是一个**以 Ke 层为主、并带有一条 bootstrap-only 最小用户态切片的教学原型系统**：启动、内存、时间、控制台、中断、调度、同步、诊断、回归 profile 都已经具备明确实现；另外，独立 `user_hello` profile 已打通最小 Ring 3 bring-up 与 raw syscall 证据链，但这还不能等同于完整用户态子系统。
 
 | 能力域 | 结论 | 主要依据 |
 | --- | --- | --- |
@@ -44,6 +44,8 @@
 | 固定大小对象池 | 已有 | `src/kernel/ke/mm/pool.c`、`src/include/kernel/ke/pool.h`，OpenSpec `kernel-object-pool` |
 | 系统信息查询（sysinfo） | 已有 | `src/kernel/ke/sysinfo/sysinfo.c`、`src/include/kernel/ke/sysinfo.h`，已支持 CPU、页表、内存、GDT/TSS/IDT、时间、scheduler、VMM 等查询 |
 | 内核线程（KTHREAD） | 已有 | `src/kernel/ke/thread/kthread.c`、`src/include/kernel/ke/kthread.h`，支持创建 joinable / detached 线程 |
+| bootstrap-only 最小用户态执行路径 | 已有 | `src/kernel/demo/user_hello.c`、`src/kernel/ke/user_bootstrap.c`、`src/arch/amd64/user_bootstrap.asm`、`src/kernel/ke/thread/scheduler/scheduler.c` 已打通独立 `user_hello` profile 下的 staging 用户映射、首次进入 Ring 3 与回到内核的最小闭环 |
+| 最小 raw syscall 入口 | 已有 | `src/include/kernel/ke/user_bootstrap.h`、`src/kernel/ke/user_bootstrap_syscall.c`、`src/kernel/init/init.c` 已实现同步 `int 0x80` 入口与 `SYS_RAW_WRITE` / `SYS_RAW_EXIT` |
 | 调度器 | 已有 | `src/kernel/ke/thread/scheduler/scheduler.c`、`timer.c`、`diag.c`，OpenSpec `scheduler` / `scheduler-observability` |
 | 单对象等待模型 | 已有 | `src/kernel/ke/thread/scheduler/wait.c`，提供 `KeWaitForSingleObject` 与统一 wait-completion 路径，OpenSpec `dispatcher-objects` |
 | 事件（KEVENT） | 已有 | `src/kernel/ke/thread/scheduler/sync.c`、`src/include/kernel/ke/event.h`、OpenSpec `kevent` |
@@ -58,7 +60,9 @@
 
 如果用一句话概括当前系统状态，可以认为：
 
-> **HimuOS 当前已经完成了一个相当完整的 Ke 层教学原型。**
+> **HimuOS 当前已经完成了一个以 Ke 层为主、带有 bootstrap-only 最小用户态 bring-up 切片的教学原型。**
+
+这里的用户态能力只指独立 `user_hello` profile 下的最小执行路径与 raw syscall 入口，不应外推为完整进程地址空间、正式系统调用子系统或 Ex 层对象模型。
 
 它已经不只是“能启动的内核骨架”，而是具备以下连续能力链：
 
@@ -67,6 +71,7 @@
 3. 内核带起时间源、clock event、scheduler
 4. 调度器能驱动 KTHREAD、wait、event、semaphore、mutex
 5. 系统具备 sysinfo / 诊断 / regression profile 这些教学友好的观测入口
+6. 独立 `user_hello` profile 能把受控 payload 送入 Ring 3，并通过 `int 0x80` 完成 `SYS_RAW_WRITE` / `SYS_RAW_EXIT` 的最小证据链
 
 ## 有地基，但还不能算“该功能已经有”
 
@@ -74,7 +79,7 @@
 
 | 项目 | 现状 | 为什么还不能算“已有” |
 | --- | --- | --- |
-| Ring 3 GDT 段 | 有痕迹 | `src/arch/amd64/pm.c` 中已经建了 user code/data segment，但没有真正的用户态线程、用户态地址空间切换或返回 Ring 3 的执行路径 |
+| 正式用户态子系统 / 进程模型 | 只有 bootstrap bring-up | 当前已有独立 `user_hello` profile、staging 用户映射、Ring 3 入口和 raw syscall 闭环，但仍复用 imported root，不具备正式进程对象、独立进程地址空间或可恢复的用户 fault 模型 |
 | 键盘输入 | 只有 bootloader 级输入 | `src/boot/v2/io.c` 能通过 UEFI `ReadKeyStroke` 读取控制台输入，但这只是 bootloader 输入，不是 README 承诺的“内核键盘循环缓冲输入” |
 | handle 语义 | 只在局部存在 | KVA/fixmap 使用了 opaque handle/token，但这不是 README 所说的 Ex 层 capability handle / object handle 模型 |
 
@@ -84,9 +89,9 @@
 
 | 待完成功能 | 为什么仍算缺口 | 现有状态 |
 | --- | --- | --- |
-| 用户态执行路径（Ring 3 真正落地） | README 明确承诺“内核态与用户态安全隔离” | 目前只有 Ring 3 段描述符地基，没有用户态线程/进程运行入口 |
-| 用户态地址空间 / 进程级地址空间切换 | README 把虚拟内存目标描述为“为内核和用户程序提供隔离地址空间” | 当前内存管理几乎全部围绕 imported kernel root 与 KVA，没有进程地址空间模型 |
-| 系统调用入口 | README 明确承诺“系统调用是用户态获取内核服务的唯一入口” | 代码中没有 `syscall/sysret`、`int 0x80`、LSTAR 等系统调用通路实现 |
+| 完整用户态子系统 / 通用用户程序模型 | README 明确承诺“内核态与用户态安全隔离” | 当前只有挂在独立 `user_hello` profile 下的 bootstrap-only 最小执行路径，尚不具备通用用户程序装载、可恢复故障或稳定用户对象模型 |
+| 正式进程地址空间 / 进程级地址空间切换 | README 把虚拟内存目标描述为“为内核和用户程序提供隔离地址空间” | 当前用户页仍以 staging 方式挂在 imported root 上，不是正式进程地址空间模型 |
+| handle-oriented 正式 syscall 表面 | README 明确承诺“系统调用是用户态获取内核服务的唯一入口” | 当前只有同步 `int 0x80` 的 bootstrap raw syscall 入口，且 ABI 仅限 `SYS_RAW_WRITE` / `SYS_RAW_EXIT`，还不是正式的 handle-oriented syscall 接口 |
 | Ex 层 / Object Manager | README 明确写了 Ke/Ex 两层结构，Ex 层负责对象管理器 | 当前仓库基本只有 Ke 层；没有独立的 Ex 层目录、对象管理器或对象命名/生命周期框架 |
 | Capability 句柄模型 | README 把它作为用户态/内核态隔离的重要机制 | 当前没有对象句柄表、capability 校验、句柄引用/销毁等子系统 |
 | 优先级调度 | README 承诺“基于优先级和时间片轮转（RR）的调度器” | 当前 OpenSpec `scheduler` 与代码都明确是**单优先级 RR**；`KTHREAD.Priority` 只是保留字段 |
@@ -104,6 +109,6 @@
 当前的 HimuOS 更准确的定位是：
 
 - **已经完成的部分**：UEFI 启动、Ke 层核心机制、内核内存管理、线程调度与同步、诊断与教学回归 profile
-- **尚未完成的部分**：README 中更接近“完整 OS 对外语义”的那一层，尤其是用户态、系统调用、Ex/Object Manager、capability handle、键盘输入、优先级调度
+- **尚未完成的部分**：README 中更接近“完整 OS 对外语义”的那一层，尤其是正式进程地址空间、handle-oriented syscall、Ex/Object Manager、capability handle、键盘输入、优先级调度
 
-换句话说，当前系统已经是一个**功能明确、结构清晰的内核教学原型**，但还**不是** README 最初叙述里的那个“具备用户态/系统调用/Ex 层对象模型”的更完整版本。
+换句话说，当前系统已经是一个**功能明确、结构清晰的内核教学原型**，其中还带有一条 bootstrap-only 的最小用户态 bring-up 路径；但它还**不是** README 最初叙述里的那个“具备正式进程地址空间 / handle-oriented syscall / Ex 层对象模型”的更完整版本。

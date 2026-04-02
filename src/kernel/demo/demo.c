@@ -32,6 +32,12 @@ RunKernelDemos(void)
         return;
     }
 
+    if (HO_DEMO_TEST_SELECTION == HO_DEMO_TEST_USER_HELLO)
+    {
+        RunUserHelloDemo();
+        return;
+    }
+
     if (HO_DEMO_TEST_SELECTION == HO_DEMO_TEST_THREAD)
     {
         RunThreadDemo();

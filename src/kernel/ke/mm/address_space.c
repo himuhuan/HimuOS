@@ -40,6 +40,12 @@ typedef struct KE_NEW_TABLE
     HO_PHYSICAL_ADDRESS TablePhys;
 } KE_NEW_TABLE;
 
+typedef struct KE_ENTRY_FLAG_PROMOTION
+{
+    PAGE_TABLE_ENTRY *Entry;
+    uint64_t AddedFlags;
+} KE_ENTRY_FLAG_PROMOTION;
+
 static KE_KERNEL_ADDRESS_SPACE gKernelAddressSpace;
 
 static inline HO_PHYSICAL_ADDRESS
@@ -60,6 +66,44 @@ static inline PAGE_TABLE_ENTRY *
 KiTableFromPhys(HO_PHYSICAL_ADDRESS physAddr)
 {
     return (PAGE_TABLE_ENTRY *)(uint64_t)HHDM_PHYS2VIRT(physAddr);
+}
+
+static inline uint64_t
+KiIntermediateEntryFlagsForLeaf(uint64_t leafAttributes)
+{
+    uint64_t flags = PTE_PRESENT | PTE_WRITABLE;
+
+    if ((leafAttributes & PTE_USER) != 0)
+        flags |= PTE_USER;
+
+    return flags;
+}
+
+static inline BOOL
+KiIsUserReachableEntry(const PAGE_TABLE_ENTRY *entry)
+{
+    return entry != NULL && ((*entry & (PTE_PRESENT | PTE_USER)) == (PTE_PRESENT | PTE_USER));
+}
+
+static BOOL
+KiIsWalkUserAccessible(const KE_PT_WALK *walk)
+{
+    if (!walk || !walk->LeafEntry)
+        return FALSE;
+
+    if (!KiIsUserReachableEntry(walk->Pml4Entry) || !KiIsUserReachableEntry(walk->PdptEntry))
+        return FALSE;
+
+    if (walk->Level == 3)
+        return TRUE;
+
+    if (!KiIsUserReachableEntry(walk->PdEntry))
+        return FALSE;
+
+    if (walk->Level == 2)
+        return TRUE;
+
+    return KiIsUserReachableEntry(walk->PtEntry);
 }
 
 static inline BOOL
@@ -119,13 +163,36 @@ KiRollbackNewTables(KE_NEW_TABLE *tables, uint32_t tableCount)
     }
 }
 
+static void
+KiRollbackEntryPromotions(KE_ENTRY_FLAG_PROMOTION *promotions, uint32_t promotionCount)
+{
+    while (promotionCount > 0)
+    {
+        --promotionCount;
+        *promotions[promotionCount].Entry &= ~promotions[promotionCount].AddedFlags;
+    }
+}
+
+static void
+KiRollbackMapSetup(KE_NEW_TABLE *tables,
+                   uint32_t tableCount,
+                   KE_ENTRY_FLAG_PROMOTION *promotions,
+                   uint32_t promotionCount)
+{
+    KiRollbackNewTables(tables, tableCount);
+    KiRollbackEntryPromotions(promotions, promotionCount);
+}
+
 static HO_STATUS
 KiEnsureChildTable(PAGE_TABLE_ENTRY *parentEntry,
+                   uint64_t leafAttributes,
                    KE_NEW_TABLE *newTables,
                    uint32_t *newTableCount,
+                   KE_ENTRY_FLAG_PROMOTION *promotions,
+                   uint32_t *promotionCount,
                    PAGE_TABLE_ENTRY **outTable)
 {
-    if (!parentEntry || !newTableCount || !outTable)
+    if (!parentEntry || !newTableCount || !promotions || !promotionCount || !outTable)
         return EC_ILLEGAL_ARGUMENT;
 
     if ((*parentEntry & PTE_PRESENT) == 0)
@@ -138,7 +205,7 @@ KiEnsureChildTable(PAGE_TABLE_ENTRY *parentEntry,
         PAGE_TABLE_ENTRY *table = KiTableFromPhys(tablePhys);
         memset(table, 0, PAGE_4KB);
 
-        *parentEntry = tablePhys | PTE_PRESENT | PTE_WRITABLE;
+        *parentEntry = tablePhys | KiIntermediateEntryFlagsForLeaf(leafAttributes);
         newTables[*newTableCount].ParentEntry = parentEntry;
         newTables[*newTableCount].TablePhys = tablePhys;
         ++(*newTableCount);
@@ -148,6 +215,17 @@ KiEnsureChildTable(PAGE_TABLE_ENTRY *parentEntry,
 
     if ((*parentEntry & PTE_PAGE_SIZE) != 0)
         return EC_NOT_SUPPORTED;
+
+    if ((leafAttributes & PTE_USER) != 0 && (*parentEntry & PTE_USER) == 0)
+    {
+        if (*promotionCount >= 3)
+            return EC_INVALID_STATE;
+
+        *parentEntry |= PTE_USER;
+        promotions[*promotionCount].Entry = parentEntry;
+        promotions[*promotionCount].AddedFlags = PTE_USER;
+        ++(*promotionCount);
+    }
 
     *outTable = KiTableFromPhys(*parentEntry & PAGE_MASK);
     return EC_SUCCESS;
@@ -421,6 +499,7 @@ KePtQueryPage(const KE_KERNEL_ADDRESS_SPACE *space, HO_VIRTUAL_ADDRESS virtAddr,
     outMapping->PageSize = walk.PageSize;
     outMapping->PhysicalBase = walk.LeafPhysBase;
     outMapping->Attributes = walk.LeafValue;
+    outMapping->UserAccessible = KiIsWalkUserAccessible(&walk);
     return EC_SUCCESS;
 }
 
@@ -475,38 +554,43 @@ KePtMapPage(const KE_KERNEL_ADDRESS_SPACE *space,
 
     KE_NEW_TABLE newTables[3];
     uint32_t newTableCount = 0;
+    KE_ENTRY_FLAG_PROMOTION promotions[3];
+    uint32_t promotionCount = 0;
     memset(newTables, 0, sizeof(newTables));
+    memset(promotions, 0, sizeof(promotions));
 
     PAGE_TABLE_ENTRY *pml4 = KiTableFromPhys(space->RootPageTablePhys);
     PAGE_TABLE_ENTRY *pml4Entry = &pml4[PML4_INDEX(virtAddr)];
     PAGE_TABLE_ENTRY *pdpt = NULL;
 
-    HO_STATUS status = KiEnsureChildTable(pml4Entry, newTables, &newTableCount, &pdpt);
+    HO_STATUS status = KiEnsureChildTable(
+        pml4Entry, attributes, newTables, &newTableCount, promotions, &promotionCount, &pdpt);
     if (status != EC_SUCCESS)
         return status;
 
     PAGE_TABLE_ENTRY *pdptEntry = &pdpt[PDPT_INDEX(virtAddr)];
     PAGE_TABLE_ENTRY *pd = NULL;
-    status = KiEnsureChildTable(pdptEntry, newTables, &newTableCount, &pd);
+    status = KiEnsureChildTable(
+        pdptEntry, attributes, newTables, &newTableCount, promotions, &promotionCount, &pd);
     if (status != EC_SUCCESS)
     {
-        KiRollbackNewTables(newTables, newTableCount);
+        KiRollbackMapSetup(newTables, newTableCount, promotions, promotionCount);
         return status;
     }
 
     PAGE_TABLE_ENTRY *pdEntry = &pd[PD_INDEX(virtAddr)];
     PAGE_TABLE_ENTRY *pt = NULL;
-    status = KiEnsureChildTable(pdEntry, newTables, &newTableCount, &pt);
+    status = KiEnsureChildTable(pdEntry, attributes, newTables, &newTableCount, promotions, &promotionCount, &pt);
     if (status != EC_SUCCESS)
     {
-        KiRollbackNewTables(newTables, newTableCount);
+        KiRollbackMapSetup(newTables, newTableCount, promotions, promotionCount);
         return status;
     }
 
     PAGE_TABLE_ENTRY *ptEntry = &pt[PT_INDEX(virtAddr)];
     if ((*ptEntry & PTE_PRESENT) != 0)
     {
-        KiRollbackNewTables(newTables, newTableCount);
+        KiRollbackMapSetup(newTables, newTableCount, promotions, promotionCount);
         return EC_INVALID_STATE;
     }
 

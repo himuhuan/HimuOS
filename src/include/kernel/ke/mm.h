@@ -58,6 +58,7 @@ typedef struct KE_PT_MAPPING
 {
     BOOL Present;
     BOOL LargeLeaf;
+    BOOL UserAccessible; // Every present entry in the resolved translation path carries PTE_USER.
     uint8_t Level; // 1 = 4KB PT leaf, 2 = 2MB PD leaf, 3 = 1GB PDPT leaf
     uint64_t PageSize;
     HO_PHYSICAL_ADDRESS PhysicalBase;
@@ -243,9 +244,10 @@ HO_KERNEL_API const KE_IMPORTED_REGION *KeFindImportedRegion(const KE_KERNEL_ADD
 /**
  * Query the imported root page table for a single 4KB virtual page.
  *
- * On success, @outMapping->Present reports whether the page is currently mapped. If a larger 2MB or 1GB imported leaf
- * covers the queried page, the query reports that large leaf without splitting it and returns the resolved backing
- * physical 4KB page in PhysicalBase.
+ * On success, @outMapping->Present reports whether the page is currently mapped. @outMapping->UserAccessible reports
+ * whether the full resolved translation path, including the leaf, currently carries PTE_USER and is therefore
+ * reachable from Ring3. If a larger 2MB or 1GB imported leaf covers the queried page, the query reports that large
+ * leaf without splitting it and returns the resolved backing physical 4KB page in PhysicalBase.
  */
 HO_KERNEL_API HO_NODISCARD HO_STATUS KePtQueryPage(const KE_KERNEL_ADDRESS_SPACE *space,
                                                    HO_VIRTUAL_ADDRESS virtAddr,

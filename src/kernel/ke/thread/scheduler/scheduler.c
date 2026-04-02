@@ -9,6 +9,8 @@
 
 #include "scheduler_internal.h"
 
+#include <kernel/ke/user_bootstrap.h>
+
 // ─────────────────────────────────────────────────────────────
 // Globals
 // ─────────────────────────────────────────────────────────────
@@ -31,10 +33,16 @@ uint64_t gNextProgrammedDeadlineNs;
 void
 KiThreadTrampoline(void)
 {
+    KTHREAD *self = KeGetCurrentThread();
+
+    if (self->UserBootstrapContext != NULL)
+    {
+        KeUserBootstrapEnterCurrentThread();
+    }
+
     ARCH_INTERRUPT_STATE enabledState = {.MaskableInterruptEnabled = TRUE};
     ArchRestoreInterruptState(enabledState);
 
-    KTHREAD *self = KeGetCurrentThread();
     self->EntryPoint(self->EntryArg);
     KeThreadExit();
     __builtin_unreachable();
@@ -80,6 +88,7 @@ KeSchedulerInit(void)
     gIdleThread->EntryPoint = NULL;
     gIdleThread->EntryArg = NULL;
     gIdleThread->Flags = KTHREAD_FLAG_IDLE;
+    gIdleThread->UserBootstrapContext = NULL;
 
     gCurrentThread = gIdleThread;
     KeSetCurrentIrqlState(&gIdleThread->IrqlState);
@@ -286,6 +295,15 @@ KiFinalizeThread(KTHREAD *thread)
     HO_KASSERT(thread->State == KTHREAD_STATE_TERMINATED, EC_INVALID_STATE);
     HO_KASSERT(thread->TerminationClaimState == KTHREAD_TERMINATION_CLAIM_STATE_CONSUMED, EC_INVALID_STATE);
 
+    if (thread->UserBootstrapContext != NULL)
+    {
+        HO_STATUS stagingStatus = KeUserBootstrapDestroyStaging(thread->UserBootstrapContext);
+        if (stagingStatus != EC_SUCCESS)
+        {
+            HO_KPANIC(stagingStatus, "Failed to release terminated KTHREAD user bootstrap staging");
+        }
+    }
+
     if (thread->StackOwnedByKva)
     {
         HO_STATUS status = KeKvaReleaseRangeHandle(&thread->StackRange);
@@ -319,7 +337,7 @@ KeThreadExit(void)
     thread->State = KTHREAD_STATE_TERMINATED;
     gStats.ActiveThreadCount--;
 
-    klog(KLOG_LEVEL_INFO, "[SCHED] Thread %u terminated\n", thread->ThreadId);
+    klog(KLOG_LEVEL_INFO, KE_USER_BOOTSTRAP_LOG_THREAD_TERMINATED_FORMAT "\n", thread->ThreadId);
 
     KeLeaveCriticalSection(&criticalSection);
 
@@ -585,6 +603,11 @@ KiReapTerminatedThreads(void)
         KeLeaveCriticalSection(&criticalSection);
         if (!thread)
             return;
+
+        if ((thread->Flags & KTHREAD_FLAG_BOOTSTRAP_USER) != 0)
+        {
+            klog(KLOG_LEVEL_INFO, KE_USER_BOOTSTRAP_LOG_IDLE_REAPER " thread=%u\n", thread->ThreadId);
+        }
 
         KiFinalizeThread(thread);
     }
