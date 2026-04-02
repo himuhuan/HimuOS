@@ -19,22 +19,22 @@
 #include <kernel/ke/mutex.h>
 #include <kernel/ke/semaphore.h>
 
-#define HO_DEMO_TEST_NONE       0
-#define HO_DEMO_TEST_SCHEDULE   1
-#define HO_DEMO_TEST_THREAD     2
-#define HO_DEMO_TEST_EVENT      3
-#define HO_DEMO_TEST_SEMAPHORE  4
-#define HO_DEMO_TEST_MUTEX      5
-#define HO_DEMO_TEST_GUARD_WAIT 6
-#define HO_DEMO_TEST_OWNED_EXIT 7
-#define HO_DEMO_TEST_IRQL_WAIT  8
-#define HO_DEMO_TEST_IRQL_SLEEP 9
-#define HO_DEMO_TEST_IRQL_YIELD 10
-#define HO_DEMO_TEST_IRQL_EXIT  11
-#define HO_DEMO_TEST_PF_IMPORTED 12
-#define HO_DEMO_TEST_PF_GUARD    13
-#define HO_DEMO_TEST_PF_FIXMAP   14
-#define HO_DEMO_TEST_PF_HEAP     15
+#define HO_DEMO_TEST_NONE              0
+#define HO_DEMO_TEST_SCHEDULE          1
+#define HO_DEMO_TEST_THREAD            2
+#define HO_DEMO_TEST_EVENT             3
+#define HO_DEMO_TEST_SEMAPHORE         4
+#define HO_DEMO_TEST_MUTEX             5
+#define HO_DEMO_TEST_GUARD_WAIT        6
+#define HO_DEMO_TEST_OWNED_EXIT        7
+#define HO_DEMO_TEST_IRQL_WAIT         8
+#define HO_DEMO_TEST_IRQL_SLEEP        9
+#define HO_DEMO_TEST_IRQL_YIELD        10
+#define HO_DEMO_TEST_IRQL_EXIT         11
+#define HO_DEMO_TEST_PF_IMPORTED       12
+#define HO_DEMO_TEST_PF_GUARD          13
+#define HO_DEMO_TEST_PF_FIXMAP         14
+#define HO_DEMO_TEST_PF_HEAP           15
 #define HO_DEMO_TEST_KTHREAD_POOL_RACE 16
 
 #ifndef HO_DEMO_TEST_SELECTION

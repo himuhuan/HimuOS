@@ -203,7 +203,8 @@ PrintKvaDiagnosis(const KE_VA_DIAGNOSIS *diagnosis)
 
     if (diagnosis->KvaInfo.HasRange)
     {
-        HO_VIRTUAL_ADDRESS rangeEnd = diagnosis->KvaInfo.Range.BaseAddress + diagnosis->KvaInfo.Range.TotalPages * PAGE_4KB;
+        HO_VIRTUAL_ADDRESS rangeEnd =
+            diagnosis->KvaInfo.Range.BaseAddress + diagnosis->KvaInfo.Range.TotalPages * PAGE_4KB;
         HO_VIRTUAL_ADDRESS usableEnd =
             diagnosis->KvaInfo.Range.UsableBase + diagnosis->KvaInfo.Range.UsablePages * PAGE_4KB;
 
@@ -214,9 +215,10 @@ PrintKvaDiagnosis(const KE_VA_DIAGNOSIS *diagnosis)
         return;
     }
 
-    kprintf("VMM kva: kind=%s arena=%s page=%lu arenaWindow=[%p - %p)\n", GetKvaAddressKindName(diagnosis->KvaInfo.Kind),
-            GetKvaArenaName(diagnosis->KvaInfo.Arena), diagnosis->KvaInfo.ArenaPageIndex,
-            (void *)(uint64_t)diagnosis->KvaInfo.ArenaBase, (void *)(uint64_t)diagnosis->KvaInfo.ArenaEndExclusive);
+    kprintf("VMM kva: kind=%s arena=%s page=%lu arenaWindow=[%p - %p)\n",
+            GetKvaAddressKindName(diagnosis->KvaInfo.Kind), GetKvaArenaName(diagnosis->KvaInfo.Arena),
+            diagnosis->KvaInfo.ArenaPageIndex, (void *)(uint64_t)diagnosis->KvaInfo.ArenaBase,
+            (void *)(uint64_t)diagnosis->KvaInfo.ArenaEndExclusive);
 }
 
 static void

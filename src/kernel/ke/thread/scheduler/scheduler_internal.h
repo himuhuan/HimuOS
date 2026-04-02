@@ -44,6 +44,7 @@ void KiSchedulerTimerISR(void *frame, void *context);
 void KiWakeTimeouts(uint64_t nowNs);
 void KiArmClockEvent(uint64_t deltaNs);
 void KiArmForNextEvent(uint64_t nowNs, KTHREAD *next);
+void KiFinalizeThread(KTHREAD *thread);
 void KiReapTerminatedThreads(void);
 uint32_t KiCountQueueDepth(LINKED_LIST_TAG *head);
 void KiCompleteWait(KWAIT_BLOCK *block, HO_STATUS status);

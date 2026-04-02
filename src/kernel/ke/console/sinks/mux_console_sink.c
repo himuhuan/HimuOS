@@ -113,8 +113,7 @@ KeMuxConSinkPromoteToAllocator(MUX_CONSOLE_SINK *muxSink)
     if (muxSink->SinkCapacity == 0)
         return EC_INVALID_STATE;
 
-    KE_CONSOLE_SINK **allocatorStorage =
-        (KE_CONSOLE_SINK **)kzalloc(muxSink->SinkCapacity * sizeof(KE_CONSOLE_SINK *));
+    KE_CONSOLE_SINK **allocatorStorage = (KE_CONSOLE_SINK **)kzalloc(muxSink->SinkCapacity * sizeof(KE_CONSOLE_SINK *));
     if (!allocatorStorage)
         return EC_OUT_OF_RESOURCE;
 

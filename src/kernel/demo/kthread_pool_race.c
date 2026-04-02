@@ -10,15 +10,15 @@
 #include "demo_internal.h"
 #include <libc/string.h>
 
-#define POOL_RACE_WORKER_COUNT              2U
-#define POOL_RACE_ALLOCATIONS_PER_WORKER    24U
-#define CREATE_RACE_CREATOR_COUNT           2U
-#define CREATE_RACE_CHILDREN_PER_CREATOR    6U
-#define CREATE_RACE_TOTAL_CHILDREN          (CREATE_RACE_CREATOR_COUNT * CREATE_RACE_CHILDREN_PER_CREATOR)
-#define REAP_RACE_CHILD_COUNT               10U
-#define POOL_SETTLE_EXPECTED_USED_SLOTS     2U
-#define POOL_SETTLE_MAX_RETRIES             64U
-#define POOL_SETTLE_SLEEP_NS                1000000ULL
+#define POOL_RACE_WORKER_COUNT           2U
+#define POOL_RACE_ALLOCATIONS_PER_WORKER 24U
+#define CREATE_RACE_CREATOR_COUNT        2U
+#define CREATE_RACE_CHILDREN_PER_CREATOR 6U
+#define CREATE_RACE_TOTAL_CHILDREN       (CREATE_RACE_CREATOR_COUNT * CREATE_RACE_CHILDREN_PER_CREATOR)
+#define REAP_RACE_CHILD_COUNT            10U
+#define POOL_SETTLE_EXPECTED_USED_SLOTS  2U
+#define POOL_SETTLE_MAX_RETRIES          64U
+#define POOL_SETTLE_SLEEP_NS             1000000ULL
 
 typedef struct KI_POOL_RACE_WORKER_CONTEXT
 {
@@ -38,6 +38,22 @@ typedef struct KI_CREATE_RACE_CREATOR_CONTEXT
     uint32_t Count;
     BOOL SleepBetweenCreates;
 } KI_CREATE_RACE_CREATOR_CONTEXT;
+
+typedef struct KI_TERMINATION_RACE_WORKER_CONTEXT
+{
+    KEVENT *StartEvent;
+    KSEMAPHORE *ReadySemaphore;
+    KSEMAPHORE *ExitSemaphore;
+} KI_TERMINATION_RACE_WORKER_CONTEXT;
+
+typedef struct KI_TERMINATION_RACE_JOINER_CONTEXT
+{
+    KTHREAD *TargetThread;
+    KSEMAPHORE *ReadySemaphore;
+    KSEMAPHORE *DoneSemaphore;
+    uint64_t TimeoutNs;
+    HO_STATUS JoinStatus;
+} KI_TERMINATION_RACE_JOINER_CONTEXT;
 
 static KE_POOL gPoolRaceRegressionPool;
 static KEVENT gPoolRaceStartEvent;
@@ -61,12 +77,23 @@ static void KiReadPoolAccounting(KE_POOL *pool, uint32_t *usedSlots, uint32_t *t
 static uint32_t KiCountPoolFreeNodes(KE_POOL *pool);
 static void KiWaitForPoolToSettle(KE_POOL *pool, uint32_t expectedUsedSlots, const char *reason);
 static void KiVerifyDistinctThreadIds(const uint32_t *ids, uint32_t count, const char *reason);
+static void KiAssertExpectedStatus(HO_STATUS actual, HO_STATUS expected, const char *reason);
+static KTHREAD_STATE KiReadThreadState(const KTHREAD *thread);
+static KTHREAD_TERMINATION_CLAIM_STATE KiReadThreadClaimState(const KTHREAD *thread);
+static void KiWaitForThreadState(const KTHREAD *thread, KTHREAD_STATE expectedState, const char *reason);
+static void KiWaitForThreadClaimState(const KTHREAD *thread,
+                                      KTHREAD_TERMINATION_CLAIM_STATE expectedState,
+                                      const char *reason);
 static void KiRunPoolInterleavingRegression(void);
 static void KiRunThreadIdRegression(void);
 static void KiRunCreateReapRegression(void);
+static void KiRunLateDetachTransferRegression(void);
+static void KiRunJoinDetachInterleavingRegression(void);
 static void KthreadPoolRaceControllerThread(void *arg);
 static void PoolRaceWorkerThread(void *arg);
 static void KthreadPoolRecordedWorkerThread(void *arg);
+static void KthreadTerminationRaceWorkerThread(void *arg);
+static void KthreadTerminationRaceJoinerThread(void *arg);
 static void ThreadIdCreatorThread(void *arg);
 void KiReapTerminatedThreads(void);
 
@@ -95,6 +122,86 @@ KiWaitForSemaphorePermits(KSEMAPHORE *semaphore, uint32_t count, const char *rea
             HO_KPANIC(status, "KTHREAD pool regression wait failed");
         }
     }
+}
+
+static void
+KiAssertExpectedStatus(HO_STATUS actual, HO_STATUS expected, const char *reason)
+{
+    if (actual == expected)
+    {
+        return;
+    }
+
+    klog(KLOG_LEVEL_ERROR, "[TEST] %s failed (expected=%d actual=%d)\n", reason, expected, actual);
+    HO_KPANIC(actual, "KTHREAD pool regression status mismatch");
+}
+
+static KTHREAD_STATE
+KiReadThreadState(const KTHREAD *thread)
+{
+    KE_IRQL_GUARD irqlGuard = {0};
+    KTHREAD_STATE state;
+    KE_CRITICAL_SECTION criticalSection = {0};
+
+    HO_KASSERT(thread != NULL, EC_ILLEGAL_ARGUMENT);
+
+    KeAcquireIrqlGuard(&irqlGuard, KE_IRQL_DISPATCH_LEVEL);
+    KeEnterCriticalSection(&criticalSection);
+    state = thread->State;
+    KeLeaveCriticalSection(&criticalSection);
+    KeReleaseIrqlGuard(&irqlGuard);
+    return state;
+}
+
+static KTHREAD_TERMINATION_CLAIM_STATE
+KiReadThreadClaimState(const KTHREAD *thread)
+{
+    KE_IRQL_GUARD irqlGuard = {0};
+    KTHREAD_TERMINATION_CLAIM_STATE claimState;
+    KE_CRITICAL_SECTION criticalSection = {0};
+
+    HO_KASSERT(thread != NULL, EC_ILLEGAL_ARGUMENT);
+
+    KeAcquireIrqlGuard(&irqlGuard, KE_IRQL_DISPATCH_LEVEL);
+    KeEnterCriticalSection(&criticalSection);
+    claimState = thread->TerminationClaimState;
+    KeLeaveCriticalSection(&criticalSection);
+    KeReleaseIrqlGuard(&irqlGuard);
+    return claimState;
+}
+
+static void
+KiWaitForThreadState(const KTHREAD *thread, KTHREAD_STATE expectedState, const char *reason)
+{
+    for (uint32_t attempt = 0; attempt < POOL_SETTLE_MAX_RETRIES; attempt++)
+    {
+        if (KiReadThreadState(thread) == expectedState)
+        {
+            return;
+        }
+
+        KeSleep(POOL_SETTLE_SLEEP_NS);
+    }
+
+    klog(KLOG_LEVEL_ERROR, "[TEST] %s did not reach state %u\n", reason, expectedState);
+    HO_KPANIC(EC_TIMEOUT, "KTHREAD pool regression state wait timed out");
+}
+
+static void
+KiWaitForThreadClaimState(const KTHREAD *thread, KTHREAD_TERMINATION_CLAIM_STATE expectedState, const char *reason)
+{
+    for (uint32_t attempt = 0; attempt < POOL_SETTLE_MAX_RETRIES; attempt++)
+    {
+        if (KiReadThreadClaimState(thread) == expectedState)
+        {
+            return;
+        }
+
+        KeSleep(POOL_SETTLE_SLEEP_NS);
+    }
+
+    klog(KLOG_LEVEL_ERROR, "[TEST] %s did not reach claim state %u\n", reason, expectedState);
+    HO_KPANIC(EC_TIMEOUT, "KTHREAD pool regression claim wait timed out");
 }
 
 static void
@@ -253,8 +360,7 @@ KiRunThreadIdRegression(void)
     KeSetEvent(&gCreateRaceStartEvent);
     KiWaitForSemaphorePermits(&gCreateRaceDoneSemaphore, CREATE_RACE_CREATOR_COUNT, "ThreadId creators");
     KiVerifyDistinctThreadIds(gCreateRaceRecordedIds, CREATE_RACE_TOTAL_CHILDREN, "create/create regression");
-    KiWaitForSemaphorePermits(&gCreateRaceChildExitSemaphore, CREATE_RACE_TOTAL_CHILDREN,
-                              "create/create child exits");
+    KiWaitForSemaphorePermits(&gCreateRaceChildExitSemaphore, CREATE_RACE_TOTAL_CHILDREN, "create/create child exits");
     KiWaitForPoolToSettle(&gKThreadPool, POOL_SETTLE_EXPECTED_USED_SLOTS, "create/create reap");
 
     klog(KLOG_LEVEL_INFO, "[TEST] create/create ThreadId regression passed\n");
@@ -305,8 +411,147 @@ KiRunCreateReapRegression(void)
     HO_KASSERT(usedSlots == POOL_SETTLE_EXPECTED_USED_SLOTS, EC_INVALID_STATE);
     HO_KASSERT(freeCount + usedSlots == totalSlots, EC_INVALID_STATE);
 
-    klog(KLOG_LEVEL_INFO, "[TEST] create/reap regression passed (used=%u total=%u free=%u)\n", usedSlots,
-         totalSlots, freeCount);
+    klog(KLOG_LEVEL_INFO, "[TEST] create/reap regression passed (used=%u total=%u free=%u)\n", usedSlots, totalSlots,
+         freeCount);
+}
+
+static void
+KiRunLateDetachTransferRegression(void)
+{
+    KEVENT startEvent;
+    KSEMAPHORE readySemaphore;
+    KSEMAPHORE exitSemaphore;
+    KI_TERMINATION_RACE_WORKER_CONTEXT joinableContext = {0};
+    KI_TERMINATION_RACE_WORKER_CONTEXT detachedContext = {0};
+    KTHREAD *joinableThread = NULL;
+    KTHREAD *detachedThread = NULL;
+
+    klog(KLOG_LEVEL_INFO, "[TEST] late detach transfer regression start\n");
+
+    KeInitializeEvent(&startEvent, FALSE);
+
+    HO_STATUS status = KeInitializeSemaphore(&readySemaphore, 0, 2);
+    KiAssertExpectedStatus(status, EC_SUCCESS, "initialize late-detach ready semaphore");
+
+    status = KeInitializeSemaphore(&exitSemaphore, 0, 2);
+    KiAssertExpectedStatus(status, EC_SUCCESS, "initialize late-detach exit semaphore");
+
+    joinableContext.StartEvent = &startEvent;
+    joinableContext.ReadySemaphore = &readySemaphore;
+    joinableContext.ExitSemaphore = &exitSemaphore;
+
+    detachedContext.StartEvent = &startEvent;
+    detachedContext.ReadySemaphore = &readySemaphore;
+    detachedContext.ExitSemaphore = &exitSemaphore;
+
+    status = KeThreadCreateJoinable(&joinableThread, KthreadTerminationRaceWorkerThread, &joinableContext);
+    KiAssertExpectedStatus(status, EC_SUCCESS, "create late-detach joinable thread");
+
+    status = KeThreadCreate(&detachedThread, KthreadTerminationRaceWorkerThread, &detachedContext);
+    KiAssertExpectedStatus(status, EC_SUCCESS, "create late-detach detached thread");
+
+    status = KeThreadStart(joinableThread);
+    KiAssertExpectedStatus(status, EC_SUCCESS, "start late-detach joinable thread");
+
+    status = KeThreadStart(detachedThread);
+    KiAssertExpectedStatus(status, EC_SUCCESS, "start late-detach detached thread");
+
+    KiWaitForSemaphorePermits(&readySemaphore, 2, "late-detach workers ready");
+
+    KeSetEvent(&startEvent);
+
+    KiWaitForSemaphorePermits(&exitSemaphore, 2, "late-detach workers exit");
+    KiWaitForThreadState(joinableThread, KTHREAD_STATE_TERMINATED, "late-detach joinable termination");
+
+    status = KeThreadDetach(joinableThread);
+    KiAssertExpectedStatus(status, EC_SUCCESS, "late detach transfer");
+
+    KiWaitForPoolToSettle(&gKThreadPool, POOL_SETTLE_EXPECTED_USED_SLOTS, "late detach transfer");
+
+    klog(KLOG_LEVEL_INFO, "[TEST] late detach transfer regression passed\n");
+}
+
+static void
+KiRunJoinDetachInterleavingRegression(void)
+{
+    KEVENT startEvent;
+    KSEMAPHORE readySemaphore;
+    KSEMAPHORE exitSemaphore;
+    KSEMAPHORE joinerReadySemaphore;
+    KSEMAPHORE joinerDoneSemaphore;
+    KI_TERMINATION_RACE_WORKER_CONTEXT joinableContext = {0};
+    KI_TERMINATION_RACE_WORKER_CONTEXT detachedContext = {0};
+    KI_TERMINATION_RACE_JOINER_CONTEXT joinerContext = {0};
+    KTHREAD *joinableThread = NULL;
+    KTHREAD *detachedThread = NULL;
+    KTHREAD *joinerThread = NULL;
+
+    klog(KLOG_LEVEL_INFO, "[TEST] join/detach interleaving regression start\n");
+
+    KeInitializeEvent(&startEvent, FALSE);
+
+    HO_STATUS status = KeInitializeSemaphore(&readySemaphore, 0, 2);
+    KiAssertExpectedStatus(status, EC_SUCCESS, "initialize join/detach ready semaphore");
+
+    status = KeInitializeSemaphore(&exitSemaphore, 0, 2);
+    KiAssertExpectedStatus(status, EC_SUCCESS, "initialize join/detach exit semaphore");
+
+    status = KeInitializeSemaphore(&joinerReadySemaphore, 0, 1);
+    KiAssertExpectedStatus(status, EC_SUCCESS, "initialize joiner-ready semaphore");
+
+    status = KeInitializeSemaphore(&joinerDoneSemaphore, 0, 1);
+    KiAssertExpectedStatus(status, EC_SUCCESS, "initialize joiner-done semaphore");
+
+    joinableContext.StartEvent = &startEvent;
+    joinableContext.ReadySemaphore = &readySemaphore;
+    joinableContext.ExitSemaphore = &exitSemaphore;
+
+    detachedContext.StartEvent = &startEvent;
+    detachedContext.ReadySemaphore = &readySemaphore;
+    detachedContext.ExitSemaphore = &exitSemaphore;
+
+    status = KeThreadCreateJoinable(&joinableThread, KthreadTerminationRaceWorkerThread, &joinableContext);
+    KiAssertExpectedStatus(status, EC_SUCCESS, "create join/detach joinable thread");
+
+    status = KeThreadCreate(&detachedThread, KthreadTerminationRaceWorkerThread, &detachedContext);
+    KiAssertExpectedStatus(status, EC_SUCCESS, "create join/detach detached thread");
+
+    status = KeThreadStart(joinableThread);
+    KiAssertExpectedStatus(status, EC_SUCCESS, "start join/detach joinable thread");
+
+    status = KeThreadStart(detachedThread);
+    KiAssertExpectedStatus(status, EC_SUCCESS, "start join/detach detached thread");
+
+    KiWaitForSemaphorePermits(&readySemaphore, 2, "join/detach workers ready");
+
+    joinerContext.TargetThread = joinableThread;
+    joinerContext.ReadySemaphore = &joinerReadySemaphore;
+    joinerContext.DoneSemaphore = &joinerDoneSemaphore;
+    joinerContext.TimeoutNs = KE_WAIT_INFINITE;
+    joinerContext.JoinStatus = EC_FAILURE;
+
+    status = KeThreadCreate(&joinerThread, KthreadTerminationRaceJoinerThread, &joinerContext);
+    KiAssertExpectedStatus(status, EC_SUCCESS, "create join/detach joiner thread");
+
+    status = KeThreadStart(joinerThread);
+    KiAssertExpectedStatus(status, EC_SUCCESS, "start join/detach joiner thread");
+
+    KiWaitForSemaphorePermits(&joinerReadySemaphore, 1, "join/detach joiner ready");
+    KiWaitForThreadClaimState(joinableThread, KTHREAD_TERMINATION_CLAIM_STATE_JOIN_IN_PROGRESS,
+                              "join/detach join claim");
+
+    status = KeThreadDetach(joinableThread);
+    KiAssertExpectedStatus(status, EC_INVALID_STATE, "detach while join is in progress");
+
+    KeSetEvent(&startEvent);
+
+    KiWaitForSemaphorePermits(&exitSemaphore, 2, "join/detach workers exit");
+    KiWaitForSemaphorePermits(&joinerDoneSemaphore, 1, "join/detach joiner completion");
+    KiAssertExpectedStatus(joinerContext.JoinStatus, EC_SUCCESS, "join/detach joiner result");
+
+    KiWaitForPoolToSettle(&gKThreadPool, POOL_SETTLE_EXPECTED_USED_SLOTS, "join/detach interleaving");
+
+    klog(KLOG_LEVEL_INFO, "[TEST] join/detach interleaving regression passed\n");
 }
 
 static void
@@ -339,6 +584,8 @@ KthreadPoolRaceControllerThread(void *arg)
     KiRunPoolInterleavingRegression();
     KiRunThreadIdRegression();
     KiRunCreateReapRegression();
+    KiRunLateDetachTransferRegression();
+    KiRunJoinDetachInterleavingRegression();
     klog(KLOG_LEVEL_INFO, "[TEST] KTHREAD pool race regression suite passed\n");
 }
 
@@ -386,6 +633,51 @@ KthreadPoolRecordedWorkerThread(void *arg)
 
     HO_STATUS status = KeReleaseSemaphore(childExitSemaphore, 1);
     HO_KASSERT(status == EC_SUCCESS, status);
+}
+
+static void
+KthreadTerminationRaceWorkerThread(void *arg)
+{
+    KI_TERMINATION_RACE_WORKER_CONTEXT *context = (KI_TERMINATION_RACE_WORKER_CONTEXT *)arg;
+
+    if (context->ReadySemaphore != NULL)
+    {
+        HO_STATUS status = KeReleaseSemaphore(context->ReadySemaphore, 1);
+        HO_KASSERT(status == EC_SUCCESS, status);
+    }
+
+    if (context->StartEvent != NULL)
+    {
+        HO_STATUS status = KeWaitForSingleObject(context->StartEvent, KE_WAIT_INFINITE);
+        if (status != EC_SUCCESS)
+            HO_KPANIC(status, "Termination regression worker failed waiting for start event");
+    }
+
+    if (context->ExitSemaphore != NULL)
+    {
+        HO_STATUS status = KeReleaseSemaphore(context->ExitSemaphore, 1);
+        HO_KASSERT(status == EC_SUCCESS, status);
+    }
+}
+
+static void
+KthreadTerminationRaceJoinerThread(void *arg)
+{
+    KI_TERMINATION_RACE_JOINER_CONTEXT *context = (KI_TERMINATION_RACE_JOINER_CONTEXT *)arg;
+
+    if (context->ReadySemaphore != NULL)
+    {
+        HO_STATUS status = KeReleaseSemaphore(context->ReadySemaphore, 1);
+        HO_KASSERT(status == EC_SUCCESS, status);
+    }
+
+    context->JoinStatus = KeThreadJoin(context->TargetThread, context->TimeoutNs);
+
+    if (context->DoneSemaphore != NULL)
+    {
+        HO_STATUS status = KeReleaseSemaphore(context->DoneSemaphore, 1);
+        HO_KASSERT(status == EC_SUCCESS, status);
+    }
 }
 
 static void

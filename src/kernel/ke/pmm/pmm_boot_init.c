@@ -15,7 +15,7 @@
 #include <kernel/hodbg.h>
 #include <kernel/ke/mm.h>
 
-#define UINT64_MAX 0xFFFFFFFFFFFFFFFFULL
+#define UINT64_MAX             0xFFFFFFFFFFFFFFFFULL
 #define PMM_LOW_RESERVED_BYTES (1ULL << 20)
 #define PMM_LOW_RESERVED_PAGES (PMM_LOW_RESERVED_BYTES >> PAGE_SHIFT)
 

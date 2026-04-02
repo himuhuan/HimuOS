@@ -87,8 +87,7 @@ VerifyHhdm(STAGING_BLOCK *block)
                 klog(KLOG_LEVEL_WARNING,
                      "[MM] FULL HHDM smoke test skipped: only page-0 probe candidates remain under NULL detection\n");
             else
-                klog(KLOG_LEVEL_WARNING,
-                     "[MM] FULL HHDM smoke test skipped: no reclaimable non-zero probe page\n");
+                klog(KLOG_LEVEL_WARNING, "[MM] FULL HHDM smoke test skipped: no reclaimable non-zero probe page\n");
         }
         else
         {
@@ -252,7 +251,8 @@ ValidateBootMappingManifest(STAGING_BLOCK *block)
     UINT64 memoryMapStart = block->MemoryMapPhys;
     UINT64 memoryMapEndExclusive = memoryMapStart + block->Layout.MemoryMapSize;
 
-    if (handoffEndExclusive < handoffStart || manifestEndExclusive < manifestStart || memoryMapEndExclusive < memoryMapStart)
+    if (handoffEndExclusive < handoffStart || manifestEndExclusive < manifestStart ||
+        memoryMapEndExclusive < memoryMapStart)
     {
         klog(KLOG_LEVEL_ERROR, "[MM] Boot Mapping Manifest validation failed: handoff range overflow\n");
         HO_KPANIC(EC_INVALID_STATE, "Boot Mapping Manifest invalid");
@@ -266,8 +266,8 @@ ValidateBootMappingManifest(STAGING_BLOCK *block)
     }
 
     if (!HO_IS_ALIGNED(block->MemoryMapPhys, BOOT_HANDOFF_ALIGNMENT) ||
-        block->MemoryMapPhys != block->BasePhys + BootCapsuleMemoryMapOffset(block->Layout.HeaderSize,
-                                                                              block->Layout.ManifestSize))
+        block->MemoryMapPhys !=
+            block->BasePhys + BootCapsuleMemoryMapOffset(block->Layout.HeaderSize, block->Layout.ManifestSize))
     {
         klog(KLOG_LEVEL_ERROR, "[MM] Boot Mapping Manifest validation failed: memory-map offset mismatch\n");
         HO_KPANIC(EC_INVALID_STATE, "Boot Mapping Manifest invalid");
@@ -330,9 +330,9 @@ ValidateBootMappingManifest(STAGING_BLOCK *block)
         }
     }
 
-        klog(KLOG_LEVEL_INFO, "[MM] Boot Mapping Manifest OK: entries=%u used=%u bytes phys=%p\n",
-            (uint64_t)manifest->EntryCount, (uint64_t)BootMappingManifestUsedSize(manifest),
-            (void *)(UINTN)block->ManifestPhys);
+    klog(KLOG_LEVEL_INFO, "[MM] Boot Mapping Manifest OK: entries=%u used=%u bytes phys=%p\n",
+         (uint64_t)manifest->EntryCount, (uint64_t)BootMappingManifestUsedSize(manifest),
+         (void *)(UINTN)block->ManifestPhys);
     return manifest;
 }
 
@@ -359,16 +359,18 @@ ValidateBootMappingManifestEntry(const BOOT_MAPPING_MANIFEST_ENTRY *entry, uint3
         return EC_INVALID_STATE;
     }
 
-    if (entry->Size == 0 || !HO_IS_ALIGNED(entry->VirtualStart, PAGE_4KB) || !HO_IS_ALIGNED(entry->PhysicalStart, PAGE_4KB) ||
-        !HO_IS_ALIGNED(entry->Size, PAGE_4KB))
+    if (entry->Size == 0 || !HO_IS_ALIGNED(entry->VirtualStart, PAGE_4KB) ||
+        !HO_IS_ALIGNED(entry->PhysicalStart, PAGE_4KB) || !HO_IS_ALIGNED(entry->Size, PAGE_4KB))
     {
         klog(KLOG_LEVEL_ERROR,
-             "[MM] Boot Mapping Manifest validation failed: unaligned or empty range at index %u (va=%p pa=%p size=%lu)\n",
+             "[MM] Boot Mapping Manifest validation failed: unaligned or empty range at index %u (va=%p pa=%p "
+             "size=%lu)\n",
              index, (void *)(UINTN)entry->VirtualStart, (void *)(UINTN)entry->PhysicalStart, entry->Size);
         return EC_INVALID_STATE;
     }
 
-    if (entry->VirtualStart + entry->Size < entry->VirtualStart || entry->PhysicalStart + entry->Size < entry->PhysicalStart)
+    if (entry->VirtualStart + entry->Size < entry->VirtualStart ||
+        entry->PhysicalStart + entry->Size < entry->PhysicalStart)
     {
         klog(KLOG_LEVEL_ERROR, "[MM] Boot Mapping Manifest validation failed: wrapped range at index %u\n", index);
         return EC_INVALID_STATE;
@@ -376,7 +378,8 @@ ValidateBootMappingManifestEntry(const BOOT_MAPPING_MANIFEST_ENTRY *entry, uint3
 
     if ((entry->Attributes & PTE_PRESENT) == 0)
     {
-        klog(KLOG_LEVEL_ERROR, "[MM] Boot Mapping Manifest validation failed: non-present attributes at index %u\n", index);
+        klog(KLOG_LEVEL_ERROR, "[MM] Boot Mapping Manifest validation failed: non-present attributes at index %u\n",
+             index);
         return EC_INVALID_STATE;
     }
 

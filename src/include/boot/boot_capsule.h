@@ -15,13 +15,13 @@
 #include "arch/amd64/pm.h"
 #include "boot_mapping_manifest.h"
 
-#define BOOT_FRAMEBUFFER_VA      MMIO_BASE_VA
-#define BOOT_KRNL_ENTRY_VA       KRNL_ENTRY_VA
-#define BOOT_KRNL_STACK_VA       KRNL_STACK_VA      // Kernel stack BOTTOM virtual address
-#define BOOT_KRNL_IST1_STACK_VA  KRNL_IST1_STACK_VA // Kernel IST1 stack BOTTOM virtual address
-#define BOOT_KRNL_IST2_STACK_VA  KRNL_IST2_STACK_VA // Kernel IST2 stack BOTTOM virtual address
-#define BOOT_HHDM_BASE_VA        HHDM_BASE_VA
-#define BOOT_HANDOFF_ALIGNMENT   8ULL
+#define BOOT_FRAMEBUFFER_VA     MMIO_BASE_VA
+#define BOOT_KRNL_ENTRY_VA      KRNL_ENTRY_VA
+#define BOOT_KRNL_STACK_VA      KRNL_STACK_VA      // Kernel stack BOTTOM virtual address
+#define BOOT_KRNL_IST1_STACK_VA KRNL_IST1_STACK_VA // Kernel IST1 stack BOTTOM virtual address
+#define BOOT_KRNL_IST2_STACK_VA KRNL_IST2_STACK_VA // Kernel IST2 stack BOTTOM virtual address
+#define BOOT_HHDM_BASE_VA       HHDM_BASE_VA
+#define BOOT_HANDOFF_ALIGNMENT  8ULL
 
 #define BOOT_CAPSULE_MAGIC      0x214F5348 // 'HOS!'
 
@@ -125,5 +125,6 @@ BootGetConstMappingManifest(const BOOT_CAPSULE *capsule)
     if (!capsule || capsule->ManifestPhys < capsule->BasePhys)
         return NULL;
 
-    return (const BOOT_MAPPING_MANIFEST_HEADER *)((const uint8_t *)capsule + (capsule->ManifestPhys - capsule->BasePhys));
+    return (const BOOT_MAPPING_MANIFEST_HEADER *)((const uint8_t *)capsule +
+                                                  (capsule->ManifestPhys - capsule->BasePhys));
 }

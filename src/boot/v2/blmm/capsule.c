@@ -181,8 +181,7 @@ CreateInitialMapping(BOOT_CAPSULE *capsule, EFI_MEMORY_MAP *memoryMap)
             if (!EFI_ERROR(status))
             {
                 status = RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_IDENTITY, BOOT_MAPPING_PROVENANCE_STATIC,
-                                                 0, BOOT_MAPPING_LIFETIME_TEMPORARY, 0, 0, 0x80000000ULL,
-                                                 PTE_WRITABLE);
+                                                 0, BOOT_MAPPING_LIFETIME_TEMPORARY, 0, 0, 0x80000000ULL, PTE_WRITABLE);
             }
         }
         if (EFI_ERROR(status))
@@ -216,10 +215,10 @@ CreateInitialMapping(BOOT_CAPSULE *capsule, EFI_MEMORY_MAP *memoryMap)
         {
             LOG_DEBUG("Page table pool already covered by existing HHDM mappings\r\n");
         }
-        status = RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_BOOT_PAGE_TABLES,
-                                         BOOT_MAPPING_PROVENANCE_STATIC, 0, BOOT_MAPPING_LIFETIME_RETAINED,
-                                         capsule->PageTableInfo.Ptr, HHDM_BASE_VA + capsule->PageTableInfo.Ptr,
-                                         capsule->PageTableInfo.Size, PTE_WRITABLE | nxFlag);
+        status = RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_BOOT_PAGE_TABLES, BOOT_MAPPING_PROVENANCE_STATIC,
+                                         0, BOOT_MAPPING_LIFETIME_RETAINED, capsule->PageTableInfo.Ptr,
+                                         HHDM_BASE_VA + capsule->PageTableInfo.Ptr, capsule->PageTableInfo.Size,
+                                         PTE_WRITABLE | nxFlag);
         if (EFI_ERROR(status))
         {
             LOG_ERROR("Failed to record page table mapping in manifest: %k (0x%x)\r\n", status, status);
@@ -244,20 +243,19 @@ CreateInitialMapping(BOOT_CAPSULE *capsule, EFI_MEMORY_MAP *memoryMap)
                 LOG_DEBUG("Boot staging block already covered by existing HHDM mappings\r\n");
             }
 
-            status = RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_BOOT_STAGING,
-                                             BOOT_MAPPING_PROVENANCE_STATIC, 0, BOOT_MAPPING_LIFETIME_RETAINED,
-                                             capsule->BasePhys, HHDM_BASE_VA + capsule->BasePhys, capsuleSize,
-                                             PTE_WRITABLE | nxFlag);
+            status = RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_BOOT_STAGING, BOOT_MAPPING_PROVENANCE_STATIC,
+                                             0, BOOT_MAPPING_LIFETIME_RETAINED, capsule->BasePhys,
+                                             HHDM_BASE_VA + capsule->BasePhys, capsuleSize, PTE_WRITABLE | nxFlag);
             if (EFI_ERROR(status))
             {
                 LOG_ERROR("Failed to record boot staging mapping in manifest: %k (0x%x)\r\n", status, status);
                 break;
             }
 
-            status = RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_BOOT_HANDOFF,
-                                             BOOT_MAPPING_PROVENANCE_STATIC, 0, BOOT_MAPPING_LIFETIME_RETAINED,
-                                             capsule->BasePhys, HHDM_BASE_VA + capsule->BasePhys,
-                                             capsule->PageLayout.HandoffPages << 12, PTE_WRITABLE | nxFlag);
+            status = RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_BOOT_HANDOFF, BOOT_MAPPING_PROVENANCE_STATIC,
+                                             0, BOOT_MAPPING_LIFETIME_RETAINED, capsule->BasePhys,
+                                             HHDM_BASE_VA + capsule->BasePhys, capsule->PageLayout.HandoffPages << 12,
+                                             PTE_WRITABLE | nxFlag);
             if (EFI_ERROR(status))
             {
                 LOG_ERROR("Failed to record boot handoff mapping in manifest: %k (0x%x)\r\n", status, status);
@@ -283,9 +281,9 @@ CreateInitialMapping(BOOT_CAPSULE *capsule, EFI_MEMORY_MAP *memoryMap)
             if (EFI_ERROR(status))
                 break;
 
-            status = RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_KERNEL_CODE,
-                                             BOOT_MAPPING_PROVENANCE_STATIC, 0, BOOT_MAPPING_LIFETIME_KERNEL,
-                                             capsule->KrnlEntryPhys, KRNL_BASE_VA, sizeAligned, PTE_WRITABLE);
+            status = RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_KERNEL_CODE, BOOT_MAPPING_PROVENANCE_STATIC,
+                                             0, BOOT_MAPPING_LIFETIME_KERNEL, capsule->KrnlEntryPhys, KRNL_BASE_VA,
+                                             sizeAligned, PTE_WRITABLE);
             if (EFI_ERROR(status))
             {
                 LOG_ERROR("Failed to record kernel code mapping in manifest: %k (0x%x)\r\n", status, status);
@@ -302,9 +300,9 @@ CreateInitialMapping(BOOT_CAPSULE *capsule, EFI_MEMORY_MAP *memoryMap)
             if (EFI_ERROR(status))
                 break;
 
-            status = RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_KERNEL_DATA,
-                                             BOOT_MAPPING_PROVENANCE_STATIC, 0, BOOT_MAPPING_LIFETIME_KERNEL,
-                                             dataPhys, dataVirt, dataSizeAligned, PTE_WRITABLE | nxFlag);
+            status = RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_KERNEL_DATA, BOOT_MAPPING_PROVENANCE_STATIC,
+                                             0, BOOT_MAPPING_LIFETIME_KERNEL, dataPhys, dataVirt, dataSizeAligned,
+                                             PTE_WRITABLE | nxFlag);
             if (EFI_ERROR(status))
             {
                 LOG_ERROR("Failed to record kernel data mapping in manifest: %k (0x%x)\r\n", status, status);
@@ -319,10 +317,10 @@ CreateInitialMapping(BOOT_CAPSULE *capsule, EFI_MEMORY_MAP *memoryMap)
             if (EFI_ERROR(status))
                 break;
 
-            status = RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_KERNEL_STACK,
-                                             BOOT_MAPPING_PROVENANCE_STATIC, 0, BOOT_MAPPING_LIFETIME_KERNEL,
-                                             capsule->KrnlStackPhys, KRNL_STACK_VA,
-                                             HO_ALIGN_UP(capsule->Layout.KrnlStackSize, PAGE_4KB), PTE_WRITABLE | nxFlag);
+            status =
+                RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_KERNEL_STACK, BOOT_MAPPING_PROVENANCE_STATIC, 0,
+                                        BOOT_MAPPING_LIFETIME_KERNEL, capsule->KrnlStackPhys, KRNL_STACK_VA,
+                                        HO_ALIGN_UP(capsule->Layout.KrnlStackSize, PAGE_4KB), PTE_WRITABLE | nxFlag);
             if (EFI_ERROR(status))
             {
                 LOG_ERROR("Failed to record kernel stack mapping in manifest: %k (0x%x)\r\n", status, status);
@@ -336,11 +334,10 @@ CreateInitialMapping(BOOT_CAPSULE *capsule, EFI_MEMORY_MAP *memoryMap)
             if (EFI_ERROR(status))
                 break;
 
-            status = RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_KERNEL_IST_STACK,
-                                             BOOT_MAPPING_PROVENANCE_STATIC, 0, BOOT_MAPPING_LIFETIME_KERNEL,
-                                             capsule->KrnlIST1StackPhys, KRNL_IST1_STACK_VA,
-                                             HO_ALIGN_UP(capsule->Layout.IST1StackSize, PAGE_4KB),
-                                             PTE_WRITABLE | nxFlag);
+            status =
+                RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_KERNEL_IST_STACK, BOOT_MAPPING_PROVENANCE_STATIC,
+                                        0, BOOT_MAPPING_LIFETIME_KERNEL, capsule->KrnlIST1StackPhys, KRNL_IST1_STACK_VA,
+                                        HO_ALIGN_UP(capsule->Layout.IST1StackSize, PAGE_4KB), PTE_WRITABLE | nxFlag);
             if (EFI_ERROR(status))
             {
                 LOG_ERROR("Failed to record IST1 stack mapping in manifest: %k (0x%x)\r\n", status, status);
@@ -354,11 +351,10 @@ CreateInitialMapping(BOOT_CAPSULE *capsule, EFI_MEMORY_MAP *memoryMap)
             if (EFI_ERROR(status))
                 break;
 
-            status = RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_KERNEL_IST_STACK,
-                                             BOOT_MAPPING_PROVENANCE_STATIC, 0, BOOT_MAPPING_LIFETIME_KERNEL,
-                                             capsule->KrnlIST2StackPhys, KRNL_IST2_STACK_VA,
-                                             HO_ALIGN_UP(capsule->Layout.IST2StackSize, PAGE_4KB),
-                                             PTE_WRITABLE | nxFlag);
+            status =
+                RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_KERNEL_IST_STACK, BOOT_MAPPING_PROVENANCE_STATIC,
+                                        0, BOOT_MAPPING_LIFETIME_KERNEL, capsule->KrnlIST2StackPhys, KRNL_IST2_STACK_VA,
+                                        HO_ALIGN_UP(capsule->Layout.IST2StackSize, PAGE_4KB), PTE_WRITABLE | nxFlag);
             if (EFI_ERROR(status))
             {
                 LOG_ERROR("Failed to record IST2 stack mapping in manifest: %k (0x%x)\r\n", status, status);
@@ -373,9 +369,8 @@ CreateInitialMapping(BOOT_CAPSULE *capsule, EFI_MEMORY_MAP *memoryMap)
             if (EFI_ERROR(status))
                 break;
 
-            status = RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_FRAMEBUFFER,
-                                             BOOT_MAPPING_PROVENANCE_STATIC, 0, BOOT_MAPPING_LIFETIME_DEVICE,
-                                             capsule->FramebufferPhys, MMIO_BASE_VA,
+            status = RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_FRAMEBUFFER, BOOT_MAPPING_PROVENANCE_STATIC,
+                                             0, BOOT_MAPPING_LIFETIME_DEVICE, capsule->FramebufferPhys, MMIO_BASE_VA,
                                              HO_ALIGN_UP(capsule->FramebufferSize, PAGE_4KB),
                                              PTE_CACHE_DISABLE | PTE_WRITABLE | nxFlag);
             if (EFI_ERROR(status))
@@ -397,9 +392,8 @@ CreateInitialMapping(BOOT_CAPSULE *capsule, EFI_MEMORY_MAP *memoryMap)
                 break;
             }
 
-            status = RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_LAPIC_MMIO,
-                                             BOOT_MAPPING_PROVENANCE_CPU_MSR, IA32_APIC_BASE_MSR,
-                                             BOOT_MAPPING_LIFETIME_DEVICE, lapicBasePhys,
+            status = RecordBootMappingRegion(capsule, BOOT_MAPPING_REGION_LAPIC_MMIO, BOOT_MAPPING_PROVENANCE_CPU_MSR,
+                                             IA32_APIC_BASE_MSR, BOOT_MAPPING_LIFETIME_DEVICE, lapicBasePhys,
                                              HHDM_BASE_VA + lapicBasePhys, PAGE_4KB,
                                              PTE_CACHE_DISABLE | PTE_WRITABLE | nxFlag);
             if (EFI_ERROR(status))

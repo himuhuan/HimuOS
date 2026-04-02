@@ -73,6 +73,9 @@ KeSchedulerInit(void)
     gIdleThread->OwnedMutexCount = 0;
     KeInitializeIrqlState(&gIdleThread->IrqlState);
     KiInitWaitBlock(&gIdleThread->WaitBlock);
+    KeInitializeEvent(&gIdleThread->TerminationCompletion, FALSE);
+    gIdleThread->TerminationMode = KTHREAD_TERMINATION_MODE_DETACHED;
+    gIdleThread->TerminationClaimState = KTHREAD_TERMINATION_CLAIM_STATE_UNCLAIMED;
     LinkedListInit(&gIdleThread->ReadyLink);
     gIdleThread->EntryPoint = NULL;
     gIdleThread->EntryArg = NULL;
@@ -204,6 +207,97 @@ KeSleep(uint64_t durationNs)
     KeReleaseIrqlGuard(&irqlGuard);
 }
 
+static BOOL
+KiIsThreadTerminationCompletionPublished(KTHREAD *thread)
+{
+    HO_KASSERT(thread != NULL, EC_ILLEGAL_ARGUMENT);
+
+    return thread->TerminationCompletion.Header.SignalState != 0;
+}
+
+static BOOL
+KiIsThreadQueuedForReaper(KTHREAD *thread)
+{
+    HO_KASSERT(thread != NULL, EC_ILLEGAL_ARGUMENT);
+
+    return thread->ReadyLink.Flink != &thread->ReadyLink || thread->ReadyLink.Blink != &thread->ReadyLink;
+}
+
+static void
+KiQueueDetachedThreadForReaper(KTHREAD *thread)
+{
+    HO_KASSERT(thread != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(thread != gIdleThread, EC_INVALID_STATE);
+    HO_KASSERT(thread->State == KTHREAD_STATE_TERMINATED, EC_INVALID_STATE);
+    HO_KASSERT(thread->TerminationMode == KTHREAD_TERMINATION_MODE_DETACHED, EC_INVALID_STATE);
+    HO_KASSERT(thread->TerminationClaimState != KTHREAD_TERMINATION_CLAIM_STATE_JOIN_IN_PROGRESS, EC_INVALID_STATE);
+    HO_KASSERT(thread->TerminationClaimState != KTHREAD_TERMINATION_CLAIM_STATE_CONSUMED, EC_INVALID_STATE);
+    HO_KASSERT(KiIsThreadTerminationCompletionPublished(thread), EC_INVALID_STATE);
+
+    if (KiIsThreadQueuedForReaper(thread))
+    {
+        return;
+    }
+
+    LinkedListInsertTail(&gTerminatedList, &thread->ReadyLink);
+}
+
+static HO_STATUS
+KiRejectThreadLifecycleAction(const char *action, const KTHREAD *thread, const char *reason)
+{
+    HO_KASSERT(action != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(reason != NULL, EC_ILLEGAL_ARGUMENT);
+
+    if (thread != NULL)
+    {
+        klog(KLOG_LEVEL_WARNING, "[SCHED] %s rejected for thread %u: %s\n", action, thread->ThreadId, reason);
+    }
+    else
+    {
+        klog(KLOG_LEVEL_WARNING, "[SCHED] %s rejected: %s\n", action, reason);
+    }
+
+    return EC_INVALID_STATE;
+}
+
+static void
+KiMarkThreadTerminationConsumed(KTHREAD *thread)
+{
+    HO_KASSERT(thread != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(thread->TerminationClaimState != KTHREAD_TERMINATION_CLAIM_STATE_CONSUMED, EC_INVALID_STATE);
+
+    thread->TerminationClaimState = KTHREAD_TERMINATION_CLAIM_STATE_CONSUMED;
+}
+
+static void
+KiReleaseThreadJoinClaim(KTHREAD *thread)
+{
+    HO_KASSERT(thread != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(thread->TerminationClaimState == KTHREAD_TERMINATION_CLAIM_STATE_JOIN_IN_PROGRESS, EC_INVALID_STATE);
+
+    thread->TerminationClaimState = KTHREAD_TERMINATION_CLAIM_STATE_UNCLAIMED;
+}
+
+void
+KiFinalizeThread(KTHREAD *thread)
+{
+    HO_KASSERT(thread != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(thread != gIdleThread, EC_INVALID_STATE);
+    HO_KASSERT(thread->State == KTHREAD_STATE_TERMINATED, EC_INVALID_STATE);
+    HO_KASSERT(thread->TerminationClaimState == KTHREAD_TERMINATION_CLAIM_STATE_CONSUMED, EC_INVALID_STATE);
+
+    if (thread->StackOwnedByKva)
+    {
+        HO_STATUS status = KeKvaReleaseRangeHandle(&thread->StackRange);
+        if (status != EC_SUCCESS)
+        {
+            HO_KPANIC(status, "Failed to release terminated KTHREAD stack");
+        }
+    }
+
+    KePoolFree(&gKThreadPool, thread);
+}
+
 // ─────────────────────────────────────────────────────────────
 // KeThreadExit
 // ─────────────────────────────────────────────────────────────
@@ -215,22 +309,193 @@ KeThreadExit(void)
     HO_KASSERT(gCurrentThread != gIdleThread, EC_INVALID_STATE);
     HO_KASSERT(gCurrentThread->OwnedMutexCount == 0, EC_INVALID_STATE);
 
+    KTHREAD *thread = gCurrentThread;
+
     KE_IRQL_GUARD irqlGuard = {0};
     KeAcquireIrqlGuard(&irqlGuard, KE_IRQL_DISPATCH_LEVEL);
     KE_CRITICAL_SECTION criticalSection = {0};
     KeEnterCriticalSection(&criticalSection);
 
-    gCurrentThread->State = KTHREAD_STATE_TERMINATED;
+    thread->State = KTHREAD_STATE_TERMINATED;
     gStats.ActiveThreadCount--;
 
-    klog(KLOG_LEVEL_INFO, "[SCHED] Thread %u terminated\n", gCurrentThread->ThreadId);
+    klog(KLOG_LEVEL_INFO, "[SCHED] Thread %u terminated\n", thread->ThreadId);
 
-    // Park on terminated list for IdleThread reaper (reuse ReadyLink)
-    LinkedListInsertTail(&gTerminatedList, &gCurrentThread->ReadyLink);
+    KeLeaveCriticalSection(&criticalSection);
+
+    KeSetEvent(&thread->TerminationCompletion);
+
+    KeEnterCriticalSection(&criticalSection);
+
+    if (thread->TerminationMode == KTHREAD_TERMINATION_MODE_DETACHED)
+    {
+        KiQueueDetachedThreadForReaper(thread);
+    }
 
     KeLeaveCriticalSection(&criticalSection);
     KiSchedule();
     __builtin_unreachable();
+}
+
+HO_KERNEL_API HO_STATUS
+KeThreadJoin(KTHREAD *thread, uint64_t timeoutNs)
+{
+    KiAssertBlockingAllowed();
+
+    if (!thread)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (thread == gCurrentThread)
+    {
+        return KiRejectThreadLifecycleAction("join", thread, "self-join is not allowed");
+    }
+
+    if (gCurrentThread == gIdleThread)
+    {
+        return KiRejectThreadLifecycleAction("join", thread, "IdleThread cannot block on thread join");
+    }
+
+    KE_IRQL_GUARD irqlGuard = {0};
+    KeAcquireIrqlGuard(&irqlGuard, KE_IRQL_DISPATCH_LEVEL);
+    KE_CRITICAL_SECTION criticalSection = {0};
+    KeEnterCriticalSection(&criticalSection);
+
+    if (thread == gIdleThread)
+    {
+        KeLeaveCriticalSection(&criticalSection);
+        KeReleaseIrqlGuard(&irqlGuard);
+        return KiRejectThreadLifecycleAction("join", thread, "IdleThread cannot be joined");
+    }
+
+    if (thread->TerminationMode == KTHREAD_TERMINATION_MODE_DETACHED)
+    {
+        KeLeaveCriticalSection(&criticalSection);
+        KeReleaseIrqlGuard(&irqlGuard);
+        return KiRejectThreadLifecycleAction("join", thread, "thread is detached");
+    }
+
+    if (thread->TerminationClaimState == KTHREAD_TERMINATION_CLAIM_STATE_CONSUMED)
+    {
+        KeLeaveCriticalSection(&criticalSection);
+        KeReleaseIrqlGuard(&irqlGuard);
+        return KiRejectThreadLifecycleAction("join", thread, "thread termination already consumed");
+    }
+
+    if (thread->TerminationClaimState == KTHREAD_TERMINATION_CLAIM_STATE_JOIN_IN_PROGRESS)
+    {
+        KeLeaveCriticalSection(&criticalSection);
+        KeReleaseIrqlGuard(&irqlGuard);
+        return KiRejectThreadLifecycleAction("join", thread, "another join is already in progress");
+    }
+
+    thread->TerminationClaimState = KTHREAD_TERMINATION_CLAIM_STATE_JOIN_IN_PROGRESS;
+
+    if (thread->State == KTHREAD_STATE_TERMINATED && KiIsThreadTerminationCompletionPublished(thread))
+    {
+        KiMarkThreadTerminationConsumed(thread);
+        KeLeaveCriticalSection(&criticalSection);
+        KeReleaseIrqlGuard(&irqlGuard);
+        KiFinalizeThread(thread);
+        return EC_SUCCESS;
+    }
+
+    if (timeoutNs == 0)
+    {
+        KiReleaseThreadJoinClaim(thread);
+        KeLeaveCriticalSection(&criticalSection);
+        KeReleaseIrqlGuard(&irqlGuard);
+        return EC_TIMEOUT;
+    }
+
+    KeLeaveCriticalSection(&criticalSection);
+    KeReleaseIrqlGuard(&irqlGuard);
+
+    HO_STATUS waitStatus = KeWaitForSingleObject(&thread->TerminationCompletion, timeoutNs);
+    if (waitStatus != EC_SUCCESS)
+    {
+        KE_IRQL_GUARD completionIrqlGuard = {0};
+        KeAcquireIrqlGuard(&completionIrqlGuard, KE_IRQL_DISPATCH_LEVEL);
+        KE_CRITICAL_SECTION completionCriticalSection = {0};
+        KeEnterCriticalSection(&completionCriticalSection);
+
+        if (thread->TerminationClaimState == KTHREAD_TERMINATION_CLAIM_STATE_JOIN_IN_PROGRESS)
+        {
+            KiReleaseThreadJoinClaim(thread);
+        }
+
+        KeLeaveCriticalSection(&completionCriticalSection);
+        KeReleaseIrqlGuard(&completionIrqlGuard);
+        return waitStatus;
+    }
+
+    KE_IRQL_GUARD completionIrqlGuard = {0};
+    KeAcquireIrqlGuard(&completionIrqlGuard, KE_IRQL_DISPATCH_LEVEL);
+    KE_CRITICAL_SECTION completionCriticalSection = {0};
+    KeEnterCriticalSection(&completionCriticalSection);
+
+    HO_KASSERT(thread->TerminationMode == KTHREAD_TERMINATION_MODE_JOINABLE, EC_INVALID_STATE);
+    HO_KASSERT(thread->State == KTHREAD_STATE_TERMINATED, EC_INVALID_STATE);
+    HO_KASSERT(KiIsThreadTerminationCompletionPublished(thread), EC_INVALID_STATE);
+    HO_KASSERT(thread->TerminationClaimState == KTHREAD_TERMINATION_CLAIM_STATE_JOIN_IN_PROGRESS, EC_INVALID_STATE);
+
+    KiMarkThreadTerminationConsumed(thread);
+
+    KeLeaveCriticalSection(&completionCriticalSection);
+    KeReleaseIrqlGuard(&completionIrqlGuard);
+
+    KiFinalizeThread(thread);
+    return EC_SUCCESS;
+}
+
+HO_KERNEL_API HO_STATUS
+KeThreadDetach(KTHREAD *thread)
+{
+    if (!thread)
+        return EC_ILLEGAL_ARGUMENT;
+
+    KE_IRQL_GUARD irqlGuard = {0};
+    KeAcquireIrqlGuard(&irqlGuard, KE_IRQL_DISPATCH_LEVEL);
+    KE_CRITICAL_SECTION criticalSection = {0};
+    KeEnterCriticalSection(&criticalSection);
+
+    if (thread == gIdleThread)
+    {
+        KeLeaveCriticalSection(&criticalSection);
+        KeReleaseIrqlGuard(&irqlGuard);
+        return KiRejectThreadLifecycleAction("detach", thread, "IdleThread lifetime is fixed to detached");
+    }
+
+    if (thread->TerminationMode == KTHREAD_TERMINATION_MODE_DETACHED)
+    {
+        KeLeaveCriticalSection(&criticalSection);
+        KeReleaseIrqlGuard(&irqlGuard);
+        return KiRejectThreadLifecycleAction("detach", thread, "thread is already detached");
+    }
+
+    if (thread->TerminationClaimState == KTHREAD_TERMINATION_CLAIM_STATE_CONSUMED)
+    {
+        KeLeaveCriticalSection(&criticalSection);
+        KeReleaseIrqlGuard(&irqlGuard);
+        return KiRejectThreadLifecycleAction("detach", thread, "thread termination already consumed");
+    }
+
+    if (thread->TerminationClaimState == KTHREAD_TERMINATION_CLAIM_STATE_JOIN_IN_PROGRESS)
+    {
+        KeLeaveCriticalSection(&criticalSection);
+        KeReleaseIrqlGuard(&irqlGuard);
+        return KiRejectThreadLifecycleAction("detach", thread, "join is already in progress");
+    }
+
+    thread->TerminationMode = KTHREAD_TERMINATION_MODE_DETACHED;
+    // Keep completion publication ahead of detached reaper handoff.
+    if (thread->State == KTHREAD_STATE_TERMINATED && KiIsThreadTerminationCompletionPublished(thread))
+    {
+        KiQueueDetachedThreadForReaper(thread);
+    }
+
+    KeLeaveCriticalSection(&criticalSection);
+    KeReleaseIrqlGuard(&irqlGuard);
+    return EC_SUCCESS;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -305,33 +570,23 @@ KiReapTerminatedThreads(void)
 {
     while (TRUE)
     {
-        LINKED_LIST_TAG *entry = NULL;
+        KTHREAD *thread = NULL;
         KE_CRITICAL_SECTION criticalSection = {0};
         KeEnterCriticalSection(&criticalSection);
 
         if (!LinkedListIsEmpty(&gTerminatedList))
         {
-            entry = gTerminatedList.Flink;
+            LINKED_LIST_TAG *entry = gTerminatedList.Flink;
             LinkedListRemove(entry);
+            thread = CONTAINING_RECORD(entry, KTHREAD, ReadyLink);
+            KiMarkThreadTerminationConsumed(thread);
         }
 
         KeLeaveCriticalSection(&criticalSection);
-        if (!entry)
+        if (!thread)
             return;
 
-        KTHREAD *thread = CONTAINING_RECORD(entry, KTHREAD, ReadyLink);
-
-        if (thread->StackOwnedByKva)
-        {
-            HO_STATUS status = KeKvaReleaseRangeHandle(&thread->StackRange);
-            if (status != EC_SUCCESS)
-            {
-                HO_KPANIC(status, "Failed to release terminated KTHREAD stack");
-            }
-        }
-
-        // Return KTHREAD to pool
-        KePoolFree(&gKThreadPool, thread);
+        KiFinalizeThread(thread);
     }
 }
 

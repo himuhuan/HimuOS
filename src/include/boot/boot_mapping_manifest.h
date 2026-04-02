@@ -14,8 +14,8 @@
 
 #define BOOT_MAPPING_MANIFEST_ALIGNMENT 8U
 
-#define BOOT_MAPPING_FOURCC(a, b, c, d)                                                                       \
-    ((uint32_t)(uint8_t)(a) | ((uint32_t)(uint8_t)(b) << 8) | ((uint32_t)(uint8_t)(c) << 16) |               \
+#define BOOT_MAPPING_FOURCC(a, b, c, d)                                                                                \
+    ((uint32_t)(uint8_t)(a) | ((uint32_t)(uint8_t)(b) << 8) | ((uint32_t)(uint8_t)(c) << 16) |                         \
      ((uint32_t)(uint8_t)(d) << 24))
 
 #define BOOT_MAPPING_MANIFEST_MAGIC   BOOT_MAPPING_FOURCC('B', 'M', 'M', 'F')
@@ -108,8 +108,8 @@ BootMappingManifestHeaderSize(void)
 static inline uint32_t
 BootMappingManifestTotalSizeForCapacity(uint32_t entryCapacity)
 {
-    uint64_t totalSize = (uint64_t)BootMappingManifestHeaderSize() +
-                         (uint64_t)entryCapacity * sizeof(BOOT_MAPPING_MANIFEST_ENTRY);
+    uint64_t totalSize =
+        (uint64_t)BootMappingManifestHeaderSize() + (uint64_t)entryCapacity * sizeof(BOOT_MAPPING_MANIFEST_ENTRY);
     return (uint32_t)HO_ALIGN_UP(totalSize, BOOT_MAPPING_MANIFEST_ALIGNMENT);
 }
 
