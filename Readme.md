@@ -62,6 +62,7 @@ BUILD_FLAVOR=<flavor> HO_DEMO_TEST_NAME=<profile> HO_DEMO_TEST_DEFINE=<define> \
 | Profile | Build flavor | Define | Outcome class | Intent |
 | ------ | ------ | ------ | ------ | ------ |
 | `schedule` | `test-schedule` | `HO_DEMO_TEST_SCHEDULE` | clean pass with continued boot/idle | scheduler smoke coverage, thread/event/semaphore/mutex 基线路径 |
+| `user_hello` | `test-user_hello` | `HO_DEMO_TEST_USER_HELLO` | bootstrap-only minimal user-mode bring-up | 最小 Ring 3 进入、`int 0x80` raw syscall（`SYS_RAW_WRITE` / `SYS_RAW_EXIT`）与 idle/reaper 回收证据链 |
 | `guard_wait` | `test-guard_wait` | `HO_DEMO_TEST_GUARD_WAIT` | diagnosable contract violation or panic | critical-section guard misuse |
 | `owned_exit` | `test-owned_exit` | `HO_DEMO_TEST_OWNED_EXIT` | diagnosable contract violation or panic | exit while owning a mutex |
 | `irql_wait` | `test-irql_wait` | `HO_DEMO_TEST_IRQL_WAIT` | diagnosable contract violation or panic | wait at `DISPATCH_LEVEL` |
@@ -73,6 +74,8 @@ BUILD_FLAVOR=<flavor> HO_DEMO_TEST_NAME=<profile> HO_DEMO_TEST_DEFINE=<define> \
 | `pf_fixmap` | `test-pf_fixmap` | `HO_DEMO_TEST_PF_FIXMAP` | intentional fatal page-fault halt with bounded diagnostics | active fixmap alias diagnosis |
 | `pf_heap` | `test-pf_heap` | `HO_DEMO_TEST_PF_HEAP` | intentional fatal page-fault halt with bounded diagnostics | heap-backed KVA diagnosis |
 
+其中 `user_hello` 是 bootstrap-only 的最小用户态 bring-up profile，用来固定“进入用户态 -> `int 0x80` -> `SYS_RAW_WRITE` -> `SYS_RAW_EXIT` -> idle/reaper 回收”的证据链。它刻意复用当前 staging/imported-root 模型，因此**不是**最终进程地址空间合同，也不代表 Ex / handle-oriented 用户态接口已经定型。
+
 ### 例子
 
 ```bash
@@ -81,6 +84,12 @@ make clean
 bear -- make all BUILD_FLAVOR=test-schedule HO_DEMO_TEST_NAME=schedule HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_SCHEDULE
 BUILD_FLAVOR=test-schedule HO_DEMO_TEST_NAME=schedule HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_SCHEDULE \
     bash scripts/qemu_capture.sh 30 /tmp/himuos-schedule.log
+
+# bootstrap-only user-mode bring-up profile
+make clean
+bear -- make all BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO
+BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO \
+    bash scripts/qemu_capture.sh 30 /tmp/himuos-user-hello.log
 
 # guard-misuse profile
 make clean

@@ -18,6 +18,7 @@
 #include <kernel/ke/event.h>
 #include <kernel/ke/mutex.h>
 #include <kernel/ke/semaphore.h>
+#include <kernel/ke/user_bootstrap.h>
 
 #define HO_DEMO_TEST_NONE              0
 #define HO_DEMO_TEST_SCHEDULE          1
@@ -36,6 +37,7 @@
 #define HO_DEMO_TEST_PF_FIXMAP         14
 #define HO_DEMO_TEST_PF_HEAP           15
 #define HO_DEMO_TEST_KTHREAD_POOL_RACE 16
+#define HO_DEMO_TEST_USER_HELLO        17
 
 #ifndef HO_DEMO_TEST_SELECTION
 #define HO_DEMO_TEST_SELECTION HO_DEMO_TEST_NONE
@@ -97,3 +99,4 @@ void RunPageFaultGuardDemo(void);
 void RunPageFaultFixmapDemo(void);
 void RunPageFaultHeapDemo(void);
 void RunKthreadPoolRaceDemo(void);
+void RunUserHelloDemo(void);

@@ -3,6 +3,7 @@
 #include "kernel/hodbg.h"
 #include <kernel/init.h>
 #include <kernel/ke/irql.h>
+#include <kernel/ke/user_bootstrap.h>
 #include <libc/string.h>
 
 static IDT_ENTRY kInterruptDescriptorTable[256];
@@ -20,6 +21,7 @@ extern void *gIsrStubTable[];
 
 static uint8_t GetVectorGateType(uint8_t vectorNumber);
 static uint8_t GetVectorIstIndex(uint8_t vectorNumber);
+static BOOL IsSynchronousTrapVector(uint8_t vectorNumber);
 
 static inline HO_VIRTUAL_ADDRESS
 ReadCr2(void)
@@ -49,14 +51,14 @@ LoadIdt(IDT_PTR *pIdtPtr)
 }
 
 static void
-HandleExternalInterrupt(INTERRUPT_FRAME *frame)
+HandleRegisteredVector(INTERRUPT_FRAME *frame)
 {
     uint8_t vectorNumber = (uint8_t)frame->VectorNumber;
     IDT_IRQ_HANDLER_ENTRY *entry = &kInterruptHandlers[vectorNumber];
 
     if (entry->Handler == NULL)
     {
-        klog(KLOG_LEVEL_ERROR, "[IDT] Unhandled external interrupt vector=%u\n", vectorNumber);
+        klog(KLOG_LEVEL_ERROR, "[IDT] Unhandled registered vector=%u\n", vectorNumber);
         return;
     }
 
@@ -68,6 +70,8 @@ GetVectorGateType(uint8_t vectorNumber)
 {
     switch (vectorNumber)
     {
+    case KE_USER_BOOTSTRAP_SYSCALL_VECTOR:
+        return IDT_FLAG_USER_TRAP_GATE;
     case 3: // #BP Breakpoint
     case 4: // #OF Overflow
         return IDT_FLAG_TRAP_GATE;
@@ -88,6 +92,12 @@ GetVectorIstIndex(uint8_t vectorNumber)
     default:
         return 0;
     }
+}
+
+static BOOL
+IsSynchronousTrapVector(uint8_t vectorNumber)
+{
+    return vectorNumber == KE_USER_BOOTSTRAP_SYSCALL_VECTOR;
 }
 
 void
@@ -127,8 +137,14 @@ IdtExceptionHandler(void *frame)
         return;
     }
 
+    if (IsSynchronousTrapVector(vectorNumber))
+    {
+        HandleRegisteredVector(dump);
+        return;
+    }
+
     KeEnterInterruptContext();
-    HandleExternalInterrupt(dump);
+    HandleRegisteredVector(dump);
     KeLeaveInterruptContext();
 }
 

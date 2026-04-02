@@ -13,6 +13,7 @@
 
 #define IDT_FLAG_INTERRUPT_GATE 0x8E // 64-bit Interrupt Gate (P=1, DPL=0, Type=E)
 #define IDT_FLAG_TRAP_GATE      0x8F // 64-bit Trap Gate (P=1, DPL=0, Type=F)
+#define IDT_FLAG_USER_TRAP_GATE 0xEF // 64-bit Trap Gate (P=1, DPL=3, Type=F)
 
 struct IDT_ENTRY
 {
