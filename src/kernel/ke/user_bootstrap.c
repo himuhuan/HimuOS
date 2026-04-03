@@ -37,6 +37,10 @@ struct KE_USER_BOOTSTRAP_STAGING
     HO_VIRTUAL_ADDRESS StackBase;
     HO_VIRTUAL_ADDRESS StackTop;
     HO_VIRTUAL_ADDRESS GuardBase;
+    HO_VIRTUAL_ADDRESS PhaseOneMailboxAddress;
+    uint32_t PhaseOneUserTimerHitCount;
+    BOOL PhaseOneFirstEntryObserved;
+    BOOL PhaseOneGateArmed;
     uint32_t MappingCount;
     KTHREAD *AttachedThread;
     KE_USER_BOOTSTRAP_MAPPING_RECORD Mappings[KE_USER_BOOTSTRAP_MAX_MAPPINGS];
@@ -65,6 +69,7 @@ static HO_STATUS KiAllocateAndMapUserPage(const KE_KERNEL_ADDRESS_SPACE *space,
                                           uint64_t byteCount);
 static const KE_USER_BOOTSTRAP_MAPPING_RECORD *KiFindMappedPage(const KE_USER_BOOTSTRAP_STAGING *staging,
                                                                 KE_USER_BOOTSTRAP_MAPPING_KIND kind);
+static KE_USER_BOOTSTRAP_STAGING *KiGetCurrentThreadStaging(void);
 
 static HO_STATUS
 KiValidateCreateParams(const KE_USER_BOOTSTRAP_CREATE_PARAMS *params)
@@ -202,6 +207,20 @@ KiFindMappedPage(const KE_USER_BOOTSTRAP_STAGING *staging, KE_USER_BOOTSTRAP_MAP
     return NULL;
 }
 
+static KE_USER_BOOTSTRAP_STAGING *
+KiGetCurrentThreadStaging(void)
+{
+    KTHREAD *thread = KeGetCurrentThread();
+    if (!thread || thread->UserBootstrapContext == NULL)
+        return NULL;
+
+    KE_USER_BOOTSTRAP_STAGING *staging = thread->UserBootstrapContext;
+    if (staging->AttachedThread != thread)
+        return NULL;
+
+    return staging;
+}
+
 HO_KERNEL_API HO_NODISCARD HO_STATUS
 KeUserBootstrapCreateStaging(const KE_USER_BOOTSTRAP_CREATE_PARAMS *params,
                              KE_USER_BOOTSTRAP_STAGING **outStaging)
@@ -249,6 +268,7 @@ KeUserBootstrapCreateStaging(const KE_USER_BOOTSTRAP_CREATE_PARAMS *params,
     staging->StackBase = KE_USER_BOOTSTRAP_STACK_BASE;
     staging->StackTop = KE_USER_BOOTSTRAP_STACK_TOP;
     staging->GuardBase = KE_USER_BOOTSTRAP_STACK_GUARD_BASE;
+    staging->PhaseOneMailboxAddress = KE_USER_BOOTSTRAP_STACK_MAILBOX_ADDRESS;
 
     status = KiAllocateAndMapUserPage(space,
                                       staging,
@@ -286,6 +306,8 @@ KeUserBootstrapCreateStaging(const KE_USER_BOOTSTRAP_CREATE_PARAMS *params,
     status = KiValidateBootstrapHole(space, staging->GuardBase);
     if (status != EC_SUCCESS)
         goto cleanup;
+
+    *(volatile uint32_t *)(uint64_t)staging->PhaseOneMailboxAddress = KE_USER_BOOTSTRAP_P1_MAILBOX_CLOSED;
 
     *outStaging = staging;
     return EC_SUCCESS;
@@ -375,6 +397,42 @@ KeUserBootstrapAttachThread(KTHREAD *thread, KE_USER_BOOTSTRAP_STAGING *staging)
     return EC_SUCCESS;
 }
 
+HO_KERNEL_API void
+KeUserBootstrapObserveCurrentThreadUserTimerPreemption(void)
+{
+    KTHREAD *thread = KeGetCurrentThread();
+    KE_USER_BOOTSTRAP_STAGING *staging = KiGetCurrentThreadStaging();
+    if (!thread || !staging)
+        return;
+
+    if (!staging->PhaseOneFirstEntryObserved || staging->PhaseOneGateArmed)
+        return;
+
+    HO_KASSERT(KiFindMappedPage(staging, KE_USER_BOOTSTRAP_MAPPING_KIND_STACK) != NULL, EC_INVALID_STATE);
+    HO_KASSERT(staging->PhaseOneMailboxAddress == KE_USER_BOOTSTRAP_STACK_MAILBOX_ADDRESS, EC_INVALID_STATE);
+
+    if (staging->PhaseOneUserTimerHitCount < 2)
+    {
+        ++staging->PhaseOneUserTimerHitCount;
+    }
+
+    klog(KLOG_LEVEL_INFO,
+         KE_USER_BOOTSTRAP_LOG_TIMER_FROM_USER_FORMAT " thread=%u\n",
+         staging->PhaseOneUserTimerHitCount,
+         thread->ThreadId);
+
+    if (staging->PhaseOneUserTimerHitCount >= 2)
+    {
+        *(volatile uint32_t *)(uint64_t)staging->PhaseOneMailboxAddress = KE_USER_BOOTSTRAP_P1_MAILBOX_GATE_OPEN;
+        staging->PhaseOneGateArmed = TRUE;
+
+        klog(KLOG_LEVEL_INFO,
+             KE_USER_BOOTSTRAP_LOG_P1_GATE_ARMED " thread=%u mailbox=%p\n",
+             thread->ThreadId,
+             (void *)(uint64_t)staging->PhaseOneMailboxAddress);
+    }
+}
+
 HO_KERNEL_API HO_NORETURN void
 KeUserBootstrapEnterCurrentThread(void)
 {
@@ -390,8 +448,11 @@ KeUserBootstrapEnterCurrentThread(void)
     HO_KASSERT(staging->EntryPoint < (KE_USER_BOOTSTRAP_CODE_BASE + KE_USER_BOOTSTRAP_PAGE_SIZE), EC_INVALID_STATE);
     HO_KASSERT(staging->StackBase == KE_USER_BOOTSTRAP_STACK_BASE, EC_INVALID_STATE);
     HO_KASSERT(staging->StackTop == KE_USER_BOOTSTRAP_STACK_TOP, EC_INVALID_STATE);
+    HO_KASSERT(staging->PhaseOneMailboxAddress == KE_USER_BOOTSTRAP_STACK_MAILBOX_ADDRESS, EC_INVALID_STATE);
 
-    klog(KLOG_LEVEL_INFO, KE_USER_BOOTSTRAP_LOG_ENTER_USER_MODE "\n");
+    staging->PhaseOneFirstEntryObserved = TRUE;
+
+    klog(KLOG_LEVEL_INFO, KE_USER_BOOTSTRAP_LOG_P1_FIRST_ENTRY "\n");
 
     KiUserBootstrapIretq(
         staging->EntryPoint, staging->StackTop, KE_USER_BOOTSTRAP_INITIAL_RFLAGS, GDT_USER_CODE_SEL, GDT_USER_DATA_SEL);
