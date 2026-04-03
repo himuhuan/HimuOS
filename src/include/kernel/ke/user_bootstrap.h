@@ -53,14 +53,22 @@
 #define SYS_RAW_EXIT                                 2U
 
 /*
- * Stable user_hello evidence-chain anchors. Phase one uses explicit
- * first-entry / timer-hit / gate-armed milestones before raw syscalls run.
+ * Bootstrap raw write keeps both rejection and success paths on the same
+ * helper family in ke/user_bootstrap_syscall.c:
+ * - validate the fixed bootstrap user window range
+ * - validate that covered pages remain user accessible
+ * - bounded copy-in into a kernel scratch buffer
+ *
+ * Stable user_hello evidence-chain anchors then record P1 milestones first,
+ * followed by raw-write rejection/success and raw-exit handoff.
  */
 #define KE_USER_BOOTSTRAP_LOG_ENTER_USER_MODE          "[USERBOOT] enter user mode"
 #define KE_USER_BOOTSTRAP_LOG_P1_FIRST_ENTRY           KE_USER_BOOTSTRAP_LOG_ENTER_USER_MODE
 #define KE_USER_BOOTSTRAP_LOG_TIMER_FROM_USER_FORMAT   "[USERBOOT] timer from user #%u"
 #define KE_USER_BOOTSTRAP_LOG_P1_GATE_ARMED            "[USERBOOT] P1 gate armed"
 #define KE_USER_BOOTSTRAP_LOG_HELLO                    "[USERBOOT] hello"
+#define KE_USER_BOOTSTRAP_LOG_INVALID_RAW_WRITE        "[USERBOOT] invalid raw write rejected"
+#define KE_USER_BOOTSTRAP_LOG_HELLO_WRITE_SUCCEEDED    "[USERBOOT] hello write succeeds"
 #define KE_USER_BOOTSTRAP_LOG_SYS_RAW_EXIT             "[USERBOOT] SYS_RAW_EXIT"
 #define KE_USER_BOOTSTRAP_LOG_INVALID_SYSCALL          "[USERBOOT] invalid raw syscall"
 #define KE_USER_BOOTSTRAP_LOG_INVALID_USER_BUFFER      "[USERBOOT] invalid user buffer"

@@ -22,13 +22,14 @@ static HO_NORETURN void KiAbortRawExit(KTHREAD *thread,
                                        uint64_t exitCode,
                                        HO_STATUS status,
                                        const char *reason);
-static HO_STATUS KiValidateUserRange(HO_VIRTUAL_ADDRESS userBase,
-                                     uint64_t length,
-                                     HO_VIRTUAL_ADDRESS *outEndExclusive);
-static HO_STATUS KiValidateUserReadablePages(const KE_KERNEL_ADDRESS_SPACE *space,
-                                             HO_VIRTUAL_ADDRESS userBase,
-                                             HO_VIRTUAL_ADDRESS endExclusive);
-static HO_STATUS KiCopyInUserBytes(void *kernelDestination, HO_VIRTUAL_ADDRESS userSource, uint64_t length);
+static HO_STATUS KiValidateBootstrapUserRange(HO_VIRTUAL_ADDRESS userBase,
+                                              uint64_t length,
+                                              HO_VIRTUAL_ADDRESS *outEndExclusive);
+static HO_STATUS KiValidateBootstrapUserReadablePages(const KE_KERNEL_ADDRESS_SPACE *space,
+                                                      HO_VIRTUAL_ADDRESS userBase,
+                                                      HO_VIRTUAL_ADDRESS endExclusive);
+static HO_STATUS KiCopyInBootstrapUserBytes(void *kernelDestination, HO_VIRTUAL_ADDRESS userSource, uint64_t length);
+static int64_t KiRejectRawWrite(uint64_t userBuffer, uint64_t length, HO_STATUS status);
 static int64_t KiHandleRawWrite(uint64_t userBuffer, uint64_t length);
 static int64_t KiHandleRawExit(uint64_t exitCode);
 static int64_t KiDispatchRawSyscall(uint64_t rawSyscallNumber, uint64_t arg0, uint64_t arg1, uint64_t arg2);
@@ -54,7 +55,7 @@ KiAbortRawExit(KTHREAD *thread, uint64_t exitCode, HO_STATUS status, const char 
 }
 
 static HO_STATUS
-KiValidateUserRange(HO_VIRTUAL_ADDRESS userBase, uint64_t length, HO_VIRTUAL_ADDRESS *outEndExclusive)
+KiValidateBootstrapUserRange(HO_VIRTUAL_ADDRESS userBase, uint64_t length, HO_VIRTUAL_ADDRESS *outEndExclusive)
 {
     if (!outEndExclusive)
         return EC_ILLEGAL_ARGUMENT;
@@ -83,9 +84,9 @@ KiValidateUserRange(HO_VIRTUAL_ADDRESS userBase, uint64_t length, HO_VIRTUAL_ADD
 }
 
 static HO_STATUS
-KiValidateUserReadablePages(const KE_KERNEL_ADDRESS_SPACE *space,
-                            HO_VIRTUAL_ADDRESS userBase,
-                            HO_VIRTUAL_ADDRESS endExclusive)
+KiValidateBootstrapUserReadablePages(const KE_KERNEL_ADDRESS_SPACE *space,
+                                     HO_VIRTUAL_ADDRESS userBase,
+                                     HO_VIRTUAL_ADDRESS endExclusive)
 {
     if (!space || !space->Initialized)
         return EC_INVALID_STATE;
@@ -131,7 +132,7 @@ KiValidateUserReadablePages(const KE_KERNEL_ADDRESS_SPACE *space,
 }
 
 static HO_STATUS
-KiCopyInUserBytes(void *kernelDestination, HO_VIRTUAL_ADDRESS userSource, uint64_t length)
+KiCopyInBootstrapUserBytes(void *kernelDestination, HO_VIRTUAL_ADDRESS userSource, uint64_t length)
 {
     if (!kernelDestination)
         return EC_ILLEGAL_ARGUMENT;
@@ -140,7 +141,7 @@ KiCopyInUserBytes(void *kernelDestination, HO_VIRTUAL_ADDRESS userSource, uint64
         return EC_SUCCESS;
 
     HO_VIRTUAL_ADDRESS endExclusive = 0;
-    HO_STATUS status = KiValidateUserRange(userSource, length, &endExclusive);
+    HO_STATUS status = KiValidateBootstrapUserRange(userSource, length, &endExclusive);
     if (status != EC_SUCCESS)
     {
         klog(KLOG_LEVEL_WARNING,
@@ -153,12 +154,24 @@ KiCopyInUserBytes(void *kernelDestination, HO_VIRTUAL_ADDRESS userSource, uint64
     }
 
     const KE_KERNEL_ADDRESS_SPACE *space = KeGetKernelAddressSpace();
-    status = KiValidateUserReadablePages(space, userSource, endExclusive);
+    status = KiValidateBootstrapUserReadablePages(space, userSource, endExclusive);
     if (status != EC_SUCCESS)
         return status;
 
     memcpy(kernelDestination, (const void *)(uint64_t)userSource, (size_t)length);
     return EC_SUCCESS;
+}
+
+static int64_t
+KiRejectRawWrite(uint64_t userBuffer, uint64_t length, HO_STATUS status)
+{
+    klog(KLOG_LEVEL_WARNING,
+         KE_USER_BOOTSTRAP_LOG_INVALID_RAW_WRITE " addr=%p len=%lu status=%s (%d)\n",
+         (void *)(uint64_t)userBuffer,
+         (unsigned long)length,
+         KrGetStatusMessage(status),
+         status);
+    return KiEncodeRawSyscallStatus(status);
 }
 
 static int64_t
@@ -171,18 +184,19 @@ KiHandleRawWrite(uint64_t userBuffer, uint64_t length)
              (void *)(uint64_t)userBuffer,
              (unsigned long)length,
              KE_USER_BOOTSTRAP_SYS_RAW_WRITE_MAX_LENGTH);
-        return KiEncodeRawSyscallStatus(EC_ILLEGAL_ARGUMENT);
+        return KiRejectRawWrite(userBuffer, length, EC_ILLEGAL_ARGUMENT);
     }
 
     if (length == 0)
         return 0;
 
     char scratch[KE_USER_BOOTSTRAP_SYS_RAW_WRITE_MAX_LENGTH];
-    HO_STATUS status = KiCopyInUserBytes(scratch, (HO_VIRTUAL_ADDRESS)userBuffer, length);
+    HO_STATUS status = KiCopyInBootstrapUserBytes(scratch, (HO_VIRTUAL_ADDRESS)userBuffer, length);
     if (status != EC_SUCCESS)
-        return KiEncodeRawSyscallStatus(status);
+        return KiRejectRawWrite(userBuffer, length, status);
 
     uint64_t written = 0;
+    KTHREAD *thread = KeGetCurrentThread();
     for (uint64_t index = 0; index < length; ++index)
     {
         if (ConsoleWriteChar(scratch[index]) < 0)
@@ -190,12 +204,17 @@ KiHandleRawWrite(uint64_t userBuffer, uint64_t length)
             klog(KLOG_LEVEL_ERROR,
                  "[USERBOOT] SYS_RAW_WRITE console emit failed index=%lu thread=%u\n",
                  (unsigned long)index,
-                 KeGetCurrentThread() ? KeGetCurrentThread()->ThreadId : 0U);
+                 thread ? thread->ThreadId : 0U);
             return KiEncodeRawSyscallStatus(EC_FAILURE);
         }
 
         ++written;
     }
+
+    klog(KLOG_LEVEL_INFO,
+         KE_USER_BOOTSTRAP_LOG_HELLO_WRITE_SUCCEEDED " bytes=%lu thread=%u\n",
+         (unsigned long)written,
+         thread ? thread->ThreadId : 0U);
 
     return (int64_t)written;
 }
