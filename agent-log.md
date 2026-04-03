@@ -1,30 +1,19 @@
-## 2026-04-03
+agent 正在使用 change：`stabilize-user-bootstrap-p2-raw-syscalls`，工作流采用 `openspec apply` 的串行实施方式。
 
-- agent 正在初始化当前会话的 MCP 上下文；已探测到本次会话没有额外暴露的 MCP resources/templates，因此后续以本地仓库、终端、impl/reviewer 子代理协作为主。
-- agent 正在执行 OpenSpec apply 流程，使用的 change 为 `add-user-bootstrap-p1-evidence`，schema 为 `spec-driven`，当前进度为 `0/8`。
-- agent 正在拆分串行实施计划。本次按四个阶段推进：
-  1. `P1 staging/payload`：完成 tasks `1.1`、`1.2`。
-  2. `timer 证据`：完成 tasks `2.1`、`2.2`。
-  3. `文档契约`：完成 tasks `3.1`、`3.2`。
-  4. `构建验证`：完成 tasks `4.1`、`4.2`。
-- agent 正在遵守串行工作流：每个阶段先由 `impl` 实现最小修改，再由 `reviewer` 只审查该阶段修改；若 reviewer 阻塞，将先安排修复，若修复后仍阻塞，则立即停止实施并在本文件记录原因。
-- agent 正在准备第一阶段，目标是把 P1 状态、mailbox 常量与 `user_hello` 的 gate 等待逻辑先落地，不提前扩散到文档或验证阶段。
-- agent 正在完成第一阶段实现，当前只改动了 `src/include/kernel/ke/user_bootstrap.h`、`src/kernel/ke/user_bootstrap.c`、`src/kernel/demo/user_hello.c` 三处：已加入 P1 状态字段、mailbox 常量与日志锚点，并让 `user_hello` 首次进入 Ring 3 后先等待 mailbox 放行，再继续既有 `SYS_RAW_WRITE` / `SYS_RAW_EXIT` 路径。
-- agent 正在记录第一阶段审查结果：`reviewer` 仅检查了上述三处变更，结论为“无阻塞”。当前保留的注意点只有预期中的 gate 自旋等待，以及构建/运行验证尚未进入本阶段。
-- agent 正在收尾第一阶段：已准备勾选 OpenSpec tasks `1.1`、`1.2`，下一步会先提交这一阶段的独立 commit，再进入第二阶段的 timer-origin 证据实现。
-- agent 正在记录第一阶段提交结果：已生成独立 commit `976d50d`（`feat: add user bootstrap P1 mailbox gate scaffold`），现在工作树已切换到第二阶段。
-- agent 正在开始第二阶段，目标是仅在 timer 中断路径上统计来自 CPL3 的 bootstrap 用户线程抢占，在第二次命中时 arm gate 并写入 mailbox sentinel，同时保持 raw syscall dispatcher 语义不变。
-- agent 正在完成第二阶段实现，当前把观测点收敛在 `src/kernel/ke/thread/scheduler/timer.c` 的 timer ISR：只在 `CS` 表明来源为 CPL3 时，上报当前 bootstrap 线程的 timer 抢占证据；staging 状态更新与 mailbox 放行继续收在 `src/kernel/ke/user_bootstrap.c`。
-- agent 正在记录第二阶段审查结果：`reviewer` 只检查了 timer 观测与 gate arm 相关改动，结论为“无阻塞”。当前剩余注意点是尚未进入统一构建与 QEMU 验证阶段。
-- agent 正在收尾第二阶段：已准备勾选 OpenSpec tasks `2.1`、`2.2`，下一步会先提交这一阶段的独立 commit，再进入文档契约阶段。
-- agent 正在记录第二阶段提交结果：已生成独立 commit `be66e2c`（`feat: add timer-origin P1 bootstrap evidence`），现在工作树已切换到第三阶段。
-- agent 正在开始第三阶段，目标是以最小文档修改明确 `user_hello` 必须先证明 P1 timer round-trip，再进入 hello/write/exit，同时保持它仍然是同一个最小用户态闭环 profile，而不是新增独立 P1-only profile。
-- agent 正在完成第三阶段实现，当前只更新了 `Readme.md`、`docs/current-ability.md` 与 `src/kernel/demo/user_hello.c` 注释，把 `user_hello` 的证据链改写为“P1 timer round-trip 先行、raw syscall hello/exit 后续”的单一 profile 合同。
-- agent 正在记录第三阶段审查结果：`reviewer` 只检查了上述文档与注释改动，结论为“无阻塞”。当前剩余注意点是最终措辞仍需等待第四阶段的日志验证做一致性确认。
-- agent 正在收尾第三阶段：已准备勾选 OpenSpec tasks `3.1`、`3.2`，下一步会先提交这一阶段的独立 commit，再进入构建与 QEMU 验证阶段。
-- agent 正在记录第三阶段提交结果：已生成独立 commit `b2132d0`（`docs: document user_hello P1 evidence chain`），现在工作树已切换到第四阶段。
-- agent 正在开始第四阶段，接下来会严格按照显式 workflow 依次执行 `make clean`、`bear -- make all BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO`，然后用 `scripts/qemu_capture.sh` 采集 `user_hello` 日志并核对证据链顺序。
-- agent 正在记录第四阶段构建结果：`make clean` 已完成，`bear -- make all BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO` 已成功产出 `build/kernel/test-user_hello/bin/kernel.bin`。
-- agent 正在记录第四阶段运行结果：已使用 `BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO bash scripts/qemu_capture.sh 30 /tmp/himuos-user-hello.log` 采集日志。脚本最终以超时方式结束是预期现象，因为系统在 `user_hello` 线程退出后继续停在 idle；关键证据链已经在超时前完整出现。
-- agent 正在核对第四阶段证据链顺序，当前捕获到的关键锚点顺序为：`enter user mode` -> `timer from user #1` -> `timer from user #2` -> `P1 gate armed` -> `hello` -> `SYS_RAW_EXIT` -> `Thread 1 terminated` -> `idle/reaper reclaimed user_hello thread`。
-- agent 正在复核第四阶段结果：本阶段没有新增实现性阻塞，已准备勾选 OpenSpec tasks `4.1`、`4.2`，并提交最终阶段 commit 收尾本次 apply。
+agent 正在确认上下文：该 change 为 `spec-driven`，共 8 个未完成任务，当前上下文已经覆盖 proposal、design、specs 与 tasks。
+
+agent 正在拆分阶段计划：
+1. 阶段一：先完成 `user_hello` payload 的 P2 自检序列，让同一个 profile 在 P1 gate 之后先走失败的 `SYS_RAW_WRITE` 探针，再走成功写入与 `SYS_RAW_EXIT`。
+2. 阶段二：收敛 `user_bootstrap_syscall` 的 helper 命名、职责与诊断锚点，保持 `int 0x80` trap 入口继续是同步陷入的薄入口。
+3. 阶段三：更新 `Readme.md`、`docs/current-ability.md` 和相关注释，明确 `user_hello` 仍是 bootstrap-only 的最小切片，不引入新的 P2-only profile，也不承诺未来正式 syscall ABI。
+4. 阶段四：执行 `make clean`、指定 flavor 的构建与 `scripts/qemu_capture.sh`，核对完整证据链。
+
+agent 正在按约定串行推进：每一阶段都先拉起 impl 实现，再拉起 reviewer 只审查 impl 修改过的部分；若 reviewer 给出阻塞，先尝试修复，再次送审；若仍然阻塞，则立即停止实施并在本日志记录原因。
+
+agent 正在开始阶段一，目标是以最小修改完成 payload 自检，不扩大 profile 范围，不引入冗余抽象。
+
+agent 正在执行阶段一实现：当前把修改收束在 `src/kernel/demo/user_hello.c`，让 payload 在 P1 gate 后先访问 stack guard page 做一次故意失败的 `SYS_RAW_WRITE` 探针，再比较返回值是否等于 `-EC_ILLEGAL_ARGUMENT`，随后执行成功的 hello-path `SYS_RAW_WRITE` 并比较返回字节数，最后才进入 `SYS_RAW_EXIT`。
+
+agent 正在完成阶段一 reviewer 审查：本轮只检查 `user_hello.c` 的新增机器码序列与跳转终止逻辑，没有扩散审查其它模块。当前 reviewer 结论为“无阻塞”，已确认 guard page 探针会稳定落到拒绝路径、`-EC_ILLEGAL_ARGUMENT` 与成功字节数比较都和现有 raw syscall 编码一致、两处 `jne` 都会跳到统一的 `ud2` 终止陷阱。
+
+agent 正在收尾阶段一：准备同步勾选 OpenSpec 的 `1.1` 与 `1.2`，随后提交本阶段 commit，再进入阶段二。

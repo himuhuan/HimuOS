@@ -17,6 +17,7 @@ enum
 {
     KI_USER_HELLO_PAYLOAD_ENTRY_OFFSET = 0U,
     KI_USER_HELLO_PAYLOAD_HELLO_OFFSET = 0U,
+    KI_USER_HELLO_PAYLOAD_PROBE_LENGTH = 1U,
 };
 
 static void KiUnexpectedUserHelloKernelEntry(void *arg);
@@ -25,20 +26,31 @@ static const char gKiUserHelloConstBytes[] = KE_USER_BOOTSTRAP_LOG_HELLO "\n";
 
 enum
 {
+    KI_USER_HELLO_PAYLOAD_EXPECTED_INVALID_STATUS = (uint32_t)(-(int32_t)EC_ILLEGAL_ARGUMENT),
     KI_USER_HELLO_PAYLOAD_HELLO_LENGTH = sizeof(gKiUserHelloConstBytes) - 1U,
 };
 
 static const uint8_t gKiUserHelloCodeBytes[] = {
-    // The same user_hello profile now waits for the P1 mailbox gate before reusing the existing raw hello/exit path.
+    // The same user_hello profile waits for the P1 mailbox gate, then explicitly verifies
+    // one rejected raw write probe, one successful hello write, and finally SYS_RAW_EXIT.
     0xB9, KI_U32_LE_BYTES((uint32_t)KE_USER_BOOTSTRAP_STACK_MAILBOX_ADDRESS),
     0x8B, 0x01,
     0x3D, KI_U32_LE_BYTES(KE_USER_BOOTSTRAP_P1_MAILBOX_GATE_OPEN),
     0x75, 0xF7,
     0xB8, KI_U32_LE_BYTES(SYS_RAW_WRITE),
+    0xBF, KI_U32_LE_BYTES((uint32_t)KE_USER_BOOTSTRAP_STACK_GUARD_BASE),
+    0xBE, KI_U32_LE_BYTES(KI_USER_HELLO_PAYLOAD_PROBE_LENGTH),
+    0x31, 0xD2,
+    0xCD, KE_USER_BOOTSTRAP_SYSCALL_VECTOR,
+    0x3D, KI_U32_LE_BYTES(KI_USER_HELLO_PAYLOAD_EXPECTED_INVALID_STATUS),
+    0x75, 0x23,
+    0xB8, KI_U32_LE_BYTES(SYS_RAW_WRITE),
     0xBF, KI_U32_LE_BYTES((uint32_t)(KE_USER_BOOTSTRAP_CONST_BASE + KI_USER_HELLO_PAYLOAD_HELLO_OFFSET)),
     0xBE, KI_U32_LE_BYTES(KI_USER_HELLO_PAYLOAD_HELLO_LENGTH),
     0x31, 0xD2,
     0xCD, KE_USER_BOOTSTRAP_SYSCALL_VECTOR,
+    0x3D, KI_U32_LE_BYTES(KI_USER_HELLO_PAYLOAD_HELLO_LENGTH),
+    0x75, 0x09,
     0xB8, KI_U32_LE_BYTES(SYS_RAW_EXIT),
     0x31, 0xFF,
     0xCD, KE_USER_BOOTSTRAP_SYSCALL_VECTOR,
