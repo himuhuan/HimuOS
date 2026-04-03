@@ -36,4 +36,16 @@ agent 正在执行阶段三实现：当前只修改 `Readme.md`、`docs/current-
 
 agent 正在完成阶段三 reviewer 审查：本轮只检查 `Readme.md`、`docs/current-ability.md` 与 `src/kernel/demo/user_hello.c` 的局部文案改动，没有扩散到 syscall 实现或验证脚本。当前 reviewer 结论为“无阻塞”，仅保留一项非阻塞提醒：个别位置用了英文短语 `rejected raw write probe / successful hello write`，若后续想进一步统一文风，可以再改成全中文表述。
 
-agent 正在收尾阶段三：已在本地 OpenSpec tasks 中勾选 `3.1` 与 `3.2`，准备整理当前日志后提交本阶段 commit，再进入阶段四。
+agent 正在收尾阶段三：已在本地 OpenSpec tasks 中勾选 `3.1` 与 `3.2`，并准备提交本阶段 commit。
+
+agent 正在记录阶段三提交结果：已生成独立 commit `043858a`（`docs: clarify user hello p2 evidence chain`），当前文档与注释收敛已经落盘，可以进入阶段四。
+
+agent 正在开始阶段四，目标是严格按显式 workflow 执行 `make clean`、`bear -- make all BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO`，然后使用 `scripts/qemu_capture.sh` 采集 `user_hello` 日志，核对 “enter user mode -> timer from user #1/#2 -> P1 gate armed -> invalid raw write rejected -> hello write succeeds -> SYS_RAW_EXIT -> idle/reaper” 的顺序证据链。
+
+agent 正在执行阶段四验证：`make clean` 已成功；`bear -- make all BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO` 已成功产出 `build/kernel/test-user_hello/bin/kernel.bin`；`BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO bash scripts/qemu_capture.sh 30 /tmp/himuos-user-hello.log` 最终以 `124` 退出，但这是系统回到 idle 后被脚本 watchdog 超时终止的预期形态，不视为阻塞失败。
+
+agent 正在核对阶段四证据链：当前本地日志 `/tmp/himuos-user-hello.log` 已按顺序出现 `enter user mode` -> `timer from user #1` -> `timer from user #2` -> `P1 gate armed` -> `invalid raw write rejected` -> `hello` -> `hello write succeeds` -> `SYS_RAW_EXIT` -> `idle/reaper reclaimed user_hello thread`。在稳定拒绝锚点前还存在一条通用 `invalid user buffer` 诊断，但它不影响阶段四结论。
+
+agent 正在完成阶段四 reviewer 审查：本轮只检查显式验证命令是否按要求执行，以及日志顺序是否足以支持 tasks `4.1` / `4.2`。当前 reviewer 结论为“无阻塞”，并确认 `124` 应被视为预期超时而非失败；后续若做自动化顺序断言，应以稳定锚点 `invalid raw write rejected` 为准，而不是前一条更通用的 buffer 诊断。
+
+agent 正在收尾阶段四：已在本地 OpenSpec tasks 中勾选 `4.1` 与 `4.2`，当前 8/8 tasks 已全部完成，准备提交最终收尾 commit。
