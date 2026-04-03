@@ -297,6 +297,7 @@ KiFinalizeThread(KTHREAD *thread)
 
     if (thread->UserBootstrapContext != NULL)
     {
+        klog(KLOG_LEVEL_WARNING, KE_USER_BOOTSTRAP_LOG_FALLBACK_RECLAIM " thread=%u\n", thread->ThreadId);
         HO_STATUS stagingStatus = KeUserBootstrapDestroyStaging(thread->UserBootstrapContext);
         if (stagingStatus != EC_SUCCESS)
         {

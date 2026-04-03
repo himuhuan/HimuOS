@@ -235,6 +235,11 @@ KiHandleRawExit(uint64_t exitCode)
     if (status != EC_SUCCESS)
         KiAbortRawExit(thread, exitCode, status, "Bootstrap raw exit teardown failed after no-return transition");
 
+    klog(KLOG_LEVEL_INFO,
+         KE_USER_BOOTSTRAP_LOG_TEARDOWN_COMPLETE " code=%lu thread=%u\n",
+         (unsigned long)exitCode,
+         thread->ThreadId);
+
     KeThreadExit();
 }
 

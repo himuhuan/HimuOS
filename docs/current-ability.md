@@ -1,28 +1,39 @@
 # HimuOS 当前能力盘点
 
-更新时间：2026-04-02
+更新时间：2026-04-03
 
 ## 盘点口径
 
 这份文档只回答一件事：**某项功能现在“有没有”**，不评价其成熟度、性能、健壮性或文档完善度。
 
-本次盘点综合了三类信息源：
+本次盘点综合了四类信息源：
 
-- `Readme.md`：对外承诺与教学目标
-- `agents.md`：当前 agent 工作约束与默认执行约定
-- 当前源码与 OpenSpec：实际已落地的模块、入口和规格
+- `Readme.md`：对外承诺、回归 profile 说明与阶段边界
+- 当前 `main` 工作树与最近提交：尤其是 `origin/main` 之后的 P3 本地提交 `4f27a92`、`c7c3e2e`、`fea4e66`
+- 已合并 PR：近期重点参考 `#29`～`#33`，其中与最小用户态切片直接相关的是 `#31`、`#32`、`#33`
+- 当前源码与 OpenSpec：归档 change 用来确认既有合同，活跃 change 用来核对边界、非目标与仍在推进的表述
 
 判定规则如下：
 
 - 代码中存在明确模块、公开 API、启动入口或 demo/profile，可判定为“已有”
+- 已合并 PR 或当前 HEAD 已落地的日志锚点、回归合同和注释语义，可作为“已有”的补强证据
 - 只有少量地基、占位字段或局部痕迹，但还不能形成完整功能，不算“已有”
+- 活跃 OpenSpec change 的 proposal/design/tasks 主要用于说明能力边界与演进方向；如果 checklist 尚未归档，但当前 HEAD 已有实现，则能力判断仍以当前代码与提交事实为准
 - `Readme.md` 已明确声明**不包含**的内容，不记入缺口
 
 另外，按你的要求，这里**不把编译/运行流程上的小问题当成功能缺失**；并默认现有运行与验证链路已经过多轮 review，可视为这些能力成立。
 
+## 本次对齐重点
+
+- 已合并 PR `#31` 把 `user_hello` 固定成 bootstrap-only 的最小 Ring 3 bring-up 切片
+- 已合并 PR `#32` 把 P1 first-entry / timer round-trip 证据正式收敛到同一个 `user_hello` profile
+- 已合并 PR `#33` 把 P2 rejected raw write probe / successful hello write / `SYS_RAW_EXIT` 证据链固定下来
+- 当前 HEAD 的 3 个本地提交继续把 P3 收敛为显式合同：`SYS_RAW_EXIT` 后的 `bootstrap teardown complete` 锚点、scheduler finalizer 的 `fallback staging reclaim` 警告锚点，以及相应注释/文档同步
+- `openspec/changes/add-user-bootstrap-p1-evidence` 与 `openspec/changes/stabilize-user-bootstrap-p2-raw-syscalls` 对应能力已经在代码和 merged PR 中落地但尚未归档；`openspec/changes/stabilize-user-bootstrap-p3-exit-reap` 仍是活跃 change，不过当前 HEAD 已经补上它最关键的 clean-pass 日志与文档语义
+
 ## 当前已支持的功能
 
-整体上，HimuOS 当前已经是一个**以 Ke 层为主、并带有一条 bootstrap-only 最小用户态切片的教学原型系统**：启动、内存、时间、控制台、中断、调度、同步、诊断、回归 profile 都已经具备明确实现；另外，独立 `user_hello` profile 已打通最小 Ring 3 bring-up、P1 timer round-trip，以及在同一个 profile 内继续完成 rejected raw write probe / successful hello write / `SYS_RAW_EXIT` 的 P2 raw syscall 证据链，但这还不能等同于完整用户态子系统。
+整体上，HimuOS 当前已经是一个**以 Ke 层为主、并带有一条 bootstrap-only 最小用户态切片的教学原型系统**：启动、内存、时间、控制台、中断、调度、同步、诊断、回归 profile 都已经具备明确实现；另外，独立 `user_hello` profile 已打通最小 Ring 3 bring-up、P1 timer round-trip、P2 raw syscall 自检，并在当前 HEAD 上进一步把 P3 的 teardown-before-termination -> idle/reaper reclaim 证据链固定成显式合同，但这还不能等同于完整用户态子系统。
 
 | 能力域 | 结论 | 主要依据 |
 | --- | --- | --- |
@@ -44,8 +55,8 @@
 | 固定大小对象池 | 已有 | `src/kernel/ke/mm/pool.c`、`src/include/kernel/ke/pool.h`，OpenSpec `kernel-object-pool` |
 | 系统信息查询（sysinfo） | 已有 | `src/kernel/ke/sysinfo/sysinfo.c`、`src/include/kernel/ke/sysinfo.h`，已支持 CPU、页表、内存、GDT/TSS/IDT、时间、scheduler、VMM 等查询 |
 | 内核线程（KTHREAD） | 已有 | `src/kernel/ke/thread/kthread.c`、`src/include/kernel/ke/kthread.h`，支持创建 joinable / detached 线程 |
-| bootstrap-only 最小用户态执行路径 | 已有 | `src/kernel/demo/user_hello.c`、`src/kernel/ke/user_bootstrap.c`、`src/arch/amd64/user_bootstrap.asm`、`src/kernel/ke/thread/scheduler/scheduler.c` 已打通独立 `user_hello` profile 下的 staging 用户映射、首次进入 Ring 3、来自 CPL3 的 P1 timer round-trip 与回到内核的最小闭环 |
-| 最小 raw syscall 入口 | 已有 | `src/include/kernel/ke/user_bootstrap.h`、`src/kernel/ke/user_bootstrap_syscall.c`、`src/kernel/init/init.c` 已实现同步 `int 0x80` 入口与 `SYS_RAW_WRITE` / `SYS_RAW_EXIT` |
+| bootstrap-only 最小用户态执行路径 | 已有 | `src/kernel/demo/user_hello.c`、`src/kernel/ke/user_bootstrap.c`、`src/kernel/ke/user_bootstrap_syscall.c`、`src/arch/amd64/user_bootstrap.asm`、`src/kernel/ke/thread/scheduler/scheduler.c` 已打通独立 `user_hello` profile 下的 staging 用户映射、首次进入 Ring 3、来自 CPL3 的 P1 timer round-trip、P2 raw syscall 证据链，并用 `bootstrap teardown complete` / `fallback staging reclaim` 锚点明确 P3 teardown-before-termination → idle/reaper reclaim 合同 |
+| 最小 raw syscall 入口 | 已有 | `src/include/kernel/ke/user_bootstrap.h`、`src/kernel/ke/user_bootstrap_syscall.c`、`src/kernel/init/init.c` 已实现同步 `int 0x80` 入口、`SYS_RAW_WRITE` / `SYS_RAW_EXIT`、bootstrap user-range 校验与 bounded copy-in helper，以及 P2/P3 稳定日志锚点 |
 | 调度器 | 已有 | `src/kernel/ke/thread/scheduler/scheduler.c`、`timer.c`、`diag.c`，OpenSpec `scheduler` / `scheduler-observability` |
 | 单对象等待模型 | 已有 | `src/kernel/ke/thread/scheduler/wait.c`，提供 `KeWaitForSingleObject` 与统一 wait-completion 路径，OpenSpec `dispatcher-objects` |
 | 事件（KEVENT） | 已有 | `src/kernel/ke/thread/scheduler/sync.c`、`src/include/kernel/ke/event.h`、OpenSpec `kevent` |
@@ -64,7 +75,7 @@
 
 这里的用户态能力只指独立 `user_hello` profile 下的最小执行路径与 raw syscall 入口，不应外推为完整进程地址空间、正式系统调用子系统或 Ex 层对象模型。
 
-更具体地说，当前 `user_hello` 只是一条 bootstrap/staging 性质的脚手架测试路径，用来验证“最小用户页映射 -> 首次进入 Ring 3 -> 来自 CPL3 的 P1 timer round-trip -> P1 gate armed -> invalid raw write rejected -> hello write succeeds -> `SYS_RAW_EXIT` -> 线程终止/回收”这条最小证据链。这里的 P1 gate 和后续 P2 raw syscall 自检都只是同一个 `user_hello` profile 内部的分阶段验证，不是新增独立的 P1-only 或 P2-only profile。现阶段共享 imported root 仍保留 boot 阶段遗留的低 2GB identity mapping，因此 bootstrap 固定用户窗口需要显式避开该区域；这属于当前 bring-up 模型的临时约束，不代表长期用户虚拟地址布局合同，也不意味着当前 bootstrap raw syscall 已经承诺未来正式用户态 ABI。后续引入真实 ELF 加载器与正式用户地址空间时，系统预期会为用户态重建或派生独立页表根，并以干净的 low-half 布局替代当前 fixed bootstrap window，因此这条 staging 限制与长期目标并不冲突。
+更具体地说，当前 `user_hello` 只是一条 bootstrap/staging 性质的脚手架测试路径，用来验证“最小用户页映射 -> 首次进入 Ring 3 -> 来自 CPL3 的 P1 timer round-trip -> P1 gate armed -> invalid raw write rejected -> hello write succeeds -> `SYS_RAW_EXIT` -> bootstrap teardown complete -> thread terminated -> idle/reaper reclaimed -> back to idle”这条最小证据链。这里的 P1 gate、后续 P2 raw syscall 自检以及当前 HEAD 上进一步补强的 P3 exit/reap 合同，都只是同一个 `user_hello` profile 内部的分阶段验证，不是新增独立的 P1-only、P2-only 或 P3-only profile。现阶段共享 imported root 仍保留 boot 阶段遗留的低 2GB identity mapping，因此 bootstrap 固定用户窗口需要显式避开该区域；这属于当前 bring-up 模型的临时约束，不代表长期用户虚拟地址布局合同，也不意味着当前 bootstrap raw syscall 已经承诺未来正式用户态 ABI。P3 现在明确要求正常路径由 `SYS_RAW_EXIT` 在进入 `KeThreadExit()` 前完成 bootstrap 用户资源释放并打印 `bootstrap teardown complete`，scheduler finalizer 只保留 `fallback staging reclaim` 这类防御性兜底语义。后续引入真实 ELF 加载器与正式用户地址空间时，系统预期会为用户态重建或派生独立页表根，并以干净的 low-half 布局替代当前 fixed bootstrap window，因此这条 staging 限制与长期目标并不冲突。
 
 它已经不只是“能启动的内核骨架”，而是具备以下连续能力链：
 
@@ -73,7 +84,7 @@
 3. 内核带起时间源、clock event、scheduler
 4. 调度器能驱动 KTHREAD、wait、event、semaphore、mutex
 5. 系统具备 sysinfo / 诊断 / regression profile 这些教学友好的观测入口
-6. 独立 `user_hello` profile 能把受控 payload 送入 Ring 3，先证明来自 CPL3 的 P1 timer round-trip，再在同一个 profile 内通过 rejected raw write probe、successful hello write 和 `SYS_RAW_EXIT` 完成最小 raw syscall 证据链
+6. 独立 `user_hello` profile 能把受控 payload 送入 Ring 3，先证明来自 CPL3 的 P1 timer round-trip，再在同一个 profile 内通过 rejected raw write probe、successful hello write 和 `SYS_RAW_EXIT` 完成最小 raw syscall 证据链，并继续以 teardown-complete -> thread terminated -> idle/reaper reclaimed 证明 P3 exit/reap 合同
 
 ## 有地基，但还不能算“该功能已经有”
 
@@ -87,7 +98,7 @@
 
 ## 在教学原型约束下，仍需完成的功能
 
-下面这些功能是结合 `Readme.md` 与 `agents.md` 后，**仍应视为待补齐项**。这里仍然只判断“有没有”，不讨论做得是否精细。
+下面这些功能是结合 `Readme.md`、当前提交、已合并 PR 与 OpenSpec 边界后，**仍应视为待补齐项**。这里仍然只判断“有没有”，不讨论做得是否精细。
 
 | 待完成功能 | 为什么仍算缺口 | 现有状态 |
 | --- | --- | --- |
@@ -110,7 +121,7 @@
 
 当前的 HimuOS 更准确的定位是：
 
-- **已经完成的部分**：UEFI 启动、Ke 层核心机制、内核内存管理、线程调度与同步、诊断与教学回归 profile
+- **已经完成的部分**：UEFI 启动、Ke 层核心机制、内核内存管理、线程调度与同步、诊断与教学回归 profile，以及挂在 `user_hello` 上的 bootstrap-only P1/P2/P3 最小用户态证据链
 - **尚未完成的部分**：README 中更接近“完整 OS 对外语义”的那一层，尤其是正式进程地址空间、handle-oriented syscall、Ex/Object Manager、capability handle、键盘输入、优先级调度
 
 换句话说，当前系统已经是一个**功能明确、结构清晰的内核教学原型**，其中还带有一条 bootstrap-only 的最小用户态 bring-up 路径；但它还**不是** README 最初叙述里的那个“具备正式进程地址空间 / handle-oriented syscall / Ex 层对象模型”的更完整版本。
