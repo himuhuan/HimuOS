@@ -5,8 +5,8 @@
 
 ## 2. Timer-Origin Phase-One Evidence
 
-- [ ] 2.1 在 timer 中断观测点或等价 trap 返回路径中，仅针对带有 bootstrap staging 的当前线程统计“来自 CPL3 的 timer 抢占”，并排除同步 `int 0x80` 或 CPL0 tick
-- [ ] 2.2 在第二次用户态 timer 抢占达成时 arm P1 gate、写入 mailbox sentinel，并输出稳定的 P1 证据日志，不改变现有 raw syscall dispatcher 语义
+- [x] 2.1 在 timer 中断观测点或等价 trap 返回路径中，仅针对带有 bootstrap staging 的当前线程统计“来自 CPL3 的 timer 抢占”，并排除同步 `int 0x80` 或 CPL0 tick
+- [x] 2.2 在第二次用户态 timer 抢占达成时 arm P1 gate、写入 mailbox sentinel，并输出稳定的 P1 证据日志，不改变现有 raw syscall dispatcher 语义
 
 ## 3. Profile Contract And Documentation
 

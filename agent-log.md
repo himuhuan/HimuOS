@@ -12,3 +12,8 @@
 - agent 正在完成第一阶段实现，当前只改动了 `src/include/kernel/ke/user_bootstrap.h`、`src/kernel/ke/user_bootstrap.c`、`src/kernel/demo/user_hello.c` 三处：已加入 P1 状态字段、mailbox 常量与日志锚点，并让 `user_hello` 首次进入 Ring 3 后先等待 mailbox 放行，再继续既有 `SYS_RAW_WRITE` / `SYS_RAW_EXIT` 路径。
 - agent 正在记录第一阶段审查结果：`reviewer` 仅检查了上述三处变更，结论为“无阻塞”。当前保留的注意点只有预期中的 gate 自旋等待，以及构建/运行验证尚未进入本阶段。
 - agent 正在收尾第一阶段：已准备勾选 OpenSpec tasks `1.1`、`1.2`，下一步会先提交这一阶段的独立 commit，再进入第二阶段的 timer-origin 证据实现。
+- agent 正在记录第一阶段提交结果：已生成独立 commit `976d50d`（`feat: add user bootstrap P1 mailbox gate scaffold`），现在工作树已切换到第二阶段。
+- agent 正在开始第二阶段，目标是仅在 timer 中断路径上统计来自 CPL3 的 bootstrap 用户线程抢占，在第二次命中时 arm gate 并写入 mailbox sentinel，同时保持 raw syscall dispatcher 语义不变。
+- agent 正在完成第二阶段实现，当前把观测点收敛在 `src/kernel/ke/thread/scheduler/timer.c` 的 timer ISR：只在 `CS` 表明来源为 CPL3 时，上报当前 bootstrap 线程的 timer 抢占证据；staging 状态更新与 mailbox 放行继续收在 `src/kernel/ke/user_bootstrap.c`。
+- agent 正在记录第二阶段审查结果：`reviewer` 只检查了 timer 观测与 gate arm 相关改动，结论为“无阻塞”。当前剩余注意点是尚未进入统一构建与 QEMU 验证阶段。
+- agent 正在收尾第二阶段：已准备勾选 OpenSpec tasks `2.1`、`2.2`，下一步会先提交这一阶段的独立 commit，再进入文档契约阶段。

@@ -90,4 +90,6 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserBootstrapAttachThread(KTHREAD *thread
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserBootstrapRawSyscallInit(void);
 
+HO_KERNEL_API void KeUserBootstrapObserveCurrentThreadUserTimerPreemption(void);
+
 HO_KERNEL_API HO_NORETURN void KeUserBootstrapEnterCurrentThread(void);

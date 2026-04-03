@@ -9,6 +9,8 @@
 
 #include "scheduler_internal.h"
 
+#include <kernel/ke/user_bootstrap.h>
+
 uint64_t
 KiNowNs(void)
 {
@@ -22,8 +24,10 @@ KiNowNs(void)
 void
 KiSchedulerTimerISR(void *frame, void *context)
 {
-    (void)frame;
     (void)context;
+
+    INTERRUPT_FRAME *interruptFrame = (INTERRUPT_FRAME *)frame;
+    BOOL interruptedFromUserMode = interruptFrame != NULL && ((interruptFrame->CS & 0x3ULL) == 0x3ULL);
 
     KeClockEventOnInterrupt(); // EOI + InterruptCount
 
@@ -31,6 +35,11 @@ KiSchedulerTimerISR(void *frame, void *context)
         return;
 
     KiAssertDispatchLevel();
+
+    if (interruptedFromUserMode)
+    {
+        KeUserBootstrapObserveCurrentThreadUserTimerPreemption();
+    }
 
     uint64_t nowNs = KiNowNs();
 

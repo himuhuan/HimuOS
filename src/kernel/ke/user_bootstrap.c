@@ -69,6 +69,7 @@ static HO_STATUS KiAllocateAndMapUserPage(const KE_KERNEL_ADDRESS_SPACE *space,
                                           uint64_t byteCount);
 static const KE_USER_BOOTSTRAP_MAPPING_RECORD *KiFindMappedPage(const KE_USER_BOOTSTRAP_STAGING *staging,
                                                                 KE_USER_BOOTSTRAP_MAPPING_KIND kind);
+static KE_USER_BOOTSTRAP_STAGING *KiGetCurrentThreadStaging(void);
 
 static HO_STATUS
 KiValidateCreateParams(const KE_USER_BOOTSTRAP_CREATE_PARAMS *params)
@@ -204,6 +205,20 @@ KiFindMappedPage(const KE_USER_BOOTSTRAP_STAGING *staging, KE_USER_BOOTSTRAP_MAP
     }
 
     return NULL;
+}
+
+static KE_USER_BOOTSTRAP_STAGING *
+KiGetCurrentThreadStaging(void)
+{
+    KTHREAD *thread = KeGetCurrentThread();
+    if (!thread || thread->UserBootstrapContext == NULL)
+        return NULL;
+
+    KE_USER_BOOTSTRAP_STAGING *staging = thread->UserBootstrapContext;
+    if (staging->AttachedThread != thread)
+        return NULL;
+
+    return staging;
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
@@ -380,6 +395,42 @@ KeUserBootstrapAttachThread(KTHREAD *thread, KE_USER_BOOTSTRAP_STAGING *staging)
     staging->AttachedThread = thread;
     thread->UserBootstrapContext = staging;
     return EC_SUCCESS;
+}
+
+HO_KERNEL_API void
+KeUserBootstrapObserveCurrentThreadUserTimerPreemption(void)
+{
+    KTHREAD *thread = KeGetCurrentThread();
+    KE_USER_BOOTSTRAP_STAGING *staging = KiGetCurrentThreadStaging();
+    if (!thread || !staging)
+        return;
+
+    if (!staging->PhaseOneFirstEntryObserved || staging->PhaseOneGateArmed)
+        return;
+
+    HO_KASSERT(KiFindMappedPage(staging, KE_USER_BOOTSTRAP_MAPPING_KIND_STACK) != NULL, EC_INVALID_STATE);
+    HO_KASSERT(staging->PhaseOneMailboxAddress == KE_USER_BOOTSTRAP_STACK_MAILBOX_ADDRESS, EC_INVALID_STATE);
+
+    if (staging->PhaseOneUserTimerHitCount < 2)
+    {
+        ++staging->PhaseOneUserTimerHitCount;
+    }
+
+    klog(KLOG_LEVEL_INFO,
+         KE_USER_BOOTSTRAP_LOG_TIMER_FROM_USER_FORMAT " thread=%u\n",
+         staging->PhaseOneUserTimerHitCount,
+         thread->ThreadId);
+
+    if (staging->PhaseOneUserTimerHitCount >= 2)
+    {
+        *(volatile uint32_t *)(uint64_t)staging->PhaseOneMailboxAddress = KE_USER_BOOTSTRAP_P1_MAILBOX_GATE_OPEN;
+        staging->PhaseOneGateArmed = TRUE;
+
+        klog(KLOG_LEVEL_INFO,
+             KE_USER_BOOTSTRAP_LOG_P1_GATE_ARMED " thread=%u mailbox=%p\n",
+             thread->ThreadId,
+             (void *)(uint64_t)staging->PhaseOneMailboxAddress);
+    }
 }
 
 HO_KERNEL_API HO_NORETURN void
