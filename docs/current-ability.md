@@ -44,7 +44,7 @@
 | 固定大小对象池 | 已有 | `src/kernel/ke/mm/pool.c`、`src/include/kernel/ke/pool.h`，OpenSpec `kernel-object-pool` |
 | 系统信息查询（sysinfo） | 已有 | `src/kernel/ke/sysinfo/sysinfo.c`、`src/include/kernel/ke/sysinfo.h`，已支持 CPU、页表、内存、GDT/TSS/IDT、时间、scheduler、VMM 等查询 |
 | 内核线程（KTHREAD） | 已有 | `src/kernel/ke/thread/kthread.c`、`src/include/kernel/ke/kthread.h`，支持创建 joinable / detached 线程 |
-| bootstrap-only 最小用户态执行路径 | 已有 | `src/kernel/demo/user_hello.c`、`src/kernel/ke/user_bootstrap.c`、`src/arch/amd64/user_bootstrap.asm`、`src/kernel/ke/thread/scheduler/scheduler.c` 已打通独立 `user_hello` profile 下的 staging 用户映射、首次进入 Ring 3、来自 CPL3 的 P1 timer round-trip 与回到内核的最小闭环 |
+| bootstrap-only 最小用户态执行路径 | 已有 | `src/kernel/demo/user_hello.c`、`src/kernel/ke/user_bootstrap.c`、`src/arch/amd64/user_bootstrap.asm`、`src/kernel/ke/thread/scheduler/scheduler.c` 已打通独立 `user_hello` profile 下的 staging 用户映射、首次进入 Ring 3、来自 CPL3 的 P1 timer round-trip、P2 raw syscall 证据链，以及 P3 teardown-before-termination → idle/reaper reclaim 闭环 |
 | 最小 raw syscall 入口 | 已有 | `src/include/kernel/ke/user_bootstrap.h`、`src/kernel/ke/user_bootstrap_syscall.c`、`src/kernel/init/init.c` 已实现同步 `int 0x80` 入口与 `SYS_RAW_WRITE` / `SYS_RAW_EXIT` |
 | 调度器 | 已有 | `src/kernel/ke/thread/scheduler/scheduler.c`、`timer.c`、`diag.c`，OpenSpec `scheduler` / `scheduler-observability` |
 | 单对象等待模型 | 已有 | `src/kernel/ke/thread/scheduler/wait.c`，提供 `KeWaitForSingleObject` 与统一 wait-completion 路径，OpenSpec `dispatcher-objects` |
@@ -64,7 +64,7 @@
 
 这里的用户态能力只指独立 `user_hello` profile 下的最小执行路径与 raw syscall 入口，不应外推为完整进程地址空间、正式系统调用子系统或 Ex 层对象模型。
 
-更具体地说，当前 `user_hello` 只是一条 bootstrap/staging 性质的脚手架测试路径，用来验证“最小用户页映射 -> 首次进入 Ring 3 -> 来自 CPL3 的 P1 timer round-trip -> P1 gate armed -> invalid raw write rejected -> hello write succeeds -> `SYS_RAW_EXIT` -> 线程终止/回收”这条最小证据链。这里的 P1 gate 和后续 P2 raw syscall 自检都只是同一个 `user_hello` profile 内部的分阶段验证，不是新增独立的 P1-only 或 P2-only profile。现阶段共享 imported root 仍保留 boot 阶段遗留的低 2GB identity mapping，因此 bootstrap 固定用户窗口需要显式避开该区域；这属于当前 bring-up 模型的临时约束，不代表长期用户虚拟地址布局合同，也不意味着当前 bootstrap raw syscall 已经承诺未来正式用户态 ABI。后续引入真实 ELF 加载器与正式用户地址空间时，系统预期会为用户态重建或派生独立页表根，并以干净的 low-half 布局替代当前 fixed bootstrap window，因此这条 staging 限制与长期目标并不冲突。
+更具体地说，当前 `user_hello` 只是一条 bootstrap/staging 性质的脚手架测试路径，用来验证“最小用户页映射 -> 首次进入 Ring 3 -> 来自 CPL3 的 P1 timer round-trip -> P1 gate armed -> invalid raw write rejected -> hello write succeeds -> `SYS_RAW_EXIT` -> bootstrap teardown complete -> thread terminated -> idle/reaper reclaimed -> back to idle”这条最小证据链。这里的 P1 gate 和后续 P2 raw syscall 自检都只是同一个 `user_hello` profile 内部的分阶段验证，不是新增独立的 P1-only 或 P2-only profile。现阶段共享 imported root 仍保留 boot 阶段遗留的低 2GB identity mapping，因此 bootstrap 固定用户窗口需要显式避开该区域；这属于当前 bring-up 模型的临时约束，不代表长期用户虚拟地址布局合同，也不意味着当前 bootstrap raw syscall 已经承诺未来正式用户态 ABI。后续引入真实 ELF 加载器与正式用户地址空间时，系统预期会为用户态重建或派生独立页表根，并以干净的 low-half 布局替代当前 fixed bootstrap window，因此这条 staging 限制与长期目标并不冲突。
 
 它已经不只是“能启动的内核骨架”，而是具备以下连续能力链：
 

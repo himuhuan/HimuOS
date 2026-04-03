@@ -2,8 +2,9 @@
  * HimuOperatingSystem
  *
  * File: demo/user_hello.c
- * Description: Minimal fixed-layout user_hello payload with the same profile's
- *              P1 gate wiring and P2 raw-syscall self-check sequence.
+ * Description: Minimal fixed-layout user_hello payload covering P1 gate wiring,
+ *              P2 raw-syscall self-check, and P3 exit-reap teardown-before-termination
+ *              evidence on the shared imported root staging model.
  *
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
@@ -34,7 +35,8 @@ enum
 static const uint8_t gKiUserHelloCodeBytes[] = {
     // The same bootstrap-only user_hello profile waits for the P1 mailbox gate, then
     // explicitly verifies one rejected raw write probe, one successful hello write, and
-    // finally SYS_RAW_EXIT without introducing a separate P2-only profile or ABI contract.
+    // finally SYS_RAW_EXIT.  P3 evidence requires the clean path to show teardown-complete
+    // before thread termination, followed by idle/reaper reclaim back to stable idle.
     0xB9, KI_U32_LE_BYTES((uint32_t)KE_USER_BOOTSTRAP_STACK_MAILBOX_ADDRESS),
     0x8B, 0x01,
     0x3D, KI_U32_LE_BYTES(KE_USER_BOOTSTRAP_P1_MAILBOX_GATE_OPEN),

@@ -62,7 +62,7 @@ BUILD_FLAVOR=<flavor> HO_DEMO_TEST_NAME=<profile> HO_DEMO_TEST_DEFINE=<define> \
 | Profile | Build flavor | Define | Outcome class | Intent |
 | ------ | ------ | ------ | ------ | ------ |
 | `schedule` | `test-schedule` | `HO_DEMO_TEST_SCHEDULE` | clean pass with continued boot/idle | scheduler smoke coverage, thread/event/semaphore/mutex 基线路径 |
-| `user_hello` | `test-user_hello` | `HO_DEMO_TEST_USER_HELLO` | bootstrap-only minimal user-mode bring-up | 最小 Ring 3 进入、来自 CPL3 的 P1 timer round-trip、P1 gate 之后的 rejected raw write probe / successful hello write / `SYS_RAW_EXIT`，以及 idle/reaper 回收证据链 |
+| `user_hello` | `test-user_hello` | `HO_DEMO_TEST_USER_HELLO` | bootstrap-only minimal user-mode bring-up | 最小 Ring 3 进入、来自 CPL3 的 P1 timer round-trip、P1 gate 之后的 rejected raw write probe / successful hello write / `SYS_RAW_EXIT`、P3 teardown-complete → thread terminated → idle/reaper reclaimed 证据链 |
 | `guard_wait` | `test-guard_wait` | `HO_DEMO_TEST_GUARD_WAIT` | diagnosable contract violation or panic | critical-section guard misuse |
 | `owned_exit` | `test-owned_exit` | `HO_DEMO_TEST_OWNED_EXIT` | diagnosable contract violation or panic | exit while owning a mutex |
 | `irql_wait` | `test-irql_wait` | `HO_DEMO_TEST_IRQL_WAIT` | diagnosable contract violation or panic | wait at `DISPATCH_LEVEL` |
@@ -74,7 +74,7 @@ BUILD_FLAVOR=<flavor> HO_DEMO_TEST_NAME=<profile> HO_DEMO_TEST_DEFINE=<define> \
 | `pf_fixmap` | `test-pf_fixmap` | `HO_DEMO_TEST_PF_FIXMAP` | intentional fatal page-fault halt with bounded diagnostics | active fixmap alias diagnosis |
 | `pf_heap` | `test-pf_heap` | `HO_DEMO_TEST_PF_HEAP` | intentional fatal page-fault halt with bounded diagnostics | heap-backed KVA diagnosis |
 
-其中 `user_hello` 是 bootstrap-only 的最小用户态 bring-up profile，用来固定“进入用户态 -> timer from user #1 -> timer from user #2 -> P1 gate armed -> invalid raw write rejected -> hello write succeeds -> `SYS_RAW_EXIT` -> idle/reaper 回收”的单一证据链。也就是说，P1 的 timer round-trip 和后续 P2 raw syscall 自检都属于同一个 `user_hello` profile 内部的分阶段验证，而不是新增独立的 P1-only 或 P2-only profile。它刻意复用当前 staging/imported-root 模型，因此**不是**最终进程地址空间合同，也不代表 Ex / handle-oriented 用户态接口已经定型；这里的 bootstrap raw syscall 也不构成未来正式 syscall ABI 的承诺。
+其中 `user_hello` 是 bootstrap-only 的最小用户态 bring-up profile，用来固定“进入用户态 -> timer from user #1 -> timer from user #2 -> P1 gate armed -> invalid raw write rejected -> hello write succeeds -> `SYS_RAW_EXIT` -> idle/reaper 回收”的单一证据链。也就是说，P1 的 timer round-trip 和后续 P2 raw syscall 自检都属于同一个 `user_hello` profile 内部的分阶段验证，而不是新增独立的 P1-only 或 P2-only profile。它刻意复用当前 staging/imported-root 模型，因此**不是**最终进程地址空间合同，也不代表 Ex / handle-oriented 用户态接口已经定型；这里的 bootstrap raw syscall 也不构成未来正式 syscall ABI 的承诺。P3 进一步固定了 teardown-before-termination 的次序合同：正常路径下 `SYS_RAW_EXIT` 在进入 `KeThreadExit()` 之前完成 bootstrap 用户资源释放，scheduler finalizer 仅作为非预期残留的防御性兜底。
 
 ### 例子
 
