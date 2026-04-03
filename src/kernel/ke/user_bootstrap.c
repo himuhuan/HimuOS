@@ -37,6 +37,10 @@ struct KE_USER_BOOTSTRAP_STAGING
     HO_VIRTUAL_ADDRESS StackBase;
     HO_VIRTUAL_ADDRESS StackTop;
     HO_VIRTUAL_ADDRESS GuardBase;
+    HO_VIRTUAL_ADDRESS PhaseOneMailboxAddress;
+    uint32_t PhaseOneUserTimerHitCount;
+    BOOL PhaseOneFirstEntryObserved;
+    BOOL PhaseOneGateArmed;
     uint32_t MappingCount;
     KTHREAD *AttachedThread;
     KE_USER_BOOTSTRAP_MAPPING_RECORD Mappings[KE_USER_BOOTSTRAP_MAX_MAPPINGS];
@@ -249,6 +253,7 @@ KeUserBootstrapCreateStaging(const KE_USER_BOOTSTRAP_CREATE_PARAMS *params,
     staging->StackBase = KE_USER_BOOTSTRAP_STACK_BASE;
     staging->StackTop = KE_USER_BOOTSTRAP_STACK_TOP;
     staging->GuardBase = KE_USER_BOOTSTRAP_STACK_GUARD_BASE;
+    staging->PhaseOneMailboxAddress = KE_USER_BOOTSTRAP_STACK_MAILBOX_ADDRESS;
 
     status = KiAllocateAndMapUserPage(space,
                                       staging,
@@ -286,6 +291,8 @@ KeUserBootstrapCreateStaging(const KE_USER_BOOTSTRAP_CREATE_PARAMS *params,
     status = KiValidateBootstrapHole(space, staging->GuardBase);
     if (status != EC_SUCCESS)
         goto cleanup;
+
+    *(volatile uint32_t *)(uint64_t)staging->PhaseOneMailboxAddress = KE_USER_BOOTSTRAP_P1_MAILBOX_CLOSED;
 
     *outStaging = staging;
     return EC_SUCCESS;
@@ -390,8 +397,11 @@ KeUserBootstrapEnterCurrentThread(void)
     HO_KASSERT(staging->EntryPoint < (KE_USER_BOOTSTRAP_CODE_BASE + KE_USER_BOOTSTRAP_PAGE_SIZE), EC_INVALID_STATE);
     HO_KASSERT(staging->StackBase == KE_USER_BOOTSTRAP_STACK_BASE, EC_INVALID_STATE);
     HO_KASSERT(staging->StackTop == KE_USER_BOOTSTRAP_STACK_TOP, EC_INVALID_STATE);
+    HO_KASSERT(staging->PhaseOneMailboxAddress == KE_USER_BOOTSTRAP_STACK_MAILBOX_ADDRESS, EC_INVALID_STATE);
 
-    klog(KLOG_LEVEL_INFO, KE_USER_BOOTSTRAP_LOG_ENTER_USER_MODE "\n");
+    staging->PhaseOneFirstEntryObserved = TRUE;
+
+    klog(KLOG_LEVEL_INFO, KE_USER_BOOTSTRAP_LOG_P1_FIRST_ENTRY "\n");
 
     KiUserBootstrapIretq(
         staging->EntryPoint, staging->StackTop, KE_USER_BOOTSTRAP_INITIAL_RFLAGS, GDT_USER_CODE_SEL, GDT_USER_DATA_SEL);

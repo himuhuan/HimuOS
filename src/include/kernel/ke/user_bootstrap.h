@@ -31,6 +31,10 @@
 #define KE_USER_BOOTSTRAP_STACK_TOP              (KE_USER_BOOTSTRAP_STACK_BASE + KE_USER_BOOTSTRAP_PAGE_SIZE)
 #define KE_USER_BOOTSTRAP_STACK_PAGE_COUNT       1ULL
 #define KE_USER_BOOTSTRAP_STACK_GUARD_PAGE_COUNT 1ULL
+#define KE_USER_BOOTSTRAP_STACK_MAILBOX_OFFSET   0ULL
+#define KE_USER_BOOTSTRAP_STACK_MAILBOX_ADDRESS  (KE_USER_BOOTSTRAP_STACK_BASE + KE_USER_BOOTSTRAP_STACK_MAILBOX_OFFSET)
+#define KE_USER_BOOTSTRAP_P1_MAILBOX_CLOSED      0U
+#define KE_USER_BOOTSTRAP_P1_MAILBOX_GATE_OPEN   0x31504741U
 
 /*
  * Bootstrap raw syscall ABI:
@@ -49,10 +53,13 @@
 #define SYS_RAW_EXIT                                 2U
 
 /*
- * Stable user_hello evidence-chain anchors. Phase one only reserves these
- * strings so later phases can reuse them without scattering magic strings.
+ * Stable user_hello evidence-chain anchors. Phase one uses explicit
+ * first-entry / timer-hit / gate-armed milestones before raw syscalls run.
  */
 #define KE_USER_BOOTSTRAP_LOG_ENTER_USER_MODE          "[USERBOOT] enter user mode"
+#define KE_USER_BOOTSTRAP_LOG_P1_FIRST_ENTRY           KE_USER_BOOTSTRAP_LOG_ENTER_USER_MODE
+#define KE_USER_BOOTSTRAP_LOG_TIMER_FROM_USER_FORMAT   "[USERBOOT] timer from user #%u"
+#define KE_USER_BOOTSTRAP_LOG_P1_GATE_ARMED            "[USERBOOT] P1 gate armed"
 #define KE_USER_BOOTSTRAP_LOG_HELLO                    "[USERBOOT] hello"
 #define KE_USER_BOOTSTRAP_LOG_SYS_RAW_EXIT             "[USERBOOT] SYS_RAW_EXIT"
 #define KE_USER_BOOTSTRAP_LOG_INVALID_SYSCALL          "[USERBOOT] invalid raw syscall"
