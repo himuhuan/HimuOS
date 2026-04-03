@@ -2,7 +2,7 @@
  * HimuOperatingSystem
  *
  * File: demo/user_hello.c
- * Description: Minimal fixed-layout user_hello payload and profile wiring.
+ * Description: Minimal fixed-layout user_hello payload and phase-one gate wiring.
  *
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
@@ -29,6 +29,7 @@ enum
 };
 
 static const uint8_t gKiUserHelloCodeBytes[] = {
+    // The same user_hello profile now waits for the P1 mailbox gate before reusing the existing raw hello/exit path.
     0xB9, KI_U32_LE_BYTES((uint32_t)KE_USER_BOOTSTRAP_STACK_MAILBOX_ADDRESS),
     0x8B, 0x01,
     0x3D, KI_U32_LE_BYTES(KE_USER_BOOTSTRAP_P1_MAILBOX_GATE_OPEN),

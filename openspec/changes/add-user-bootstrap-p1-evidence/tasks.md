@@ -10,8 +10,8 @@
 
 ## 3. Profile Contract And Documentation
 
-- [ ] 3.1 更新 `Readme.md`、`docs/current-ability.md` 与相关代码注释，明确 `user_hello` 现在必须先证明 P1 的 timer round-trip，再进入 hello/write/exit 阶段
-- [ ] 3.2 复查 `user_hello` 的证据链顺序与命名，确保 profile 语义仍然是单一最小用户态闭环，而不是新增独立 P1-only profile
+- [x] 3.1 更新 `Readme.md`、`docs/current-ability.md` 与相关代码注释，明确 `user_hello` 现在必须先证明 P1 的 timer round-trip，再进入 hello/write/exit 阶段
+- [x] 3.2 复查 `user_hello` 的证据链顺序与命名，确保 profile 语义仍然是单一最小用户态闭环，而不是新增独立 P1-only profile
 
 ## 4. Validation
 

@@ -17,3 +17,8 @@
 - agent 正在完成第二阶段实现，当前把观测点收敛在 `src/kernel/ke/thread/scheduler/timer.c` 的 timer ISR：只在 `CS` 表明来源为 CPL3 时，上报当前 bootstrap 线程的 timer 抢占证据；staging 状态更新与 mailbox 放行继续收在 `src/kernel/ke/user_bootstrap.c`。
 - agent 正在记录第二阶段审查结果：`reviewer` 只检查了 timer 观测与 gate arm 相关改动，结论为“无阻塞”。当前剩余注意点是尚未进入统一构建与 QEMU 验证阶段。
 - agent 正在收尾第二阶段：已准备勾选 OpenSpec tasks `2.1`、`2.2`，下一步会先提交这一阶段的独立 commit，再进入文档契约阶段。
+- agent 正在记录第二阶段提交结果：已生成独立 commit `be66e2c`（`feat: add timer-origin P1 bootstrap evidence`），现在工作树已切换到第三阶段。
+- agent 正在开始第三阶段，目标是以最小文档修改明确 `user_hello` 必须先证明 P1 timer round-trip，再进入 hello/write/exit，同时保持它仍然是同一个最小用户态闭环 profile，而不是新增独立 P1-only profile。
+- agent 正在完成第三阶段实现，当前只更新了 `Readme.md`、`docs/current-ability.md` 与 `src/kernel/demo/user_hello.c` 注释，把 `user_hello` 的证据链改写为“P1 timer round-trip 先行、raw syscall hello/exit 后续”的单一 profile 合同。
+- agent 正在记录第三阶段审查结果：`reviewer` 只检查了上述文档与注释改动，结论为“无阻塞”。当前剩余注意点是最终措辞仍需等待第四阶段的日志验证做一致性确认。
+- agent 正在收尾第三阶段：已准备勾选 OpenSpec tasks `3.1`、`3.2`，下一步会先提交这一阶段的独立 commit，再进入构建与 QEMU 验证阶段。
