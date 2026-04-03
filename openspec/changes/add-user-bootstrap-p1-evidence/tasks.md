@@ -15,5 +15,5 @@
 
 ## 4. Validation
 
-- [ ] 4.1 按显式 workflow 执行 `make clean`、`bear -- make all BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO`
-- [ ] 4.2 使用 `scripts/qemu_capture.sh` 采集 `user_hello` 日志，并确认顺序覆盖“enter user mode -> timer from user #1 -> timer from user #2 / gate armed -> hello -> SYS_RAW_EXIT -> idle/reaper”
+- [x] 4.1 按显式 workflow 执行 `make clean`、`bear -- make all BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO`
+- [x] 4.2 使用 `scripts/qemu_capture.sh` 采集 `user_hello` 日志，并确认顺序覆盖“enter user mode -> timer from user #1 -> timer from user #2 / gate armed -> hello -> SYS_RAW_EXIT -> idle/reaper”

@@ -22,3 +22,9 @@
 - agent 正在完成第三阶段实现，当前只更新了 `Readme.md`、`docs/current-ability.md` 与 `src/kernel/demo/user_hello.c` 注释，把 `user_hello` 的证据链改写为“P1 timer round-trip 先行、raw syscall hello/exit 后续”的单一 profile 合同。
 - agent 正在记录第三阶段审查结果：`reviewer` 只检查了上述文档与注释改动，结论为“无阻塞”。当前剩余注意点是最终措辞仍需等待第四阶段的日志验证做一致性确认。
 - agent 正在收尾第三阶段：已准备勾选 OpenSpec tasks `3.1`、`3.2`，下一步会先提交这一阶段的独立 commit，再进入构建与 QEMU 验证阶段。
+- agent 正在记录第三阶段提交结果：已生成独立 commit `b2132d0`（`docs: document user_hello P1 evidence chain`），现在工作树已切换到第四阶段。
+- agent 正在开始第四阶段，接下来会严格按照显式 workflow 依次执行 `make clean`、`bear -- make all BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO`，然后用 `scripts/qemu_capture.sh` 采集 `user_hello` 日志并核对证据链顺序。
+- agent 正在记录第四阶段构建结果：`make clean` 已完成，`bear -- make all BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO` 已成功产出 `build/kernel/test-user_hello/bin/kernel.bin`。
+- agent 正在记录第四阶段运行结果：已使用 `BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO bash scripts/qemu_capture.sh 30 /tmp/himuos-user-hello.log` 采集日志。脚本最终以超时方式结束是预期现象，因为系统在 `user_hello` 线程退出后继续停在 idle；关键证据链已经在超时前完整出现。
+- agent 正在核对第四阶段证据链顺序，当前捕获到的关键锚点顺序为：`enter user mode` -> `timer from user #1` -> `timer from user #2` -> `P1 gate armed` -> `hello` -> `SYS_RAW_EXIT` -> `Thread 1 terminated` -> `idle/reaper reclaimed user_hello thread`。
+- agent 正在复核第四阶段结果：本阶段没有新增实现性阻塞，已准备勾选 OpenSpec tasks `4.1`、`4.2`，并提交最终阶段 commit 收尾本次 apply。
