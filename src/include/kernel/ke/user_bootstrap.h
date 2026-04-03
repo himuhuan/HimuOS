@@ -73,6 +73,7 @@
 #define KE_USER_BOOTSTRAP_LOG_INVALID_SYSCALL          "[USERBOOT] invalid raw syscall"
 #define KE_USER_BOOTSTRAP_LOG_INVALID_USER_BUFFER      "[USERBOOT] invalid user buffer"
 #define KE_USER_BOOTSTRAP_LOG_TEARDOWN_FAILED          "[USERBOOT] bootstrap teardown failed"
+#define KE_USER_BOOTSTRAP_LOG_TEARDOWN_COMPLETE        "[USERBOOT] bootstrap teardown complete"
 #define KE_USER_BOOTSTRAP_LOG_THREAD_TERMINATED_FORMAT "[SCHED] Thread %u terminated"
 #define KE_USER_BOOTSTRAP_LOG_IDLE_REAPER              "[USERBOOT] idle/reaper reclaimed user_hello thread"
 
