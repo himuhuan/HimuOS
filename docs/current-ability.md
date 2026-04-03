@@ -22,7 +22,7 @@
 
 ## 当前已支持的功能
 
-整体上，HimuOS 当前已经是一个**以 Ke 层为主、并带有一条 bootstrap-only 最小用户态切片的教学原型系统**：启动、内存、时间、控制台、中断、调度、同步、诊断、回归 profile 都已经具备明确实现；另外，独立 `user_hello` profile 已打通最小 Ring 3 bring-up、P1 timer round-trip 与 raw syscall 证据链，但这还不能等同于完整用户态子系统。
+整体上，HimuOS 当前已经是一个**以 Ke 层为主、并带有一条 bootstrap-only 最小用户态切片的教学原型系统**：启动、内存、时间、控制台、中断、调度、同步、诊断、回归 profile 都已经具备明确实现；另外，独立 `user_hello` profile 已打通最小 Ring 3 bring-up、P1 timer round-trip，以及在同一个 profile 内继续完成 rejected raw write probe / successful hello write / `SYS_RAW_EXIT` 的 P2 raw syscall 证据链，但这还不能等同于完整用户态子系统。
 
 | 能力域 | 结论 | 主要依据 |
 | --- | --- | --- |
@@ -64,7 +64,7 @@
 
 这里的用户态能力只指独立 `user_hello` profile 下的最小执行路径与 raw syscall 入口，不应外推为完整进程地址空间、正式系统调用子系统或 Ex 层对象模型。
 
-更具体地说，当前 `user_hello` 只是一条 bootstrap/staging 性质的脚手架测试路径，用来验证“最小用户页映射 -> 首次进入 Ring 3 -> 来自 CPL3 的 P1 timer round-trip -> raw syscall -> 线程终止/回收”这条最小证据链。这里的 P1 gate 只是同一个 `user_hello` profile 内部的前置阶段，不是新增独立的 P1-only profile。现阶段共享 imported root 仍保留 boot 阶段遗留的低 2GB identity mapping，因此 bootstrap 固定用户窗口需要显式避开该区域；这属于当前 bring-up 模型的临时约束，不代表长期用户虚拟地址布局合同。后续引入真实 ELF 加载器与正式用户地址空间时，系统预期会为用户态重建或派生独立页表根，并以干净的 low-half 布局替代当前 fixed bootstrap window，因此这条 staging 限制与长期目标并不冲突。
+更具体地说，当前 `user_hello` 只是一条 bootstrap/staging 性质的脚手架测试路径，用来验证“最小用户页映射 -> 首次进入 Ring 3 -> 来自 CPL3 的 P1 timer round-trip -> P1 gate armed -> invalid raw write rejected -> hello write succeeds -> `SYS_RAW_EXIT` -> 线程终止/回收”这条最小证据链。这里的 P1 gate 和后续 P2 raw syscall 自检都只是同一个 `user_hello` profile 内部的分阶段验证，不是新增独立的 P1-only 或 P2-only profile。现阶段共享 imported root 仍保留 boot 阶段遗留的低 2GB identity mapping，因此 bootstrap 固定用户窗口需要显式避开该区域；这属于当前 bring-up 模型的临时约束，不代表长期用户虚拟地址布局合同，也不意味着当前 bootstrap raw syscall 已经承诺未来正式用户态 ABI。后续引入真实 ELF 加载器与正式用户地址空间时，系统预期会为用户态重建或派生独立页表根，并以干净的 low-half 布局替代当前 fixed bootstrap window，因此这条 staging 限制与长期目标并不冲突。
 
 它已经不只是“能启动的内核骨架”，而是具备以下连续能力链：
 
@@ -73,7 +73,7 @@
 3. 内核带起时间源、clock event、scheduler
 4. 调度器能驱动 KTHREAD、wait、event、semaphore、mutex
 5. 系统具备 sysinfo / 诊断 / regression profile 这些教学友好的观测入口
-6. 独立 `user_hello` profile 能把受控 payload 送入 Ring 3，先证明来自 CPL3 的 P1 timer round-trip，再通过 `int 0x80` 完成 `SYS_RAW_WRITE` / `SYS_RAW_EXIT` 的最小证据链
+6. 独立 `user_hello` profile 能把受控 payload 送入 Ring 3，先证明来自 CPL3 的 P1 timer round-trip，再在同一个 profile 内通过 rejected raw write probe、successful hello write 和 `SYS_RAW_EXIT` 完成最小 raw syscall 证据链
 
 ## 有地基，但还不能算“该功能已经有”
 
