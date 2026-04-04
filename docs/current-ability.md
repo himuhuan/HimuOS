@@ -55,7 +55,7 @@
 | 固定大小对象池 | 已有 | `src/kernel/ke/mm/pool.c`、`src/include/kernel/ke/pool.h`，OpenSpec `kernel-object-pool` |
 | 系统信息查询（sysinfo） | 已有 | `src/kernel/ke/sysinfo/sysinfo.c`、`src/include/kernel/ke/sysinfo.h`，已支持 CPU、页表、内存、GDT/TSS/IDT、时间、scheduler、VMM 等查询 |
 | 内核线程（KTHREAD） | 已有 | `src/kernel/ke/thread/kthread.c`、`src/include/kernel/ke/kthread.h`，支持创建 joinable / detached 线程 |
-| bootstrap-only 最小用户态执行路径 | 已有 | `src/kernel/demo/user_hello.c`、`src/kernel/ke/user_bootstrap.c`、`src/kernel/ke/user_bootstrap_syscall.c`、`src/arch/amd64/user_bootstrap.asm`、`src/kernel/ke/thread/scheduler/scheduler.c` 已打通独立 `user_hello` profile 下的 staging 用户映射、首次进入 Ring 3、来自 CPL3 的 P1 timer round-trip、P2 raw syscall 证据链，并用 `bootstrap teardown complete` / `fallback staging reclaim` 锚点明确 P3 teardown-before-termination → idle/reaper reclaim 合同 |
+| bootstrap-only 最小用户态执行路径 | 已有 | `src/kernel/demo/user_hello.c`、`src/kernel/ke/user_bootstrap.c`、`src/kernel/ke/user_bootstrap_syscall.c`、`src/arch/amd64/user_bootstrap.asm`、`src/kernel/ke/thread/scheduler/scheduler.c` 已打通独立 `user_hello` profile 下的 staging 用户映射、首次进入 Ring 3、来自 CPL3 的 P1 timer round-trip、P2 raw syscall 证据链，并用 `bootstrap teardown complete` / `fallback staging reclaim` 锚点明确 P3 teardown-before-termination → idle/reaper reclaim 合同；scheduler / timer 中的 bootstrap 硬编码分支已收口为 Ke 回调槽位，由 `src/kernel/ex/ex_bootstrap_adapter.c` 注册实现 |
 | 最小 raw syscall 入口 | 已有 | `src/include/kernel/ke/user_bootstrap.h`、`src/kernel/ke/user_bootstrap_syscall.c`、`src/kernel/init/init.c` 已实现同步 `int 0x80` 入口、`SYS_RAW_WRITE` / `SYS_RAW_EXIT`、bootstrap user-range 校验与 bounded copy-in helper，以及 P2/P3 稳定日志锚点 |
 | 调度器 | 已有 | `src/kernel/ke/thread/scheduler/scheduler.c`、`timer.c`、`diag.c`，OpenSpec `scheduler` / `scheduler-observability` |
 | 单对象等待模型 | 已有 | `src/kernel/ke/thread/scheduler/wait.c`，提供 `KeWaitForSingleObject` 与统一 wait-completion 路径，OpenSpec `dispatcher-objects` |
@@ -105,7 +105,7 @@
 | 完整用户态子系统 / 通用用户程序模型 | README 明确承诺“内核态与用户态安全隔离” | 当前只有挂在独立 `user_hello` profile 下的 bootstrap-only 最小执行路径，尚不具备通用用户程序装载、可恢复故障或稳定用户对象模型 |
 | 正式进程地址空间 / 进程级地址空间切换 | README 把虚拟内存目标描述为“为内核和用户程序提供隔离地址空间” | 当前用户页仍以 staging 方式挂在 imported root 上，不是正式进程地址空间模型 |
 | handle-oriented 正式 syscall 表面 | README 明确承诺“系统调用是用户态获取内核服务的唯一入口” | 当前只有同步 `int 0x80` 的 bootstrap raw syscall 入口，且 ABI 仅限 `SYS_RAW_WRITE` / `SYS_RAW_EXIT`，还不是正式的 handle-oriented syscall 接口 |
-| Ex 层 / Object Manager | README 明确写了 Ke/Ex 两层结构，Ex 层负责对象管理器 | 当前仓库基本只有 Ke 层；没有独立的 Ex 层目录、对象管理器或对象命名/生命周期框架 |
+| Ex 层 / Object Manager | 只有 bootstrap 适配薄壳 | 当前已引入 `src/kernel/ex/` 目录与极薄的 `ExProcess` / `ExThread` bootstrap 适配层，scheduler / timer 已通过 Ke 回调槽位分发 bootstrap 语义；但仍不具备正式对象管理器、对象命名/生命周期框架或通用进程模型 |
 | Capability 句柄模型 | README 把它作为用户态/内核态隔离的重要机制 | 当前没有对象句柄表、capability 校验、句柄引用/销毁等子系统 |
 | 优先级调度 | README 承诺“基于优先级和时间片轮转（RR）的调度器” | 当前 OpenSpec `scheduler` 与代码都明确是**单优先级 RR**；`KTHREAD.Priority` 只是保留字段 |
 | 键盘循环缓冲输入 | README 明确承诺“键盘循环缓冲输入”与“标准 QWERTY 键盘输入支持” | 当前没有内核键盘驱动、扫描码处理或输入缓冲队列；只有 bootloader 的 UEFI 文本输入 |

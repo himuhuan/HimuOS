@@ -1,4 +1,6 @@
 #include "init_internal.h"
+
+#include <kernel/ex/ex_bootstrap_adapter.h>
 #include <kernel/ke/user_bootstrap.h>
 #include <kernel/ke/sysinfo.h>
 
@@ -704,6 +706,12 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
     if (initStatus != EC_SUCCESS)
     {
         HO_KPANIC(initStatus, "Failed to initialize bootstrap raw syscall trap");
+    }
+
+    initStatus = ExBootstrapAdapterInit();
+    if (initStatus != EC_SUCCESS)
+    {
+        HO_KPANIC(initStatus, "Failed to initialize Ex bootstrap adapter");
     }
 }
 

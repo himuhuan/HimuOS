@@ -9,6 +9,15 @@
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
+/*
+ * Refactor anchor: keep the user_hello clean-pass evidence chain fixed as
+ * first entry, timer round-trip, rejected raw write, hello write,
+ * SYS_RAW_EXIT, bootstrap teardown complete, and idle/reaper reclaim.
+ * This change only permits boundary refactoring around ownership and
+ * registration seams for bootstrap user support.
+ * It must not change the profile's logs, ordering contract, or pass/fail behavior.
+ */
+
 #include "demo_internal.h"
 
 #define KI_U32_BYTE(value, shift) ((uint8_t)((((uint32_t)(value)) >> (shift)) & 0xFFU))
