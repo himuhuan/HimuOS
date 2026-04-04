@@ -340,6 +340,205 @@ KiFindScratchHole(const KE_KERNEL_ADDRESS_SPACE *space, HO_VIRTUAL_ADDRESS *outV
     return EC_NOT_SUPPORTED;
 }
 
+static void
+KiCopyImportedKernelHighHalfMappings(PAGE_TABLE_ENTRY *destinationPml4, const PAGE_TABLE_ENTRY *sourcePml4)
+{
+    const uint32_t highHalfStart = ENTRIES_PER_TABLE / 2;
+
+    memcpy(&destinationPml4[highHalfStart], &sourcePml4[highHalfStart],
+           (ENTRIES_PER_TABLE - highHalfStart) * sizeof(PAGE_TABLE_ENTRY));
+}
+
+static HO_STATUS
+KiDestroyOwnedPageTableSubtree(HO_PHYSICAL_ADDRESS tablePhys, uint8_t level)
+{
+    HO_STATUS firstError = EC_SUCCESS;
+    PAGE_TABLE_ENTRY *table = KiTableFromPhys(tablePhys);
+
+    if (level > 1)
+    {
+        for (uint32_t idx = 0; idx < ENTRIES_PER_TABLE; ++idx)
+        {
+            PAGE_TABLE_ENTRY entry = table[idx];
+
+            if ((entry & PTE_PRESENT) == 0)
+                continue;
+
+            if ((entry & PTE_PAGE_SIZE) != 0)
+                continue;
+
+            HO_STATUS childStatus = KiDestroyOwnedPageTableSubtree(entry & PAGE_MASK, level - 1);
+            if (childStatus != EC_SUCCESS && firstError == EC_SUCCESS)
+            {
+                firstError = childStatus;
+            }
+        }
+    }
+
+    HO_STATUS freeStatus = KePmmFreePages(tablePhys, 1);
+    if (freeStatus != EC_SUCCESS && firstError == EC_SUCCESS)
+    {
+        firstError = freeStatus;
+    }
+
+    return firstError;
+}
+
+static HO_STATUS
+KiValidatePrivateRootLayout(const KE_KERNEL_ADDRESS_SPACE *space, const KE_PROCESS_ADDRESS_SPACE *privateSpace)
+{
+    if (!space || !privateSpace)
+        return EC_ILLEGAL_ARGUMENT;
+
+    PAGE_TABLE_ENTRY *privateRoot = KiTableFromPhys(privateSpace->RootPageTablePhys);
+    PAGE_TABLE_ENTRY *importedRoot = KiTableFromPhys(space->RootPageTablePhys);
+    const uint32_t highHalfStart = ENTRIES_PER_TABLE / 2;
+
+    for (uint32_t idx = 0; idx < highHalfStart; ++idx)
+    {
+        if (privateRoot[idx] != 0)
+        {
+            klog(KLOG_LEVEL_ERROR, "[MM] private root self-test low-half entry unexpectedly populated: pml4[%u]=%p\n",
+                 idx, (void *)(uint64_t)privateRoot[idx]);
+            return EC_INVALID_STATE;
+        }
+    }
+
+    for (uint32_t idx = highHalfStart; idx < ENTRIES_PER_TABLE; ++idx)
+    {
+        if (privateRoot[idx] != importedRoot[idx])
+        {
+            klog(KLOG_LEVEL_ERROR,
+                 "[MM] private root self-test high-half mismatch: pml4[%u]=%p imported=%p\n", idx,
+                 (void *)(uint64_t)privateRoot[idx], (void *)(uint64_t)importedRoot[idx]);
+            return EC_INVALID_STATE;
+        }
+    }
+
+    return EC_SUCCESS;
+}
+
+static HO_STATUS
+KiPrivateRootSelfTest(const KE_KERNEL_ADDRESS_SPACE *space)
+{
+    if (!space || !space->Initialized)
+        return EC_ILLEGAL_ARGUMENT;
+
+    KE_PROCESS_ADDRESS_SPACE privateSpace;
+    memset(&privateSpace, 0, sizeof(privateSpace));
+
+    HO_PHYSICAL_ADDRESS activeRoot = 0;
+    HO_PHYSICAL_ADDRESS privateRootPhys = 0;
+    HO_STATUS status = KeQueryActiveRootPageTable(&activeRoot);
+    if (status != EC_SUCCESS)
+        return status;
+
+    if (activeRoot != space->RootPageTablePhys)
+    {
+        klog(KLOG_LEVEL_ERROR, "[MM] private root self-test expected imported root active before switch: active=%p imported=%p\n",
+             (void *)(uint64_t)activeRoot, (void *)(uint64_t)space->RootPageTablePhys);
+        return EC_INVALID_STATE;
+    }
+
+    status = KeCreateProcessAddressSpace(&privateSpace);
+    if (status != EC_SUCCESS)
+        return status;
+
+    privateRootPhys = privateSpace.RootPageTablePhys;
+
+    if (!privateSpace.Initialized || privateSpace.RootPageTablePhys == 0 ||
+        privateSpace.RootPageTablePhys == space->RootPageTablePhys)
+    {
+        klog(KLOG_LEVEL_ERROR, "[MM] private root self-test create mismatch: initialized=%u private=%p imported=%p\n",
+             privateSpace.Initialized, (void *)(uint64_t)privateSpace.RootPageTablePhys,
+             (void *)(uint64_t)space->RootPageTablePhys);
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+
+    status = KiValidatePrivateRootLayout(space, &privateSpace);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+
+    status = KeSwitchAddressSpace(privateSpace.RootPageTablePhys);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+
+    status = KeQueryActiveRootPageTable(&activeRoot);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+
+    if (activeRoot != privateSpace.RootPageTablePhys)
+    {
+        klog(KLOG_LEVEL_ERROR, "[MM] private root self-test switch query mismatch: active=%p private=%p\n",
+             (void *)(uint64_t)activeRoot, (void *)(uint64_t)privateSpace.RootPageTablePhys);
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+
+    HO_STATUS destroyWhileActiveStatus = KeDestroyProcessAddressSpace(&privateSpace);
+    if (destroyWhileActiveStatus != EC_INVALID_STATE)
+    {
+        klog(KLOG_LEVEL_ERROR, "[MM] private root self-test destroy-while-active should be rejected: status=%k\n",
+             destroyWhileActiveStatus);
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+
+    status = KeSwitchAddressSpace(space->RootPageTablePhys);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+
+    status = KeQueryActiveRootPageTable(&activeRoot);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+
+    if (activeRoot != space->RootPageTablePhys)
+    {
+        klog(KLOG_LEVEL_ERROR, "[MM] private root self-test expected imported root active after restore: active=%p imported=%p\n",
+             (void *)(uint64_t)activeRoot, (void *)(uint64_t)space->RootPageTablePhys);
+        status = EC_INVALID_STATE;
+        goto cleanup;
+    }
+
+    status = KeDestroyProcessAddressSpace(&privateSpace);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+
+    klog(KLOG_LEVEL_INFO, "[MM] private root self-test OK: imported=%p private=%p\n",
+            (void *)(uint64_t)space->RootPageTablePhys, (void *)(uint64_t)privateRootPhys);
+    return EC_SUCCESS;
+
+cleanup:
+    if (privateSpace.Initialized && KiReadCr3() == privateSpace.RootPageTablePhys)
+    {
+        HO_STATUS restoreStatus = KeSwitchAddressSpace(space->RootPageTablePhys);
+        if (restoreStatus != EC_SUCCESS)
+        {
+            klog(KLOG_LEVEL_WARNING, "[MM] private root self-test restore switch failed: %k\n", restoreStatus);
+            if (status == EC_SUCCESS)
+            {
+                status = restoreStatus;
+            }
+        }
+    }
+
+    if (privateSpace.Initialized)
+    {
+        HO_STATUS destroyStatus = KeDestroyProcessAddressSpace(&privateSpace);
+        if (destroyStatus != EC_SUCCESS)
+        {
+            klog(KLOG_LEVEL_WARNING, "[MM] private root self-test cleanup destroy failed: %k\n", destroyStatus);
+            if (status == EC_SUCCESS)
+            {
+                status = destroyStatus;
+            }
+        }
+    }
+
+    return status;
+}
+
 HO_KERNEL_API HO_NODISCARD HO_STATUS
 KeImportKernelAddressSpace(struct BOOT_CAPSULE *capsule, const BOOT_MAPPING_MANIFEST_HEADER *manifest)
 {
@@ -456,6 +655,97 @@ HO_KERNEL_API const KE_KERNEL_ADDRESS_SPACE *
 KeGetKernelAddressSpace(void)
 {
     return gKernelAddressSpace.Initialized ? &gKernelAddressSpace : NULL;
+}
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS
+KeCreateProcessAddressSpace(KE_PROCESS_ADDRESS_SPACE *outSpace)
+{
+    if (!outSpace)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (!gKernelAddressSpace.Initialized)
+        return EC_INVALID_STATE;
+
+    KE_PROCESS_ADDRESS_SPACE newSpace;
+    memset(&newSpace, 0, sizeof(newSpace));
+
+    HO_PHYSICAL_ADDRESS rootPageTablePhys = 0;
+    HO_STATUS status = KePmmAllocPages(1, NULL, &rootPageTablePhys);
+    if (status != EC_SUCCESS)
+        return status;
+
+    PAGE_TABLE_ENTRY *privateRoot = KiTableFromPhys(rootPageTablePhys);
+    PAGE_TABLE_ENTRY *importedRoot = KiTableFromPhys(gKernelAddressSpace.RootPageTablePhys);
+    memset(privateRoot, 0, PAGE_4KB);
+    KiCopyImportedKernelHighHalfMappings(privateRoot, importedRoot);
+
+    newSpace.RootPageTablePhys = rootPageTablePhys;
+    newSpace.Initialized = TRUE;
+    *outSpace = newSpace;
+    return EC_SUCCESS;
+}
+
+HO_KERNEL_API HO_STATUS
+KeDestroyProcessAddressSpace(KE_PROCESS_ADDRESS_SPACE *space)
+{
+    if (!space)
+        return EC_ILLEGAL_ARGUMENT;
+    if (!space->Initialized)
+        return EC_INVALID_STATE;
+    if (KiReadCr3() == space->RootPageTablePhys)
+        return EC_INVALID_STATE;
+
+    HO_STATUS firstError = EC_SUCCESS;
+    PAGE_TABLE_ENTRY *root = KiTableFromPhys(space->RootPageTablePhys);
+
+    for (uint32_t idx = 0; idx < ENTRIES_PER_TABLE / 2; ++idx)
+    {
+        PAGE_TABLE_ENTRY entry = root[idx];
+
+        if ((entry & PTE_PRESENT) == 0)
+            continue;
+
+        if ((entry & PTE_PAGE_SIZE) != 0)
+            continue;
+
+        HO_STATUS childStatus = KiDestroyOwnedPageTableSubtree(entry & PAGE_MASK, 3);
+        if (childStatus != EC_SUCCESS && firstError == EC_SUCCESS)
+        {
+            firstError = childStatus;
+        }
+    }
+
+    HO_STATUS freeStatus = KePmmFreePages(space->RootPageTablePhys, 1);
+    if (freeStatus != EC_SUCCESS && firstError == EC_SUCCESS)
+    {
+        firstError = freeStatus;
+    }
+
+    memset(space, 0, sizeof(*space));
+    return firstError;
+}
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS
+KeQueryActiveRootPageTable(HO_PHYSICAL_ADDRESS *outRootPageTablePhys)
+{
+    if (!outRootPageTablePhys)
+        return EC_ILLEGAL_ARGUMENT;
+
+    *outRootPageTablePhys = KiReadCr3();
+    return EC_SUCCESS;
+}
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS
+KeSwitchAddressSpace(HO_PHYSICAL_ADDRESS rootPageTablePhys)
+{
+    if (rootPageTablePhys == 0 || !HO_IS_ALIGNED(rootPageTablePhys, PAGE_4KB))
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (KiReadCr3() == rootPageTablePhys)
+        return EC_SUCCESS;
+
+    LoadCR3(rootPageTablePhys);
+    return EC_SUCCESS;
 }
 
 HO_KERNEL_API const KE_IMPORTED_REGION *
@@ -669,7 +959,7 @@ KePtSelfTest(void)
         return EC_INVALID_STATE;
     }
 
-    HO_PHYSICAL_ADDRESS scratchPhys;
+    HO_PHYSICAL_ADDRESS scratchPhys = 0;
     status = KePmmAllocPages(1, NULL, &scratchPhys);
     if (status != EC_SUCCESS)
         return status;
@@ -750,10 +1040,11 @@ KePtSelfTest(void)
 
     klog(KLOG_LEVEL_INFO, "[MM] PT HAL scratch OK: va=%p phys=%p\n", (void *)(uint64_t)scratchVirt,
          (void *)(uint64_t)scratchPhys);
-    status = EC_SUCCESS;
+    status = KiPrivateRootSelfTest(space);
 
 cleanup_page:
-    (void)KePmmFreePages(scratchPhys, 1);
+    if (scratchPhys != 0)
+        (void)KePmmFreePages(scratchPhys, 1);
     return status;
 
 cleanup_mapping: {

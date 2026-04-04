@@ -11,9 +11,10 @@
 #include <_hobase.h>
 
 /*
- * The fixed low-half user window below is a staging/bootstrap model only.
- * It reuses the shared imported kernel root for the first user-mode slice and
- * must not be treated as the long-term per-process address-space contract.
+ * The fixed low-half user window below records the Phase A bootstrap-only
+ * history. It reuses the shared imported kernel root for the first user-mode
+ * slice and must not be treated as the long-term per-process address-space
+ * contract. Phase B process-private roots are expected to replace this window.
  * Keep it above the boot-time low 2GB identity import so hole validation sees
  * an unmapped slot in the shared root.
  */
