@@ -643,6 +643,9 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
     KE_USER_BOOTSTRAP_STAGING *staging = NULL;
     EX_PROCESS *process = NULL;
     KE_USER_BOOTSTRAP_CREATE_PARAMS keParams = {0};
+    const EX_PRIVATE_HANDLE_RIGHTS processSelfRights = EX_PRIVATE_HANDLE_RIGHT_QUERY |
+                                                       EX_PRIVATE_HANDLE_RIGHT_CLOSE |
+                                                       EX_PRIVATE_HANDLE_RIGHT_PROCESS_SELF;
 
     if (outProcess == NULL)
         return EC_ILLEGAL_ARGUMENT;
@@ -687,6 +690,22 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
     }
 
     process->Staging = staging;
+    status = ExBootstrapInsertPrivateHandle(process, &process->Header, processSelfRights, &process->SelfHandle);
+    if (status != EC_SUCCESS)
+    {
+        HO_STATUS teardownStatus = ExBootstrapTeardownProcessPayload(process);
+        HO_STATUS closeStatus = ExBootstrapCloseAllPrivateHandles(process);
+        HO_STATUS releaseStatus = ExBootstrapReleaseProcess(process);
+
+        if (teardownStatus != EC_SUCCESS)
+            return teardownStatus;
+
+        if (closeStatus != EC_SUCCESS)
+            return closeStatus;
+
+        return releaseStatus == EC_SUCCESS ? status : releaseStatus;
+    }
+
     *outProcess = process;
     return EC_SUCCESS;
 }
@@ -701,6 +720,10 @@ ExBootstrapDestroyProcess(EX_PROCESS *process)
         return EC_INVALID_STATE;
 
     HO_STATUS status = ExBootstrapTeardownProcessPayload(process);
+
+    HO_STATUS closeStatus = ExBootstrapCloseAllPrivateHandles(process);
+    if (status == EC_SUCCESS)
+        status = closeStatus;
 
     HO_STATUS releaseStatus = ExBootstrapReleaseProcess(process);
     if (status == EC_SUCCESS)
@@ -717,6 +740,9 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
     EX_PROCESS *process = NULL;
     EX_THREAD *thread = NULL;
     KTHREAD *kernelThread = NULL;
+    const EX_PRIVATE_HANDLE_RIGHTS threadSelfRights = EX_PRIVATE_HANDLE_RIGHT_QUERY |
+                                                      EX_PRIVATE_HANDLE_RIGHT_CLOSE |
+                                                      EX_PRIVATE_HANDLE_RIGHT_THREAD_SELF;
 
     if (processHandle == NULL || outThread == NULL)
         return EC_ILLEGAL_ARGUMENT;
@@ -761,10 +787,24 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
     thread->Thread = kernelThread;
     thread->Process = process;
 
+    status = ExBootstrapInsertPrivateHandle(process, &thread->Header, threadSelfRights, &thread->SelfHandle);
+    if (status != EC_SUCCESS)
+        goto FailThreadRuntimeSetup;
+
     status = ExBootstrapPublishRuntimeAlias(process, thread);
     if (status != EC_SUCCESS)
     {
+        goto FailThreadRuntimeSetup;
+    }
+
+    *outThread = thread;
+    *processHandle = NULL;
+    return EC_SUCCESS;
+
+FailThreadRuntimeSetup:
+    {
         HO_STATUS destroyStatus = KiDestroyNewThread(kernelThread);
+        HO_STATUS closeStatus = ExBootstrapClosePrivateHandle(process, &thread->SelfHandle);
 
         thread->Thread = NULL;
         thread->Process = NULL;
@@ -774,12 +814,11 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
         if (destroyStatus != EC_SUCCESS)
             return destroyStatus;
 
+        if (closeStatus != EC_SUCCESS)
+            return closeStatus;
+
         return releaseStatus == EC_SUCCESS ? status : releaseStatus;
     }
-
-    *outThread = thread;
-    *processHandle = NULL;
-    return EC_SUCCESS;
 }
 
 HO_STATUS
@@ -826,6 +865,10 @@ ExBootstrapTeardownThread(EX_THREAD *thread)
         firstError = threadStatus;
 
     ExBootstrapUnpublishRuntimeAlias(NULL, NULL);
+
+    HO_STATUS closeStatus = ExBootstrapCloseAllPrivateHandles(process);
+    if (firstError == EC_SUCCESS)
+        firstError = closeStatus;
 
     HO_STATUS releaseStatus = ExBootstrapReleaseThread(thread);
     if (firstError == EC_SUCCESS)

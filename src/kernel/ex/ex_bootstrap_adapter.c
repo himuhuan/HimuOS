@@ -200,14 +200,27 @@ KiDestroyBootstrapWrapperObjects(void)
 {
     EX_THREAD *exThread = NULL;
     EX_PROCESS *process = NULL;
+    HO_STATUS status = EC_SUCCESS;
 
     ExBootstrapUnpublishRuntimeAlias(&exThread, &process);
 
-    if (exThread != NULL)
-        return ExBootstrapReleaseThread(exThread);
+    if (exThread != NULL && process == NULL)
+        process = exThread->Process;
 
     if (process != NULL)
-        return ExBootstrapReleaseProcess(process);
+        status = ExBootstrapCloseAllPrivateHandles(process);
 
-    return EC_SUCCESS;
+    if (exThread != NULL)
+    {
+        HO_STATUS releaseStatus = ExBootstrapReleaseThread(exThread);
+        return status == EC_SUCCESS ? releaseStatus : status;
+    }
+
+    if (process != NULL)
+    {
+        HO_STATUS releaseStatus = ExBootstrapReleaseProcess(process);
+        return status == EC_SUCCESS ? releaseStatus : status;
+    }
+
+    return status;
 }
