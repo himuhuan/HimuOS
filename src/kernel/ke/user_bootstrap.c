@@ -43,6 +43,7 @@ struct KE_USER_BOOTSTRAP_STAGING
     BOOL PhaseOneFirstEntryObserved;
     BOOL PhaseOneGateArmed;
     uint32_t MappingCount;
+    HO_PHYSICAL_ADDRESS OwnerRootPageTablePhys;
     KTHREAD *AttachedThread;
     KE_USER_BOOTSTRAP_MAPPING_RECORD Mappings[KE_USER_BOOTSTRAP_MAX_MAPPINGS];
 };
@@ -53,6 +54,7 @@ extern HO_NORETURN void KiUserBootstrapIretq(HO_VIRTUAL_ADDRESS userRip,
                                              uint64_t userCs,
                                              uint64_t userSs);
 
+static void KiBuildProcessRootView(const KE_PROCESS_ADDRESS_SPACE *procSpace, KE_KERNEL_ADDRESS_SPACE *outView);
 static HO_STATUS KiValidateCreateParams(const KE_USER_BOOTSTRAP_CREATE_PARAMS *params);
 static HO_STATUS KiValidateBootstrapHole(const KE_KERNEL_ADDRESS_SPACE *space, HO_VIRTUAL_ADDRESS virtAddr);
 static HO_STATUS KiPopulatePhysicalPage(HO_PHYSICAL_ADDRESS physAddr, const void *bytes, uint64_t byteCount);
@@ -71,6 +73,14 @@ static HO_STATUS KiAllocateAndMapUserPage(const KE_KERNEL_ADDRESS_SPACE *space,
 static const KE_USER_BOOTSTRAP_MAPPING_RECORD *KiFindMappedPage(const KE_USER_BOOTSTRAP_STAGING *staging,
                                                                 KE_USER_BOOTSTRAP_MAPPING_KIND kind);
 static KE_USER_BOOTSTRAP_STAGING *KiGetCurrentThreadStaging(void);
+
+static void
+KiBuildProcessRootView(const KE_PROCESS_ADDRESS_SPACE *procSpace, KE_KERNEL_ADDRESS_SPACE *outView)
+{
+    memset(outView, 0, sizeof(*outView));
+    outView->RootPageTablePhys = procSpace->RootPageTablePhys;
+    outView->Initialized = procSpace->Initialized;
+}
 
 static HO_STATUS
 KiValidateCreateParams(const KE_USER_BOOTSTRAP_CREATE_PARAMS *params)
@@ -227,22 +237,30 @@ KiGetCurrentThreadStaging(void)
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
 KeUserBootstrapCreateStaging(const KE_USER_BOOTSTRAP_CREATE_PARAMS *params,
+                             KE_PROCESS_ADDRESS_SPACE *targetSpace,
                              KE_USER_BOOTSTRAP_STAGING **outStaging)
 {
     HO_STATUS destroyStatus = EC_SUCCESS;
+    KE_KERNEL_ADDRESS_SPACE processView = {0};
 
     if (!outStaging)
         return EC_ILLEGAL_ARGUMENT;
 
     *outStaging = NULL;
 
+    if (targetSpace == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (!targetSpace->Initialized)
+        return EC_INVALID_STATE;
+
     HO_STATUS status = KiValidateCreateParams(params);
     if (status != EC_SUCCESS)
         return status;
 
-    const KE_KERNEL_ADDRESS_SPACE *space = KeGetKernelAddressSpace();
-    if (!space || !space->Initialized)
-        return EC_INVALID_STATE;
+    KiBuildProcessRootView(targetSpace, &processView);
+
+    const KE_KERNEL_ADDRESS_SPACE *space = &processView;
 
     status = KiValidateBootstrapHole(space, 0);
     if (status != EC_SUCCESS)
@@ -273,6 +291,7 @@ KeUserBootstrapCreateStaging(const KE_USER_BOOTSTRAP_CREATE_PARAMS *params,
     staging->StackTop = KE_USER_BOOTSTRAP_STACK_TOP;
     staging->GuardBase = KE_USER_BOOTSTRAP_STACK_GUARD_BASE;
     staging->PhaseOneMailboxAddress = KE_USER_BOOTSTRAP_STACK_MAILBOX_ADDRESS;
+    staging->OwnerRootPageTablePhys = targetSpace->RootPageTablePhys;
 
     status = KiAllocateAndMapUserPage(space,
                                       staging,
@@ -311,7 +330,28 @@ KeUserBootstrapCreateStaging(const KE_USER_BOOTSTRAP_CREATE_PARAMS *params,
     if (status != EC_SUCCESS)
         goto cleanup;
 
-    *(volatile uint32_t *)(uint64_t)staging->PhaseOneMailboxAddress = KE_USER_BOOTSTRAP_P1_MAILBOX_CLOSED;
+    const KE_USER_BOOTSTRAP_MAPPING_RECORD *stackRecord =
+        KiFindMappedPage(staging, KE_USER_BOOTSTRAP_MAPPING_KIND_STACK);
+    HO_KASSERT(stackRecord != NULL, EC_INVALID_STATE);
+
+    KE_TEMP_PHYS_MAP_HANDLE mailboxHandle = {0};
+    HO_VIRTUAL_ADDRESS mailboxTempVirt = 0;
+    status = KeTempPhysMapAcquire(stackRecord->PhysicalBase,
+                                  PTE_WRITABLE | PTE_NO_EXECUTE,
+                                  &mailboxHandle,
+                                  &mailboxTempVirt);
+    if (status != EC_SUCCESS)
+        goto cleanup;
+
+    *(volatile uint32_t *)(uint64_t)(mailboxTempVirt + KE_USER_BOOTSTRAP_STACK_MAILBOX_OFFSET) =
+        KE_USER_BOOTSTRAP_P1_MAILBOX_CLOSED;
+
+    HO_STATUS mailboxRelease = KeTempPhysMapRelease(&mailboxHandle);
+    if (mailboxRelease != EC_SUCCESS)
+    {
+        status = mailboxRelease;
+        goto cleanup;
+    }
 
     *outStaging = staging;
     return EC_SUCCESS;
@@ -330,7 +370,10 @@ KeUserBootstrapDestroyStaging(KE_USER_BOOTSTRAP_STAGING *staging)
         return EC_ILLEGAL_ARGUMENT;
 
     HO_STATUS firstError = EC_SUCCESS;
-    const KE_KERNEL_ADDRESS_SPACE *space = KeGetKernelAddressSpace();
+    KE_KERNEL_ADDRESS_SPACE ownerView = {0};
+    ownerView.RootPageTablePhys = staging->OwnerRootPageTablePhys;
+    ownerView.Initialized = (staging->OwnerRootPageTablePhys != 0);
+    const KE_KERNEL_ADDRESS_SPACE *space = &ownerView;
 
     if (staging->AttachedThread != NULL)
     {

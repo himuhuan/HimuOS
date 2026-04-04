@@ -10,12 +10,14 @@
 
 #include <kernel/ex/ex_process.h>
 #include <kernel/ex/ex_thread.h>
+#include <kernel/ke/mm.h>
 
 struct KTHREAD;
 struct KE_USER_BOOTSTRAP_STAGING;
 
 struct EX_PROCESS
 {
+    KE_PROCESS_ADDRESS_SPACE AddressSpace;
     struct KE_USER_BOOTSTRAP_STAGING *Staging;
 };
 

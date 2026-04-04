@@ -154,8 +154,16 @@ KiCopyInBootstrapUserBytes(void *kernelDestination, HO_VIRTUAL_ADDRESS userSourc
         return status;
     }
 
-    const KE_KERNEL_ADDRESS_SPACE *space = KeGetKernelAddressSpace();
-    status = KiValidateBootstrapUserReadablePages(space, userSource, endExclusive);
+    HO_PHYSICAL_ADDRESS activeRoot = 0;
+    status = KeQueryActiveRootPageTable(&activeRoot);
+    if (status != EC_SUCCESS)
+        return status;
+
+    KE_KERNEL_ADDRESS_SPACE activeView = {0};
+    activeView.RootPageTablePhys = activeRoot;
+    activeView.Initialized = TRUE;
+
+    status = KiValidateBootstrapUserReadablePages(&activeView, userSource, endExclusive);
     if (status != EC_SUCCESS)
         return status;
 
