@@ -15,7 +15,7 @@
 #include <kernel/ke/user_bootstrap.h>
 #include <kernel/hodbg.h>
 
-static void KiDestroyBootstrapWrapperObjects(void);
+static HO_STATUS KiDestroyBootstrapWrapperObjects(void);
 static HO_STATUS KiRestoreImportedRootForProcessTeardown(const EX_PROCESS *process);
 
 static HO_NORETURN void
@@ -185,7 +185,12 @@ ExBootstrapAdapterFinalizeThread(KTHREAD *thread)
         }
     }
 
-    KiDestroyBootstrapWrapperObjects();
+    HO_STATUS releaseStatus = KiDestroyBootstrapWrapperObjects();
+    if (status == EC_SUCCESS)
+    {
+        status = releaseStatus;
+    }
+
     return status;
 }
 
@@ -240,13 +245,17 @@ ExBootstrapAdapterHandleRawExit(KTHREAD *thread)
 
     if (stagingStatus != EC_SUCCESS)
     {
-        KiDestroyBootstrapWrapperObjects();
+        HO_STATUS releaseStatus = KiDestroyBootstrapWrapperObjects();
+        if (stagingStatus == EC_SUCCESS)
+        {
+            stagingStatus = releaseStatus;
+        }
     }
 
     return stagingStatus;
 }
 
-static void
+static HO_STATUS
 KiDestroyBootstrapWrapperObjects(void)
 {
     EX_THREAD *exThread = gExBootstrapThread;
@@ -256,15 +265,10 @@ KiDestroyBootstrapWrapperObjects(void)
     gExBootstrapProcess = NULL;
 
     if (exThread != NULL)
-    {
-        exThread->Thread = NULL;
-        exThread->Process = NULL;
-        kfree(exThread);
-    }
+        return ExBootstrapReleaseThread(exThread);
 
     if (process != NULL)
-    {
-        process->Staging = NULL;
-        kfree(process);
-    }
+        return ExBootstrapReleaseProcess(process);
+
+    return EC_SUCCESS;
 }

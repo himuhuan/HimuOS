@@ -19,6 +19,115 @@
 EX_PROCESS *gExBootstrapProcess = NULL;
 EX_THREAD *gExBootstrapThread = NULL;
 
+static void
+KiInitializeObjectHeader(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE type)
+{
+    if (header == NULL)
+        return;
+
+    header->Type = type;
+    header->ReferenceCount = 1;
+}
+
+static HO_STATUS
+KiRetainObject(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE expectedType)
+{
+    if (header == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (header->Type != expectedType || header->ReferenceCount == 0)
+        return EC_INVALID_STATE;
+
+    header->ReferenceCount++;
+    return EC_SUCCESS;
+}
+
+static HO_STATUS
+KiReleaseObject(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE expectedType, uint32_t *remainingReferences)
+{
+    if (header == NULL || remainingReferences == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (header->Type != expectedType || header->ReferenceCount == 0)
+        return EC_INVALID_STATE;
+
+    header->ReferenceCount--;
+    *remainingReferences = header->ReferenceCount;
+    return EC_SUCCESS;
+}
+
+void
+ExBootstrapInitializeProcessObject(EX_PROCESS *process)
+{
+    if (process == NULL)
+        return;
+
+    KiInitializeObjectHeader(&process->Header, EX_OBJECT_TYPE_PROCESS);
+}
+
+void
+ExBootstrapInitializeThreadObject(EX_THREAD *thread)
+{
+    if (thread == NULL)
+        return;
+
+    KiInitializeObjectHeader(&thread->Header, EX_OBJECT_TYPE_THREAD);
+}
+
+EX_PROCESS *
+ExBootstrapRetainProcess(EX_PROCESS *process)
+{
+    if (process == NULL)
+        return NULL;
+
+    if (KiRetainObject(&process->Header, EX_OBJECT_TYPE_PROCESS) != EC_SUCCESS)
+        return NULL;
+
+    return process;
+}
+
+HO_STATUS
+ExBootstrapReleaseProcess(EX_PROCESS *process)
+{
+    uint32_t remainingReferences = 0;
+    HO_STATUS status = EC_SUCCESS;
+
+    if (process == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    status = KiReleaseObject(&process->Header, EX_OBJECT_TYPE_PROCESS, &remainingReferences);
+    if (status != EC_SUCCESS || remainingReferences != 0)
+        return status;
+
+    kfree(process);
+    return EC_SUCCESS;
+}
+
+HO_STATUS
+ExBootstrapReleaseThread(EX_THREAD *thread)
+{
+    EX_PROCESS *process = NULL;
+    uint32_t remainingReferences = 0;
+    HO_STATUS status = EC_SUCCESS;
+
+    if (thread == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    status = KiReleaseObject(&thread->Header, EX_OBJECT_TYPE_THREAD, &remainingReferences);
+    if (status != EC_SUCCESS || remainingReferences != 0)
+        return status;
+
+    process = thread->Process;
+    thread->Thread = NULL;
+    thread->Process = NULL;
+    kfree(thread);
+
+    if (process != NULL)
+        return ExBootstrapReleaseProcess(process);
+
+    return EC_SUCCESS;
+}
+
 static HO_STATUS
 KiDestroyNewThread(KTHREAD *thread)
 {
@@ -74,10 +183,15 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
     if (process == NULL)
         return EC_OUT_OF_RESOURCE;
 
+    ExBootstrapInitializeProcessObject(process);
+
     HO_STATUS status = KeCreateProcessAddressSpace(&process->AddressSpace);
     if (status != EC_SUCCESS)
     {
-        kfree(process);
+        HO_STATUS releaseStatus = ExBootstrapReleaseProcess(process);
+        if (releaseStatus != EC_SUCCESS)
+            return releaseStatus;
+
         return status;
     }
 
@@ -85,8 +199,12 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
     if (status != EC_SUCCESS)
     {
         HO_STATUS destroyStatus = KeDestroyProcessAddressSpace(&process->AddressSpace);
-        kfree(process);
-        return destroyStatus == EC_SUCCESS ? status : destroyStatus;
+        HO_STATUS releaseStatus = ExBootstrapReleaseProcess(process);
+
+        if (destroyStatus != EC_SUCCESS)
+            return destroyStatus;
+
+        return releaseStatus == EC_SUCCESS ? status : releaseStatus;
     }
 
     process->Staging = staging;
@@ -122,7 +240,10 @@ ExBootstrapDestroyProcess(EX_PROCESS *process)
         }
     }
 
-    kfree(process);
+    HO_STATUS releaseStatus = ExBootstrapReleaseProcess(process);
+    if (status == EC_SUCCESS)
+        status = releaseStatus;
+
     return status;
 }
 
@@ -151,10 +272,15 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
     if (thread == NULL)
         return EC_OUT_OF_RESOURCE;
 
+    ExBootstrapInitializeThreadObject(thread);
+
     HO_STATUS status = KeThreadCreate(&kernelThread, (KTHREAD_ENTRY)params->EntryPoint, params->EntryArg);
     if (status != EC_SUCCESS)
     {
-        kfree(thread);
+        HO_STATUS releaseStatus = ExBootstrapReleaseThread(thread);
+        if (releaseStatus != EC_SUCCESS)
+            return releaseStatus;
+
         return status;
     }
 
@@ -162,8 +288,12 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
     if (status != EC_SUCCESS)
     {
         HO_STATUS destroyStatus = KiDestroyNewThread(kernelThread);
-        kfree(thread);
-        return destroyStatus == EC_SUCCESS ? status : destroyStatus;
+        HO_STATUS releaseStatus = ExBootstrapReleaseThread(thread);
+
+        if (destroyStatus != EC_SUCCESS)
+            return destroyStatus;
+
+        return releaseStatus == EC_SUCCESS ? status : releaseStatus;
     }
 
     thread->Thread = kernelThread;
@@ -239,12 +369,9 @@ ExBootstrapTeardownThread(EX_THREAD *thread)
     gExBootstrapThread = NULL;
     gExBootstrapProcess = NULL;
 
-    thread->Thread = NULL;
-    thread->Process = NULL;
-    kfree(thread);
-
-    if (process != NULL)
-        kfree(process);
+    HO_STATUS releaseStatus = ExBootstrapReleaseThread(thread);
+    if (firstError == EC_SUCCESS)
+        firstError = releaseStatus;
 
     return firstError;
 }
