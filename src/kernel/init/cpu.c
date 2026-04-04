@@ -17,4 +17,13 @@ InitCpuState(STAGING_BLOCK *block)
     data->Tss.IST1 = HHDM_PHYS2VIRT(block->KrnlIST1StackPhys) + block->Layout.IST1StackSize;
     data->Tss.IST2 = HHDM_PHYS2VIRT(block->KrnlIST2StackPhys) + block->Layout.IST2StackSize;
     data->Tss.IOMapBase = sizeof(TSS64); // No IO permission bitmap
+
+    TSS64 tss = data->Tss;
+    if (InitCpuCoreLocalData(data, sizeof(*data)) == NULL)
+    {
+        HO_KPANIC(EC_INVALID_STATE, "Failed to initialize high-half GDT/TSS");
+    }
+
+    data->Tss = tss;
+    LoadGdtAndTss(data);
 }

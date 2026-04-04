@@ -439,6 +439,45 @@ KeUserBootstrapAttachThread(KTHREAD *thread, KE_USER_BOOTSTRAP_STAGING *staging)
     return EC_SUCCESS;
 }
 
+HO_KERNEL_API HO_NODISCARD HO_STATUS
+KeUserBootstrapQueryCurrentThreadLayout(KE_USER_BOOTSTRAP_LAYOUT *outLayout)
+{
+    if (!outLayout)
+        return EC_ILLEGAL_ARGUMENT;
+
+    memset(outLayout, 0, sizeof(*outLayout));
+
+    KE_USER_BOOTSTRAP_STAGING *staging = KiGetCurrentThreadStaging();
+    if (staging == NULL)
+        return EC_INVALID_STATE;
+
+    const KE_USER_BOOTSTRAP_MAPPING_RECORD *codeRecord =
+        KiFindMappedPage(staging, KE_USER_BOOTSTRAP_MAPPING_KIND_CODE);
+    const KE_USER_BOOTSTRAP_MAPPING_RECORD *stackRecord =
+        KiFindMappedPage(staging, KE_USER_BOOTSTRAP_MAPPING_KIND_STACK);
+    if (codeRecord == NULL || stackRecord == NULL)
+        return EC_INVALID_STATE;
+
+    if (staging->OwnerRootPageTablePhys == 0)
+        return EC_INVALID_STATE;
+
+    if (staging->StackTop <= codeRecord->VirtualBase)
+        return EC_INVALID_STATE;
+
+    if (stackRecord->VirtualBase != staging->StackBase)
+        return EC_INVALID_STATE;
+
+    outLayout->UserRangeBase = codeRecord->VirtualBase;
+    outLayout->UserRangeEndExclusive = staging->StackTop;
+    outLayout->EntryPoint = staging->EntryPoint;
+    outLayout->GuardBase = staging->GuardBase;
+    outLayout->StackBase = staging->StackBase;
+    outLayout->StackTop = staging->StackTop;
+    outLayout->PhaseOneMailboxAddress = staging->PhaseOneMailboxAddress;
+    outLayout->OwnerRootPageTablePhys = staging->OwnerRootPageTablePhys;
+    return EC_SUCCESS;
+}
+
 HO_KERNEL_API void
 KeUserBootstrapObserveCurrentThreadUserTimerPreemption(void)
 {

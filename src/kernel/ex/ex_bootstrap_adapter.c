@@ -8,9 +8,7 @@
 
 #include "ex_bootstrap_internal.h"
 
-#include <arch/amd64/pm.h>
 #include <kernel/ex/ex_bootstrap_adapter.h>
-#include <kernel/init.h>
 #include <kernel/ke/bootstrap_callbacks.h>
 #include <kernel/ke/kthread.h>
 #include <kernel/ke/mm.h>
@@ -18,6 +16,7 @@
 #include <kernel/hodbg.h>
 
 static void KiDestroyBootstrapWrapperObjects(void);
+static HO_STATUS KiRestoreImportedRootForProcessTeardown(const EX_PROCESS *process);
 
 static HO_NORETURN void
 ExBootstrapEnterCallback(KTHREAD *thread)
@@ -33,34 +32,81 @@ ExBootstrapEnterCallback(KTHREAD *thread)
         HO_KPANIC(EC_INVALID_STATE, "Bootstrap enter: process root not initialized");
     }
 
-    status = KeSwitchAddressSpace(gExBootstrapProcess->AddressSpace.RootPageTablePhys);
+    if (gExBootstrapProcess->AddressSpace.RootPageTablePhys == 0)
+    {
+        HO_KPANIC(EC_INVALID_STATE, "Bootstrap enter: process root missing");
+    }
+
+    HO_PHYSICAL_ADDRESS activeRoot = 0;
+    status = KeQueryActiveRootPageTable(&activeRoot);
     if (status != EC_SUCCESS)
     {
-        HO_KPANIC(status, "Bootstrap enter: failed to install process root");
+        HO_KPANIC(status, "Bootstrap enter: failed to query active root");
     }
 
-    BOOT_CAPSULE *bootCapsule = KeGetBootCapsule();
-    if (bootCapsule == NULL)
+    if (activeRoot != gExBootstrapProcess->AddressSpace.RootPageTablePhys)
     {
-        HO_KPANIC(EC_INVALID_STATE, "Bootstrap enter: boot capsule unavailable");
+        HO_KPANIC(EC_INVALID_STATE, "Bootstrap enter: dispatch root not installed");
     }
-
-    TSS64 tss = bootCapsule->CpuInfo.Tss;
-    if (InitCpuCoreLocalData(&bootCapsule->CpuInfo, sizeof(bootCapsule->CpuInfo)) == NULL)
-    {
-        HO_KPANIC(EC_INVALID_STATE, "Bootstrap enter: failed to rebuild high-half GDT/TSS");
-    }
-
-    bootCapsule->CpuInfo.Tss = tss;
-    LoadGdtAndTss(&bootCapsule->CpuInfo);
 
     KeUserBootstrapEnterCurrentThread();
+}
+
+static HO_STATUS
+KiRestoreImportedRootForProcessTeardown(const EX_PROCESS *process)
+{
+    HO_PHYSICAL_ADDRESS activeRoot = 0;
+
+    if (process == NULL || !process->AddressSpace.Initialized)
+    {
+        return EC_SUCCESS;
+    }
+
+    if (KeQueryActiveRootPageTable(&activeRoot) != EC_SUCCESS ||
+        activeRoot != process->AddressSpace.RootPageTablePhys)
+    {
+        return EC_SUCCESS;
+    }
+
+    const KE_KERNEL_ADDRESS_SPACE *kernelSpace = KeGetKernelAddressSpace();
+    if (kernelSpace == NULL || !kernelSpace->Initialized || kernelSpace->RootPageTablePhys == 0)
+    {
+        return EC_INVALID_STATE;
+    }
+
+    return KeSwitchAddressSpace(kernelSpace->RootPageTablePhys);
 }
 
 static BOOL
 ExBootstrapThreadOwnershipQueryCallback(const KTHREAD *thread)
 {
     return ExBootstrapAdapterHasWrapper(thread);
+}
+
+static HO_STATUS
+ExBootstrapThreadRootQueryCallback(const KTHREAD *thread, HO_PHYSICAL_ADDRESS *outRootPageTablePhys)
+{
+    const KE_KERNEL_ADDRESS_SPACE *kernelSpace = KeGetKernelAddressSpace();
+
+    if (thread == NULL || outRootPageTablePhys == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (kernelSpace == NULL || !kernelSpace->Initialized || kernelSpace->RootPageTablePhys == 0)
+        return EC_INVALID_STATE;
+
+    *outRootPageTablePhys = kernelSpace->RootPageTablePhys;
+
+    if (gExBootstrapThread != NULL && gExBootstrapThread->Thread == thread)
+    {
+        EX_PROCESS *process = gExBootstrapThread->Process;
+
+        if (process == NULL || !process->AddressSpace.Initialized || process->AddressSpace.RootPageTablePhys == 0)
+            return EC_INVALID_STATE;
+
+        *outRootPageTablePhys = process->AddressSpace.RootPageTablePhys;
+    }
+
+    return EC_SUCCESS;
 }
 
 static HO_STATUS
@@ -86,6 +132,7 @@ ExBootstrapAdapterInit(void)
 {
     return KeRegisterBootstrapCallbacks(ExBootstrapEnterCallback,
                                         ExBootstrapThreadOwnershipQueryCallback,
+                                        ExBootstrapThreadRootQueryCallback,
                                         ExBootstrapFinalizeCallback,
                                         ExBootstrapTimerObserveCallback);
 }
@@ -116,19 +163,7 @@ ExBootstrapAdapterFinalizeThread(KTHREAD *thread)
 
     process = gExBootstrapThread->Process;
 
-    /* Ensure the kernel root is active before tearing down the process root. */
-    if (process != NULL && process->AddressSpace.Initialized)
-    {
-        HO_PHYSICAL_ADDRESS activeRoot = 0;
-        if (KeQueryActiveRootPageTable(&activeRoot) == EC_SUCCESS &&
-            activeRoot == process->AddressSpace.RootPageTablePhys)
-        {
-            const KE_KERNEL_ADDRESS_SPACE *kernelSpace = KeGetKernelAddressSpace();
-            HO_STATUS switchStatus = KeSwitchAddressSpace(kernelSpace->RootPageTablePhys);
-            if (switchStatus != EC_SUCCESS)
-                status = switchStatus;
-        }
-    }
+    status = KiRestoreImportedRootForProcessTeardown(process);
 
     if (process != NULL && process->Staging != NULL)
     {
@@ -187,10 +222,7 @@ ExBootstrapAdapterHandleRawExit(KTHREAD *thread)
     if (process == NULL || process->Staging == NULL)
         return EC_INVALID_STATE;
 
-    /* Restore the kernel root before teardown so DestroyProcessAddressSpace
-       sees a non-active root and staging unmap operates on a non-active PT. */
-    const KE_KERNEL_ADDRESS_SPACE *kernelSpace = KeGetKernelAddressSpace();
-    HO_STATUS status = KeSwitchAddressSpace(kernelSpace->RootPageTablePhys);
+    HO_STATUS status = KiRestoreImportedRootForProcessTeardown(process);
     if (status != EC_SUCCESS)
         return status;
 

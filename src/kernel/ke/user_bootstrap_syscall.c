@@ -23,7 +23,8 @@ static HO_NORETURN void KiAbortRawExit(KTHREAD *thread,
                                        uint64_t exitCode,
                                        HO_STATUS status,
                                        const char *reason);
-static HO_STATUS KiValidateBootstrapUserRange(HO_VIRTUAL_ADDRESS userBase,
+static HO_STATUS KiValidateBootstrapUserRange(const KE_USER_BOOTSTRAP_LAYOUT *layout,
+                                              HO_VIRTUAL_ADDRESS userBase,
                                               uint64_t length,
                                               HO_VIRTUAL_ADDRESS *outEndExclusive);
 static HO_STATUS KiValidateBootstrapUserReadablePages(const KE_KERNEL_ADDRESS_SPACE *space,
@@ -56,10 +57,16 @@ KiAbortRawExit(KTHREAD *thread, uint64_t exitCode, HO_STATUS status, const char 
 }
 
 static HO_STATUS
-KiValidateBootstrapUserRange(HO_VIRTUAL_ADDRESS userBase, uint64_t length, HO_VIRTUAL_ADDRESS *outEndExclusive)
+KiValidateBootstrapUserRange(const KE_USER_BOOTSTRAP_LAYOUT *layout,
+                             HO_VIRTUAL_ADDRESS userBase,
+                             uint64_t length,
+                             HO_VIRTUAL_ADDRESS *outEndExclusive)
 {
-    if (!outEndExclusive)
+    if (!layout || !outEndExclusive)
         return EC_ILLEGAL_ARGUMENT;
+
+    if (layout->UserRangeEndExclusive <= layout->UserRangeBase)
+        return EC_INVALID_STATE;
 
     if (length == 0)
     {
@@ -67,17 +74,17 @@ KiValidateBootstrapUserRange(HO_VIRTUAL_ADDRESS userBase, uint64_t length, HO_VI
         return EC_SUCCESS;
     }
 
-    if (userBase < KE_USER_BOOTSTRAP_WINDOW_BASE)
+    if (userBase < layout->UserRangeBase)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (userBase >= KE_USER_BOOTSTRAP_WINDOW_END_EXCLUSIVE)
+    if (userBase >= layout->UserRangeEndExclusive)
         return EC_ILLEGAL_ARGUMENT;
 
     HO_VIRTUAL_ADDRESS endExclusive = userBase + length;
     if (endExclusive < userBase)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (endExclusive > KE_USER_BOOTSTRAP_WINDOW_END_EXCLUSIVE)
+    if (endExclusive > layout->UserRangeEndExclusive)
         return EC_ILLEGAL_ARGUMENT;
 
     *outEndExclusive = endExclusive;
@@ -141,8 +148,13 @@ KiCopyInBootstrapUserBytes(void *kernelDestination, HO_VIRTUAL_ADDRESS userSourc
     if (length == 0)
         return EC_SUCCESS;
 
+    KE_USER_BOOTSTRAP_LAYOUT layout = {0};
+    HO_STATUS status = KeUserBootstrapQueryCurrentThreadLayout(&layout);
+    if (status != EC_SUCCESS)
+        return status;
+
     HO_VIRTUAL_ADDRESS endExclusive = 0;
-    HO_STATUS status = KiValidateBootstrapUserRange(userSource, length, &endExclusive);
+    status = KiValidateBootstrapUserRange(&layout, userSource, length, &endExclusive);
     if (status != EC_SUCCESS)
     {
         klog(KLOG_LEVEL_WARNING,
@@ -159,11 +171,22 @@ KiCopyInBootstrapUserBytes(void *kernelDestination, HO_VIRTUAL_ADDRESS userSourc
     if (status != EC_SUCCESS)
         return status;
 
-    KE_KERNEL_ADDRESS_SPACE activeView = {0};
-    activeView.RootPageTablePhys = activeRoot;
-    activeView.Initialized = TRUE;
+    if (activeRoot != layout.OwnerRootPageTablePhys)
+    {
+        klog(KLOG_LEVEL_WARNING,
+             KE_USER_BOOTSTRAP_LOG_INVALID_USER_BUFFER " active-root=%p owner-root=%p addr=%p len=%lu\n",
+             (void *)(uint64_t)activeRoot,
+             (void *)(uint64_t)layout.OwnerRootPageTablePhys,
+             (void *)(uint64_t)userSource,
+             (unsigned long)length);
+        return EC_INVALID_STATE;
+    }
 
-    status = KiValidateBootstrapUserReadablePages(&activeView, userSource, endExclusive);
+    KE_KERNEL_ADDRESS_SPACE ownerView = {0};
+    ownerView.RootPageTablePhys = layout.OwnerRootPageTablePhys;
+    ownerView.Initialized = TRUE;
+
+    status = KiValidateBootstrapUserReadablePages(&ownerView, userSource, endExclusive);
     if (status != EC_SUCCESS)
         return status;
 

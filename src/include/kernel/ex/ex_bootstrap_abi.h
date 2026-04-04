@@ -11,12 +11,12 @@
 #include <_hobase.h>
 
 /*
- * Fixed low-half bootstrap-only layout.  These constants define the user
- * window that the bootstrap staging path maps for each process.  When the
- * owning EX_PROCESS holds a process-private root, the pages live in that
- * root's low-half rather than the shared imported kernel root.  The layout
- * constants remain fixed for the bootstrap-only slice; a dynamic per-process
- * layout allocator is a future phase.
+ * Bootstrap layout defaults for the current bring-up path. The live contract
+ * comes from the current thread's attached staging/process state, while these
+ * constants remain the default placements used when that layout is created.
+ * When the owning EX_PROCESS holds a process-private root, the pages live in
+ * that root's low-half rather than the shared imported kernel root. A dynamic
+ * per-process layout allocator is a future phase.
  */
 #define KE_USER_BOOTSTRAP_PAGE_SIZE              0x1000ULL
 #define KE_USER_BOOTSTRAP_WINDOW_BASE            0x0000000080000000ULL
@@ -24,6 +24,7 @@
 #define KE_USER_BOOTSTRAP_WINDOW_END_EXCLUSIVE   (KE_USER_BOOTSTRAP_WINDOW_BASE +                     \
                                                   (KE_USER_BOOTSTRAP_WINDOW_PAGE_COUNT *              \
                                                    KE_USER_BOOTSTRAP_PAGE_SIZE))
+/* Default single-page placements inside the current bootstrap layout. */
 #define KE_USER_BOOTSTRAP_CODE_BASE              KE_USER_BOOTSTRAP_WINDOW_BASE
 #define KE_USER_BOOTSTRAP_CONST_BASE             (KE_USER_BOOTSTRAP_CODE_BASE + KE_USER_BOOTSTRAP_PAGE_SIZE)
 #define KE_USER_BOOTSTRAP_STACK_GUARD_BASE       (KE_USER_BOOTSTRAP_CONST_BASE + KE_USER_BOOTSTRAP_PAGE_SIZE)
@@ -55,12 +56,14 @@
 /*
  * Bootstrap raw write keeps both rejection and success paths on the same
  * helper family in ke/user_bootstrap_syscall.c:
- * - validate the fixed bootstrap user window range
- * - validate that covered pages remain user accessible
+ * - query the current thread's live bootstrap layout from Ke staging state
+ * - validate the supplied range against that live layout
+ * - validate that covered pages remain user accessible in the layout owner's root
  * - bounded copy-in into a kernel scratch buffer
  *
  * Stable user_hello evidence-chain anchors then record P1 milestones first,
- * followed by raw-write rejection/success and raw-exit handoff.
+ * followed by raw-write rejection/success and raw-exit handoff. The fixed
+ * addresses above remain bootstrap layout defaults, not a shared-root ABI.
  */
 #define KE_USER_BOOTSTRAP_LOG_ENTER_USER_MODE          "[USERBOOT] enter user mode"
 #define KE_USER_BOOTSTRAP_LOG_P1_FIRST_ENTRY           KE_USER_BOOTSTRAP_LOG_ENTER_USER_MODE

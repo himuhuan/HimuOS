@@ -25,6 +25,18 @@ typedef struct KE_USER_BOOTSTRAP_CREATE_PARAMS
     uint64_t ConstLength;
 } KE_USER_BOOTSTRAP_CREATE_PARAMS;
 
+typedef struct KE_USER_BOOTSTRAP_LAYOUT
+{
+    HO_VIRTUAL_ADDRESS UserRangeBase;
+    HO_VIRTUAL_ADDRESS UserRangeEndExclusive;
+    HO_VIRTUAL_ADDRESS EntryPoint;
+    HO_VIRTUAL_ADDRESS GuardBase;
+    HO_VIRTUAL_ADDRESS StackBase;
+    HO_VIRTUAL_ADDRESS StackTop;
+    HO_VIRTUAL_ADDRESS PhaseOneMailboxAddress;
+    HO_PHYSICAL_ADDRESS OwnerRootPageTablePhys;
+} KE_USER_BOOTSTRAP_LAYOUT;
+
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserBootstrapCreateStaging(
     const KE_USER_BOOTSTRAP_CREATE_PARAMS *params,
     KE_PROCESS_ADDRESS_SPACE *targetSpace,
@@ -34,6 +46,13 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserBootstrapDestroyStaging(KE_USER_BOOTS
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserBootstrapAttachThread(KTHREAD *thread,
                                                                  KE_USER_BOOTSTRAP_STAGING *staging);
+
+/*
+ * Query the live bootstrap layout attached to the current thread. The range
+ * spans the full bootstrap slice so guard holes remain range-valid and are
+ * rejected later by page validation rather than by the range gate.
+ */
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserBootstrapQueryCurrentThreadLayout(KE_USER_BOOTSTRAP_LAYOUT *outLayout);
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserBootstrapRawSyscallInit(void);
 
