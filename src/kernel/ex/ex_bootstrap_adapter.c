@@ -20,18 +20,20 @@ static HO_STATUS KiDestroyBootstrapWrapperObjects(void);
 static HO_NORETURN void
 ExBootstrapEnterCallback(KTHREAD *thread)
 {
+    EX_PROCESS *process = NULL;
     HO_STATUS status = ExBootstrapAdapterWrapThread(thread);
     if (status != EC_SUCCESS)
     {
         HO_KPANIC(status, "Failed to wrap bootstrap thread in Ex adapter");
     }
 
-    if (gExBootstrapProcess == NULL || !gExBootstrapProcess->AddressSpace.Initialized)
+    process = ExBootstrapLookupRuntimeProcess(thread);
+    if (process == NULL || !process->AddressSpace.Initialized)
     {
         HO_KPANIC(EC_INVALID_STATE, "Bootstrap enter: process root not initialized");
     }
 
-    if (gExBootstrapProcess->AddressSpace.RootPageTablePhys == 0)
+    if (process->AddressSpace.RootPageTablePhys == 0)
     {
         HO_KPANIC(EC_INVALID_STATE, "Bootstrap enter: process root missing");
     }
@@ -43,7 +45,7 @@ ExBootstrapEnterCallback(KTHREAD *thread)
         HO_KPANIC(status, "Bootstrap enter: failed to query active root");
     }
 
-    if (activeRoot != gExBootstrapProcess->AddressSpace.RootPageTablePhys)
+    if (activeRoot != process->AddressSpace.RootPageTablePhys)
     {
         HO_KPANIC(EC_INVALID_STATE, "Bootstrap enter: dispatch root not installed");
     }
@@ -61,6 +63,7 @@ static HO_STATUS
 ExBootstrapThreadRootQueryCallback(const KTHREAD *thread, HO_PHYSICAL_ADDRESS *outRootPageTablePhys)
 {
     const KE_KERNEL_ADDRESS_SPACE *kernelSpace = KeGetKernelAddressSpace();
+    EX_THREAD *runtimeThread = NULL;
 
     if (thread == NULL || outRootPageTablePhys == NULL)
         return EC_ILLEGAL_ARGUMENT;
@@ -70,9 +73,10 @@ ExBootstrapThreadRootQueryCallback(const KTHREAD *thread, HO_PHYSICAL_ADDRESS *o
 
     *outRootPageTablePhys = kernelSpace->RootPageTablePhys;
 
-    if (gExBootstrapThread != NULL && gExBootstrapThread->Thread == thread)
+    runtimeThread = ExBootstrapLookupRuntimeThread(thread);
+    if (runtimeThread != NULL)
     {
-        EX_PROCESS *process = gExBootstrapThread->Process;
+        EX_PROCESS *process = runtimeThread->Process;
 
         if (process == NULL || !process->AddressSpace.Initialized || process->AddressSpace.RootPageTablePhys == 0)
             return EC_INVALID_STATE;
@@ -114,13 +118,16 @@ ExBootstrapAdapterInit(void)
 HO_STATUS
 ExBootstrapAdapterWrapThread(KTHREAD *thread)
 {
+    EX_PROCESS *process = NULL;
+
     if (thread == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (gExBootstrapThread == NULL || gExBootstrapThread->Thread != thread)
+    process = ExBootstrapLookupRuntimeProcess(thread);
+    if (process == NULL)
         return EC_INVALID_STATE;
 
-    if (gExBootstrapThread->Process == NULL || gExBootstrapThread->Process->Staging == NULL)
+    if (process->Staging == NULL)
         return EC_INVALID_STATE;
 
     return EC_SUCCESS;
@@ -130,11 +137,13 @@ HO_STATUS
 ExBootstrapAdapterFinalizeThread(KTHREAD *thread)
 {
     EX_PROCESS *process = NULL;
+    EX_THREAD *runtimeThread = NULL;
 
-    if (gExBootstrapThread == NULL || gExBootstrapThread->Thread != thread)
+    runtimeThread = ExBootstrapLookupRuntimeThread(thread);
+    if (runtimeThread == NULL)
         return EC_SUCCESS;
 
-    process = gExBootstrapThread->Process;
+    process = runtimeThread->Process;
 
     HO_STATUS status = ExBootstrapTeardownProcessPayload(process);
 
@@ -148,33 +157,34 @@ ExBootstrapAdapterFinalizeThread(KTHREAD *thread)
 BOOL
 ExBootstrapAdapterHasWrapper(const KTHREAD *thread)
 {
-    return gExBootstrapThread != NULL && gExBootstrapThread->Thread == thread;
+    return ExBootstrapLookupRuntimeThread(thread) != NULL;
 }
 
 struct KE_USER_BOOTSTRAP_STAGING *
 ExBootstrapAdapterQueryThreadStaging(const KTHREAD *thread)
 {
-    if (thread == NULL || gExBootstrapThread == NULL || gExBootstrapThread->Thread != thread)
+    EX_PROCESS *process = ExBootstrapLookupRuntimeProcess(thread);
+
+    if (process == NULL)
         return NULL;
 
-    if (gExBootstrapThread->Process == NULL)
-        return NULL;
-
-    return gExBootstrapThread->Process->Staging;
+    return process->Staging;
 }
 
 HO_STATUS
 ExBootstrapAdapterHandleRawExit(KTHREAD *thread)
 {
     EX_PROCESS *process = NULL;
+    EX_THREAD *runtimeThread = NULL;
 
     if (thread == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (gExBootstrapThread == NULL || gExBootstrapThread->Thread != thread)
+    runtimeThread = ExBootstrapLookupRuntimeThread(thread);
+    if (runtimeThread == NULL)
         return EC_INVALID_STATE;
 
-    process = gExBootstrapThread->Process;
+    process = runtimeThread->Process;
     if (process == NULL || process->Staging == NULL)
         return EC_INVALID_STATE;
 
@@ -188,11 +198,10 @@ ExBootstrapAdapterHandleRawExit(KTHREAD *thread)
 static HO_STATUS
 KiDestroyBootstrapWrapperObjects(void)
 {
-    EX_THREAD *exThread = gExBootstrapThread;
-    EX_PROCESS *process = gExBootstrapProcess;
+    EX_THREAD *exThread = NULL;
+    EX_PROCESS *process = NULL;
 
-    gExBootstrapThread = NULL;
-    gExBootstrapProcess = NULL;
+    ExBootstrapUnpublishRuntimeAlias(&exThread, &process);
 
     if (exThread != NULL)
         return ExBootstrapReleaseThread(exThread);

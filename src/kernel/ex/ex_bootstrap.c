@@ -95,6 +95,67 @@ ExBootstrapInitializeThreadObject(EX_THREAD *thread)
     KiInitializeObjectHeader(&thread->Header, EX_OBJECT_TYPE_THREAD);
 }
 
+BOOL
+ExBootstrapHasRuntimeAlias(void)
+{
+    return gExBootstrapProcess != NULL || gExBootstrapThread != NULL;
+}
+
+BOOL
+ExBootstrapRuntimeAliasMatchesProcess(const EX_PROCESS *process)
+{
+    return process != NULL && gExBootstrapProcess == process;
+}
+
+EX_THREAD *
+ExBootstrapLookupRuntimeThread(const KTHREAD *thread)
+{
+    if (thread == NULL || gExBootstrapThread == NULL || gExBootstrapThread->Thread != thread)
+        return NULL;
+
+    return gExBootstrapThread;
+}
+
+EX_PROCESS *
+ExBootstrapLookupRuntimeProcess(const KTHREAD *thread)
+{
+    EX_THREAD *runtimeThread = ExBootstrapLookupRuntimeThread(thread);
+    if (runtimeThread == NULL)
+        return NULL;
+
+    return runtimeThread->Process;
+}
+
+HO_STATUS
+ExBootstrapPublishRuntimeAlias(EX_PROCESS *process, EX_THREAD *thread)
+{
+    if (process == NULL || thread == NULL || thread->Thread == NULL || thread->Process != process)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (ExBootstrapHasRuntimeAlias())
+        return EC_INVALID_STATE;
+
+    gExBootstrapProcess = process;
+    gExBootstrapThread = thread;
+    return EC_SUCCESS;
+}
+
+void
+ExBootstrapUnpublishRuntimeAlias(EX_THREAD **outThread, EX_PROCESS **outProcess)
+{
+    EX_THREAD *thread = gExBootstrapThread;
+    EX_PROCESS *process = gExBootstrapProcess;
+
+    gExBootstrapThread = NULL;
+    gExBootstrapProcess = NULL;
+
+    if (outThread != NULL)
+        *outThread = thread;
+
+    if (outProcess != NULL)
+        *outProcess = process;
+}
+
 HO_STATUS
 ExBootstrapTeardownProcessPayload(EX_PROCESS *process)
 {
@@ -268,7 +329,7 @@ ExBootstrapDestroyProcess(EX_PROCESS *process)
     if (process == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (process == gExBootstrapProcess)
+    if (ExBootstrapRuntimeAliasMatchesProcess(process))
         return EC_INVALID_STATE;
 
     HO_STATUS status = ExBootstrapTeardownProcessPayload(process);
@@ -298,7 +359,7 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
     if (process == NULL || params == NULL || params->EntryPoint == NULL || process->Staging == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (gExBootstrapProcess != NULL || gExBootstrapThread != NULL)
+    if (ExBootstrapHasRuntimeAlias())
         return EC_INVALID_STATE;
 
     thread = (EX_THREAD *)kzalloc(sizeof(*thread));
@@ -332,8 +393,21 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
     thread->Thread = kernelThread;
     thread->Process = process;
 
-    gExBootstrapProcess = process;
-    gExBootstrapThread = thread;
+    status = ExBootstrapPublishRuntimeAlias(process, thread);
+    if (status != EC_SUCCESS)
+    {
+        HO_STATUS destroyStatus = KiDestroyNewThread(kernelThread);
+
+        thread->Thread = NULL;
+        thread->Process = NULL;
+
+        HO_STATUS releaseStatus = ExBootstrapReleaseThread(thread);
+
+        if (destroyStatus != EC_SUCCESS)
+            return destroyStatus;
+
+        return releaseStatus == EC_SUCCESS ? status : releaseStatus;
+    }
 
     *outThread = thread;
     *processHandle = NULL;
@@ -369,13 +443,13 @@ ExBootstrapTeardownThread(EX_THREAD *thread)
     if (thread == NULL || thread->Thread == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (gExBootstrapThread != thread)
+    if (ExBootstrapLookupRuntimeThread(thread->Thread) != thread)
         return EC_INVALID_STATE;
 
     if (thread->Thread->State != KTHREAD_STATE_NEW)
         return EC_INVALID_STATE;
 
-    process = thread->Process;
+    process = ExBootstrapLookupRuntimeProcess(thread->Thread);
 
     HO_STATUS firstError = ExBootstrapTeardownProcessPayload(process);
 
@@ -383,8 +457,7 @@ ExBootstrapTeardownThread(EX_THREAD *thread)
     if (firstError == EC_SUCCESS)
         firstError = threadStatus;
 
-    gExBootstrapThread = NULL;
-    gExBootstrapProcess = NULL;
+    ExBootstrapUnpublishRuntimeAlias(NULL, NULL);
 
     HO_STATUS releaseStatus = ExBootstrapReleaseThread(thread);
     if (firstError == EC_SUCCESS)
