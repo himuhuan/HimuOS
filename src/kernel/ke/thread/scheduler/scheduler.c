@@ -303,6 +303,32 @@ KiIsBootstrapOwnedThread(const KTHREAD *thread)
     return threadOwnershipQueryFn(thread);
 }
 
+static HO_PHYSICAL_ADDRESS
+KiResolveDispatchRoot(const KTHREAD *thread)
+{
+    HO_KASSERT(thread != NULL, EC_ILLEGAL_ARGUMENT);
+
+    KE_BOOTSTRAP_THREAD_ROOT_QUERY_FN threadRootQueryFn = KiGetBootstrapThreadRootQueryCallback();
+    if (threadRootQueryFn == NULL)
+    {
+        HO_KPANIC(EC_INVALID_STATE, "Bootstrap root query callback not registered");
+    }
+
+    HO_PHYSICAL_ADDRESS rootPageTablePhys = 0;
+    HO_STATUS status = threadRootQueryFn(thread, &rootPageTablePhys);
+    if (status != EC_SUCCESS)
+    {
+        HO_KPANIC(status, "Failed to resolve dispatch root for KTHREAD");
+    }
+
+    if (rootPageTablePhys == 0)
+    {
+        HO_KPANIC(EC_INVALID_STATE, "Bootstrap root query returned invalid root");
+    }
+
+    return rootPageTablePhys;
+}
+
 void
 KiFinalizeThread(KTHREAD *thread)
 {
@@ -581,6 +607,8 @@ KiSchedule(void)
         return;
     }
 
+    HO_PHYSICAL_ADDRESS nextRootPageTablePhys = KiResolveDispatchRoot(next);
+
     next->State = KTHREAD_STATE_RUNNING;
     gStats.ContextSwitchCount++;
 
@@ -593,6 +621,12 @@ KiSchedule(void)
     // Arm clock event for next deadline
     uint64_t nowNs = KiNowNs();
     KiArmForNextEvent(nowNs, next);
+
+    HO_STATUS switchStatus = KeSwitchAddressSpace(nextRootPageTablePhys);
+    if (switchStatus != EC_SUCCESS)
+    {
+        HO_KPANIC(switchStatus, "Failed to install dispatch root");
+    }
 
     gCurrentThread = next;
     KeSetCurrentIrqlState(&next->IrqlState);

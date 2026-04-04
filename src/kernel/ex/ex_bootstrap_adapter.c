@@ -64,6 +64,32 @@ ExBootstrapThreadOwnershipQueryCallback(const KTHREAD *thread)
 }
 
 static HO_STATUS
+ExBootstrapThreadRootQueryCallback(const KTHREAD *thread, HO_PHYSICAL_ADDRESS *outRootPageTablePhys)
+{
+    const KE_KERNEL_ADDRESS_SPACE *kernelSpace = KeGetKernelAddressSpace();
+
+    if (thread == NULL || outRootPageTablePhys == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (kernelSpace == NULL || !kernelSpace->Initialized || kernelSpace->RootPageTablePhys == 0)
+        return EC_INVALID_STATE;
+
+    *outRootPageTablePhys = kernelSpace->RootPageTablePhys;
+
+    if (gExBootstrapThread != NULL && gExBootstrapThread->Thread == thread)
+    {
+        EX_PROCESS *process = gExBootstrapThread->Process;
+
+        if (process == NULL || !process->AddressSpace.Initialized || process->AddressSpace.RootPageTablePhys == 0)
+            return EC_INVALID_STATE;
+
+        *outRootPageTablePhys = process->AddressSpace.RootPageTablePhys;
+    }
+
+    return EC_SUCCESS;
+}
+
+static HO_STATUS
 ExBootstrapFinalizeCallback(KTHREAD *thread)
 {
     if (thread != NULL && ExBootstrapAdapterQueryThreadStaging(thread) != NULL)
@@ -86,6 +112,7 @@ ExBootstrapAdapterInit(void)
 {
     return KeRegisterBootstrapCallbacks(ExBootstrapEnterCallback,
                                         ExBootstrapThreadOwnershipQueryCallback,
+                                        ExBootstrapThreadRootQueryCallback,
                                         ExBootstrapFinalizeCallback,
                                         ExBootstrapTimerObserveCallback);
 }
