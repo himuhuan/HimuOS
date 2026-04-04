@@ -6,7 +6,7 @@
 
 核心路线定调为：**优先引入极薄的 Ex（执行体）边界，确立进程生命周期与资源归属权；紧接着实现正式的独立用户地址空间机制。** 当前阶段严禁横向铺开完整的对象管理器（Object Manager）、Capability 句柄表或正式系统调用（Syscall）表面。
 
-> 注：下文“架构痛点”“当前现状”等描述保留的是本决议提出时的背景状态。当前 HEAD 已完成 Phase A 中关于 bootstrap launch / init / teardown owner 的收口：`user_hello` 现经 Ex facade 启动，`InitKernel()` 通过 `ExBootstrapInit()` 统一装配 runtime，`KTHREAD_FLAG_BOOTSTRAP_USER` 与 `UserBootstrapContext` 已删除，scheduler / timer / finalizer / reaper 通过 Ex ownership query / callback contract 判断 bootstrap 路径。保留这些旧表述是为了说明为何要先立薄 Ex 边界，不表示这些 Ke 残留今天仍然存在。
+> 注：下文“架构痛点”“当前现状”等描述保留的是本决议提出时的背景状态。当前 HEAD 不仅完成了 Phase A 中关于 bootstrap launch / init / teardown owner 的收口：`user_hello` 现经 Ex facade 启动，`InitKernel()` 通过 `ExBootstrapInit()` 统一装配 runtime，`KTHREAD_FLAG_BOOTSTRAP_USER` 与 `UserBootstrapContext` 已删除，scheduler / timer / finalizer / reaper 通过 Ex ownership query / callback contract 判断 bootstrap 路径；也已经完成了本决议里 Phase B 当前范围的主线落地：Ke 侧 process-private root foundation、`ExProcess` address-space-plus-staging ownership、`KiSchedule()` 的 dispatch-time root install，以及基于 live process/staging layout 的 user-range 校验。保留这些旧表述是为了说明为何要先立薄 Ex 边界，不表示这些工作今天仍停留在提案阶段。
 
 ---
 
@@ -43,12 +43,20 @@
 
 ### Phase B：落地独立用户地址空间机制
 
+截至 2026-04-04，Phase B 在本决议承诺的最小范围内已经完成当前主线落地，现状可以概括为：
+
+* **升级归属权已经完成**：`ExProcess.AddressSpace` 已从“引用共享 imported root”升级为“持有 `KE_PROCESS_ADDRESS_SPACE` private root 并和 bootstrap staging 一起归 `ExProcess` 拥有”。
+* **Ke 纯机制接口已经落地**：Ke 已提供 process-private root 的创建/销毁、active-root 查询与 `KeSwitchAddressSpace(phys_addr)`，并继续让 imported kernel root 作为高半区 kernel mappings 的权威 clone source。
+* **调度期切 root 已经接入**：`KiSchedule()` 现已在 `KiSwitchContext()` 前通过 Ex 的最小 query contract 解析 next thread 的目标 root，并在切回 idle / 普通 kernel thread 时恢复 imported kernel root。
+* **bootstrap layout 语义已经收口**：`user_hello` payload 已映射到 owning process-private root；`0x80000000` 一组地址只表示当前 bootstrap layout default，而不再是 shared imported-root 合同；`SYS_RAW_WRITE` 的用户区间校验也改为从 live process/staging layout 推导。
+* **仍明确不外溢**：当前实现依旧是 bootstrap-only 的最小闭环，不包含 `KPROCESS`、Object Manager、handle table、正式 syscall ABI、通用 ELF loader 或动态 per-process 布局分配器。
+
 在 Phase A 确立了 `EPROCESS` 作为合法的资源归属者后，顺理成章地推进内存机制的演进。**正式地址空间语义从这一阶段才开始承接。**
 
 * **升级归属权**：`EPROCESS.AddressSpace` 的语义从“引用共享 imported root”升级为“持有独立的 PML4 根并克隆内核高半区”。
 * **Ke 提供纯机制**：Ke 层新增 `KeSwitchAddressSpace(phys_addr)` 接口，仅负责 CR3 寄存器写入与 TLB 刷新，不包含任何策略逻辑。
 * **Ex 负责触发**：Ex 层通过挂载在进程切换路径上的回调，调用上述机制接口完成地址空间切换。
-* **解除固定约束**：将 Staging Payload 直接映射进进程专属的地址空间根中，彻底废除 `0x80000000` 固定窗口的早期约束。
+* **解除固定约束**：将 Staging Payload 直接映射进进程专属的地址空间根中，彻底废除“shared imported root 承载 bootstrap 用户页”的旧约束；仍保留的固定地址常量只表示当前默认 layout，而不是长期 ABI。
 
 ---
 
