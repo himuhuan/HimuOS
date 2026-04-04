@@ -54,6 +54,12 @@ typedef struct KE_KERNEL_ADDRESS_SPACE
     BOOL Initialized;
 } KE_KERNEL_ADDRESS_SPACE;
 
+typedef struct KE_PROCESS_ADDRESS_SPACE
+{
+    HO_PHYSICAL_ADDRESS RootPageTablePhys;
+    BOOL Initialized;
+} KE_PROCESS_ADDRESS_SPACE;
+
 typedef struct KE_PT_MAPPING
 {
     BOOL Present;
@@ -233,6 +239,27 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS KeImportKernelAddressSpace(struct BOOT_CAPS
 HO_KERNEL_API const KE_KERNEL_ADDRESS_SPACE *KeGetKernelAddressSpace(void);
 
 /**
+ * Create or destroy a process-private root page-table handle.
+ *
+ * KeGetKernelAddressSpace() remains the public accessor for the imported kernel root. These APIs define the minimal
+ * mechanism boundary for distinct process-private roots without changing existing imported-root callers. The create
+ * entry treats outSpace as pure output storage and does not inspect its incoming contents.
+ */
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeCreateProcessAddressSpace(KE_PROCESS_ADDRESS_SPACE *outSpace);
+
+HO_KERNEL_API HO_STATUS KeDestroyProcessAddressSpace(KE_PROCESS_ADDRESS_SPACE *space);
+
+/**
+ * Query or switch the active root page table by physical address.
+ *
+ * This is a strategy-free mechanism surface for process-private roots. KeSwitchAddressSpace() does not take
+ * EX_PROCESS* or KTHREAD* and leaves ownership and scheduling policy to higher layers.
+ */
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeQueryActiveRootPageTable(HO_PHYSICAL_ADDRESS *outRootPageTablePhys);
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeSwitchAddressSpace(HO_PHYSICAL_ADDRESS rootPageTablePhys);
+
+/**
  * Find the most specific imported region that covers a virtual address.
  *
  * The imported region list remains manifest-derived and may contain semantic overlays inside broader windows such as
@@ -283,10 +310,11 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS KePtProtectPage(const KE_KERNEL_ADDRESS_SPA
                                                      uint64_t attributes);
 
 /**
- * Run a boot-time PT HAL scratch mapping self-test in a safe high-half hole.
+ * Run boot-time imported-root and private-root PT self-tests.
  *
- * This verifies query/map/protect/unmap behavior against the imported root while keeping HHDM as the bootstrap escape
- * hatch. The self-test performs local TLB maintenance only and leaves no persistent scratch mapping behind.
+ * This verifies imported-root query/map/protect/unmap behavior in a safe high-half hole and exercises private-root
+ * create/switch/destroy coverage while keeping HHDM as the bootstrap escape hatch. The self-test performs local TLB
+ * maintenance only and leaves no persistent scratch mapping or private root behind.
  */
 HO_KERNEL_API HO_NODISCARD HO_STATUS KePtSelfTest(void);
 
