@@ -2,33 +2,20 @@
  * HimuOperatingSystem
  *
  * File: ex/ex_bootstrap_adapter.c
- * Description: Thin Ex bootstrap adapter ownership layer.
+ * Description: Thin Ex bootstrap adapter callback bridge.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
+#include "ex_bootstrap_internal.h"
+
 #include <kernel/ex/ex_bootstrap_adapter.h>
-#include <kernel/ex/ex_process.h>
-#include <kernel/ex/ex_thread.h>
 #include <kernel/ke/bootstrap_callbacks.h>
 #include <kernel/ke/kthread.h>
 #include <kernel/ke/mm.h>
 #include <kernel/ke/user_bootstrap.h>
 #include <kernel/hodbg.h>
 
-struct EX_PROCESS
-{
-    KE_USER_BOOTSTRAP_STAGING *Staging;
-};
-
-struct EX_THREAD
-{
-    KTHREAD *Thread;
-    EX_PROCESS *Process;
-};
-
-/* Only one bootstrap process/thread wrapper may exist at a time. */
-static EX_PROCESS *gBootstrapProcess = NULL;
-static EX_THREAD *gBootstrapThread = NULL;
+static void KiDestroyBootstrapWrapperObjects(void);
 
 static HO_NORETURN void
 ExBootstrapEnterCallback(KTHREAD *thread)
@@ -42,10 +29,16 @@ ExBootstrapEnterCallback(KTHREAD *thread)
     KeUserBootstrapEnterCurrentThread();
 }
 
+static BOOL
+ExBootstrapThreadOwnershipQueryCallback(const KTHREAD *thread)
+{
+    return ExBootstrapAdapterHasWrapper(thread);
+}
+
 static HO_STATUS
 ExBootstrapFinalizeCallback(KTHREAD *thread)
 {
-    if (thread != NULL && thread->UserBootstrapContext != NULL)
+    if (thread != NULL && ExBootstrapAdapterQueryThreadStaging(thread) != NULL)
     {
         klog(KLOG_LEVEL_WARNING, "[USERBOOT] fallback staging reclaim in finalizer thread=%u\n", thread->ThreadId);
     }
@@ -64,6 +57,7 @@ HO_STATUS
 ExBootstrapAdapterInit(void)
 {
     return KeRegisterBootstrapCallbacks(ExBootstrapEnterCallback,
+                                        ExBootstrapThreadOwnershipQueryCallback,
                                         ExBootstrapFinalizeCallback,
                                         ExBootstrapTimerObserveCallback);
 }
@@ -71,36 +65,15 @@ ExBootstrapAdapterInit(void)
 HO_STATUS
 ExBootstrapAdapterWrapThread(KTHREAD *thread)
 {
-    EX_PROCESS *process = NULL;
-    EX_THREAD *exThread = NULL;
-
-    if (gBootstrapThread != NULL && gBootstrapThread->Thread == thread)
-        return EC_SUCCESS;
-
-    if (gBootstrapThread != NULL)
-        return EC_INVALID_STATE;
-
-    if (thread == NULL || thread->UserBootstrapContext == NULL)
+    if (thread == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    process = (EX_PROCESS *)kzalloc(sizeof(*process));
-    if (process == NULL)
-        return EC_OUT_OF_RESOURCE;
+    if (gExBootstrapThread == NULL || gExBootstrapThread->Thread != thread)
+        return EC_INVALID_STATE;
 
-    process->Staging = thread->UserBootstrapContext;
+    if (gExBootstrapThread->Process == NULL || gExBootstrapThread->Process->Staging == NULL)
+        return EC_INVALID_STATE;
 
-    exThread = (EX_THREAD *)kzalloc(sizeof(*exThread));
-    if (exThread == NULL)
-    {
-        kfree(process);
-        return EC_OUT_OF_RESOURCE;
-    }
-
-    exThread->Thread = thread;
-    exThread->Process = process;
-
-    gBootstrapProcess = process;
-    gBootstrapThread = exThread;
     return EC_SUCCESS;
 }
 
@@ -110,33 +83,88 @@ ExBootstrapAdapterFinalizeThread(KTHREAD *thread)
     EX_PROCESS *process = NULL;
     HO_STATUS status = EC_SUCCESS;
 
-    if (gBootstrapThread == NULL || gBootstrapThread->Thread != thread)
+    if (gExBootstrapThread == NULL || gExBootstrapThread->Thread != thread)
         return EC_SUCCESS;
 
-    process = gBootstrapThread->Process;
+    process = gExBootstrapThread->Process;
 
     if (process != NULL && process->Staging != NULL)
     {
-        if (thread->UserBootstrapContext != NULL)
-        {
-            HO_KASSERT(process->Staging == thread->UserBootstrapContext, EC_INVALID_STATE);
-            status = KeUserBootstrapDestroyStaging(process->Staging);
-        }
+        status = KeUserBootstrapDestroyStaging(process->Staging);
 
         /* Destroy consumes the staging object even when teardown reports an error. */
         process->Staging = NULL;
     }
 
-    kfree(gBootstrapThread);
-    gBootstrapThread = NULL;
-
-    kfree(gBootstrapProcess);
-    gBootstrapProcess = NULL;
+    KiDestroyBootstrapWrapperObjects();
     return status;
 }
 
 BOOL
 ExBootstrapAdapterHasWrapper(const KTHREAD *thread)
 {
-    return gBootstrapThread != NULL && gBootstrapThread->Thread == thread;
+    return gExBootstrapThread != NULL && gExBootstrapThread->Thread == thread;
+}
+
+struct KE_USER_BOOTSTRAP_STAGING *
+ExBootstrapAdapterQueryThreadStaging(const KTHREAD *thread)
+{
+    if (thread == NULL || gExBootstrapThread == NULL || gExBootstrapThread->Thread != thread)
+        return NULL;
+
+    if (gExBootstrapThread->Process == NULL)
+        return NULL;
+
+    return gExBootstrapThread->Process->Staging;
+}
+
+HO_STATUS
+ExBootstrapAdapterHandleRawExit(KTHREAD *thread)
+{
+    EX_PROCESS *process = NULL;
+
+    if (thread == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (gExBootstrapThread == NULL || gExBootstrapThread->Thread != thread)
+        return EC_INVALID_STATE;
+
+    process = gExBootstrapThread->Process;
+    if (process == NULL || process->Staging == NULL)
+        return EC_INVALID_STATE;
+
+    HO_STATUS status = KeUserBootstrapDestroyStaging(process->Staging);
+
+    /* Destroy consumes the staging object even when teardown reports an error. */
+    process->Staging = NULL;
+
+    if (status != EC_SUCCESS)
+    {
+        KiDestroyBootstrapWrapperObjects();
+    }
+
+    return status;
+}
+
+static void
+KiDestroyBootstrapWrapperObjects(void)
+{
+    EX_THREAD *exThread = gExBootstrapThread;
+    EX_PROCESS *process = gExBootstrapProcess;
+
+    gExBootstrapThread = NULL;
+    gExBootstrapProcess = NULL;
+
+    if (exThread != NULL)
+    {
+        exThread->Thread = NULL;
+        exThread->Process = NULL;
+        kfree(exThread);
+    }
+
+    if (process != NULL)
+    {
+        process->Staging = NULL;
+        kfree(process);
+    }
 }

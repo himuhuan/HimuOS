@@ -6,13 +6,15 @@
 
 核心路线定调为：**优先引入极薄的 Ex（执行体）边界，确立进程生命周期与资源归属权；紧接着实现正式的独立用户地址空间机制。** 当前阶段严禁横向铺开完整的对象管理器（Object Manager）、Capability 句柄表或正式系统调用（Syscall）表面。
 
+> 注：下文“架构痛点”“当前现状”等描述保留的是本决议提出时的背景状态。当前 HEAD 已完成 Phase A 中关于 bootstrap launch / init / teardown owner 的收口：`user_hello` 现经 Ex facade 启动，`InitKernel()` 通过 `ExBootstrapInit()` 统一装配 runtime，`KTHREAD_FLAG_BOOTSTRAP_USER` 与 `UserBootstrapContext` 已删除，scheduler / timer / finalizer / reaper 通过 Ex ownership query / callback contract 判断 bootstrap 路径。保留这些旧表述是为了说明为何要先立薄 Ex 边界，不表示这些 Ke 残留今天仍然存在。
+
 ---
 
 ## 架构痛点与决策依据
 
-当前系统虽然成功跑通了 `user_hello` 的 P1-P3 最小证据链，但为了快速验证，用户态语义已经严重侵入了 Ke（内核）层的核心机制。若直接在此时推进独立地址空间，会导致架构污染进一步加剧。
+在本决议提出时，系统虽然成功跑通了 `user_hello` 的 P1-P3 最小证据链，但为了快速验证，用户态语义已经严重侵入了 Ke（内核）层的核心机制。若直接在此时推进独立地址空间，会导致架构污染进一步加剧。
 
-| 污染位置 | 当前现状 | 若“先做地址空间”的恶化后果 | 引入薄 Ex 层的解决方案 |
+| 污染位置 | 决议前现状 | 若“先做地址空间”的恶化后果 | 引入薄 Ex 层的解决方案 |
 | :--- | :--- | :--- | :--- |
 | **KTHREAD 结构体** | 挂载了 `UserBootstrapContext` 指针与 `KTHREAD_FLAG_BOOTSTRAP_USER`。 | 地址空间指针将被迫继续塞入 `KTHREAD`，导致机制与策略彻底混用。 | 将这些字段上移至新创建的 `EPROCESS` / `ETHREAD` 结构中。 |
 | **调度器 Trampoline** | 硬编码检查上述指针以决定是否进入 Ring 3。 | 切换 CR3 的逻辑将被硬编码进 Ke 的线程分发器。 | 改为注册式回调，调度器只负责触发，Ex 层决定是否执行用户态转换。 |
@@ -37,9 +39,11 @@
 * **重构测试入口**：修改 `user_hello.c` 演示流，统一通过 `ExCreateProcess()` -> `ExCreateThread()` -> `ExStartThread()` 链条启动。
 * **目录规整**：将 `user_bootstrap.c` 与 `user_bootstrap_syscall.c` 移交 Ex 层管理或封装。
 
+注：上述收口已在当前 HEAD 落地，当前文档保留它们作为 Phase A 的决议目标与实施依据。正式进程地址空间 / 独立 CR3 语义仍未进入当前实现，按本决议仍归入 Phase B。
+
 ### Phase B：落地独立用户地址空间机制
 
-在 Phase A 确立了 `EPROCESS` 作为合法的资源归属者后，顺理成章地推进内存机制的演进。
+在 Phase A 确立了 `EPROCESS` 作为合法的资源归属者后，顺理成章地推进内存机制的演进。**正式地址空间语义从这一阶段才开始承接。**
 
 * **升级归属权**：`EPROCESS.AddressSpace` 的语义从“引用共享 imported root”升级为“持有独立的 PML4 根并克隆内核高半区”。
 * **Ke 提供纯机制**：Ke 层新增 `KeSwitchAddressSpace(phys_addr)` 接口，仅负责 CR3 寄存器写入与 TLB 刷新，不包含任何策略逻辑。

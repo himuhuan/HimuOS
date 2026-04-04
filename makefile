@@ -221,6 +221,7 @@ SRCS_KERNEL_C := \
 	src/kernel/ke/bootstrap_callbacks.c                 \
 	src/kernel/ke/user_bootstrap.c                      \
 	src/kernel/ke/user_bootstrap_syscall.c              \
+	src/kernel/ex/ex_bootstrap.c                        \
 	src/kernel/ex/ex_bootstrap_adapter.c                \
     src/kernel/ke/thread/kthread.c                      \
     src/kernel/ke/thread/scheduler/scheduler.c          \

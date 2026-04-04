@@ -34,8 +34,9 @@ void
 KiThreadTrampoline(void)
 {
     KTHREAD *self = KeGetCurrentThread();
+    KE_BOOTSTRAP_THREAD_OWNERSHIP_QUERY_FN threadOwnershipQueryFn = KiGetBootstrapThreadOwnershipQueryCallback();
 
-    if (self->UserBootstrapContext != NULL)
+    if (threadOwnershipQueryFn != NULL && threadOwnershipQueryFn(self))
     {
         KE_BOOTSTRAP_ENTER_FN enterFn = KiGetBootstrapEnterCallback();
         if (enterFn == NULL)
@@ -94,7 +95,6 @@ KeSchedulerInit(void)
     gIdleThread->EntryPoint = NULL;
     gIdleThread->EntryArg = NULL;
     gIdleThread->Flags = KTHREAD_FLAG_IDLE;
-    gIdleThread->UserBootstrapContext = NULL;
 
     gCurrentThread = gIdleThread;
     KeSetCurrentIrqlState(&gIdleThread->IrqlState);
@@ -293,6 +293,16 @@ KiReleaseThreadJoinClaim(KTHREAD *thread)
     thread->TerminationClaimState = KTHREAD_TERMINATION_CLAIM_STATE_UNCLAIMED;
 }
 
+static BOOL
+KiIsBootstrapOwnedThread(const KTHREAD *thread)
+{
+    KE_BOOTSTRAP_THREAD_OWNERSHIP_QUERY_FN threadOwnershipQueryFn = KiGetBootstrapThreadOwnershipQueryCallback();
+    if (thread == NULL || threadOwnershipQueryFn == NULL)
+        return FALSE;
+
+    return threadOwnershipQueryFn(thread);
+}
+
 void
 KiFinalizeThread(KTHREAD *thread)
 {
@@ -301,7 +311,7 @@ KiFinalizeThread(KTHREAD *thread)
     HO_KASSERT(thread->State == KTHREAD_STATE_TERMINATED, EC_INVALID_STATE);
     HO_KASSERT(thread->TerminationClaimState == KTHREAD_TERMINATION_CLAIM_STATE_CONSUMED, EC_INVALID_STATE);
 
-    if ((thread->Flags & KTHREAD_FLAG_BOOTSTRAP_USER) != 0)
+    if (KiIsBootstrapOwnedThread(thread))
     {
         KE_BOOTSTRAP_FINALIZE_FN finalizeFn = KiGetBootstrapFinalizeCallback();
         if (finalizeFn == NULL)
@@ -616,7 +626,7 @@ KiReapTerminatedThreads(void)
         if (!thread)
             return;
 
-        if ((thread->Flags & KTHREAD_FLAG_BOOTSTRAP_USER) != 0)
+        if (KiIsBootstrapOwnedThread(thread))
         {
             klog(KLOG_LEVEL_INFO, "[USERBOOT] idle/reaper reclaimed user_hello thread thread=%u\n",
                  thread->ThreadId);

@@ -65,14 +65,11 @@ typedef struct KTHREAD_CONTEXT
     uint64_t RIP; // offset 56  (informational; actual RIP is on stack for KiSwitchContext)
 } KTHREAD_CONTEXT;
 
-struct KE_USER_BOOTSTRAP_STAGING;
-
 // ─────────────────────────────────────────────────────────────
 // KTHREAD structure
 // ─────────────────────────────────────────────────────────────
 
-#define KTHREAD_FLAG_IDLE           (1U << 0)
-#define KTHREAD_FLAG_BOOTSTRAP_USER (1U << 1)
+#define KTHREAD_FLAG_IDLE (1U << 0)
 
 typedef struct KTHREAD
 {
@@ -101,7 +98,6 @@ typedef struct KTHREAD
     KTHREAD_ENTRY EntryPoint;
     void *EntryArg;
     uint32_t Flags;
-    struct KE_USER_BOOTSTRAP_STAGING *UserBootstrapContext;
 } KTHREAD;
 
 // ─────────────────────────────────────────────────────────────

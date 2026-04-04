@@ -2,7 +2,7 @@
  * HimuOperatingSystem
  *
  * File: ex/ex_bootstrap_adapter.h
- * Description: Thin Ex bootstrap adapter - ownership and callback bridge.
+ * Description: Ex bootstrap callback bridge used by the runtime facade.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
@@ -11,6 +11,7 @@
 #include <_hobase.h>
 
 struct KTHREAD;
+struct KE_USER_BOOTSTRAP_STAGING;
 
 /**
  * Initialize the Ex bootstrap adapter subsystem.
@@ -19,17 +20,17 @@ struct KTHREAD;
 HO_KERNEL_API HO_STATUS ExBootstrapAdapterInit(void);
 
 /**
- * Lazily wrap the current thread's existing KTHREAD + staging in Ex objects
- * (EX_PROCESS / EX_THREAD). Idempotent - second call for the same thread
- * is a no-op returning EC_SUCCESS.
- * Called by Phase 3 enter callback.
+ * Validate that the current bootstrap thread already has Ex-owned wrapper
+ * state registered. Idempotent - second call for the same thread is a no-op
+ * returning EC_SUCCESS.
+ * Called by the registered bootstrap enter callback.
  */
 HO_KERNEL_API HO_STATUS ExBootstrapAdapterWrapThread(struct KTHREAD *thread);
 
 /**
  * Finalize the Ex ownership for a terminated bootstrap thread: destroy the
  * staging through ExProcess ownership, then free Ex objects.
- * Called by Phase 3 finalize callback; replaces direct KeUserBootstrapDestroyStaging.
+ * Called by the registered bootstrap finalize callback.
  * Returns EC_SUCCESS if the thread had no Ex wrapper (non-bootstrap path).
  */
 HO_KERNEL_API HO_STATUS ExBootstrapAdapterFinalizeThread(struct KTHREAD *thread);
@@ -39,3 +40,18 @@ HO_KERNEL_API HO_STATUS ExBootstrapAdapterFinalizeThread(struct KTHREAD *thread)
  * Returns TRUE if the adapter owns an EX_THREAD for this KTHREAD.
  */
 HO_KERNEL_API BOOL ExBootstrapAdapterHasWrapper(const struct KTHREAD *thread);
+
+/**
+ * Query the Ex-owned bootstrap staging associated with a KTHREAD.
+ * Returns NULL if the thread is not owned by the Ex bootstrap runtime or if
+ * the clean raw-exit path has already consumed the staging.
+ */
+HO_KERNEL_API struct KE_USER_BOOTSTRAP_STAGING *ExBootstrapAdapterQueryThreadStaging(const struct KTHREAD *thread);
+
+/**
+ * Destroy bootstrap staging for a clean SYS_RAW_EXIT handoff.
+ * On success the staging is consumed but the minimal Ex wrapper remains until
+ * finalizer/reaper release the bootstrap thread identity.
+ * On failure both staging ownership and Ex wrapper state are cleared.
+ */
+HO_KERNEL_API HO_NODISCARD HO_STATUS ExBootstrapAdapterHandleRawExit(struct KTHREAD *thread);

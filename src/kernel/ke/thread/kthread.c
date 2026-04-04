@@ -130,7 +130,6 @@ KiThreadCreateInternal(KTHREAD **outThread,
     thread->EntryPoint = entryPoint;
     thread->EntryArg = arg;
     thread->Flags = 0;
-    thread->UserBootstrapContext = NULL;
 
     *outThread = thread;
 

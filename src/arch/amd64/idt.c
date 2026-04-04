@@ -1,9 +1,9 @@
 #include "arch/amd64/idt.h"
 #include "arch/amd64/pm.h"
 #include "kernel/hodbg.h"
+#include <kernel/ex/ex_bootstrap_abi.h>
 #include <kernel/init.h>
 #include <kernel/ke/irql.h>
-#include <kernel/ke/user_bootstrap.h>
 #include <libc/string.h>
 
 static IDT_ENTRY kInterruptDescriptorTable[256];

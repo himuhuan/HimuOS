@@ -1,6 +1,6 @@
 # HimuOS 当前能力盘点
 
-更新时间：2026-04-03
+更新时间：2026-04-04
 
 ## 盘点口径
 
@@ -9,7 +9,7 @@
 本次盘点综合了四类信息源：
 
 - `Readme.md`：对外承诺、回归 profile 说明与阶段边界
-- 当前 `main` 工作树与最近提交：尤其是 `origin/main` 之后的 P3 本地提交 `4f27a92`、`c7c3e2e`、`fea4e66`
+- 当前工作树与最近提交：尤其是 `origin/main` 之后围绕 P3 exit/reap 与 `complete-ex-bootstrap-migration` 的本地提交
 - 已合并 PR：近期重点参考 `#29`～`#33`，其中与最小用户态切片直接相关的是 `#31`、`#32`、`#33`
 - 当前源码与 OpenSpec：归档 change 用来确认既有合同，活跃 change 用来核对边界、非目标与仍在推进的表述
 
@@ -28,12 +28,13 @@
 - 已合并 PR `#31` 把 `user_hello` 固定成 bootstrap-only 的最小 Ring 3 bring-up 切片
 - 已合并 PR `#32` 把 P1 first-entry / timer round-trip 证据正式收敛到同一个 `user_hello` profile
 - 已合并 PR `#33` 把 P2 rejected raw write probe / successful hello write / `SYS_RAW_EXIT` 证据链固定下来
-- 当前 HEAD 的 3 个本地提交继续把 P3 收敛为显式合同：`SYS_RAW_EXIT` 后的 `bootstrap teardown complete` 锚点、scheduler finalizer 的 `fallback staging reclaim` 警告锚点，以及相应注释/文档同步
-- `openspec/changes/add-user-bootstrap-p1-evidence` 与 `openspec/changes/stabilize-user-bootstrap-p2-raw-syscalls` 对应能力已经在代码和 merged PR 中落地但尚未归档；`openspec/changes/stabilize-user-bootstrap-p3-exit-reap` 仍是活跃 change，不过当前 HEAD 已经补上它最关键的 clean-pass 日志与文档语义
+- 当前 HEAD 的 `complete-ex-bootstrap-migration` 已把 bootstrap launch / init / teardown 所有权收口到 Ex：`user_hello` 通过 Ex facade 启动，`InitKernel()` 通过 `ExBootstrapInit()` 统一装配 bootstrap runtime
+- bootstrap ABI 常量、固定窗口约束说明和关键日志锚点现已由 `src/include/kernel/ex/ex_bootstrap_abi.h` 对外暴露；scheduler / timer / finalizer / reaper 通过 Ex 注册的 ownership query 与 callbacks 判断 bootstrap 路径，`KTHREAD_FLAG_BOOTSTRAP_USER` 与 `UserBootstrapContext` 已删除
+- 正式进程地址空间 / 独立 CR3 语义仍未开始落地；这部分从 `complete-ex-bootstrap-migration` 的 Phase B 才开始承接
 
 ## 当前已支持的功能
 
-整体上，HimuOS 当前已经是一个**以 Ke 层为主、并带有一条 bootstrap-only 最小用户态切片的教学原型系统**：启动、内存、时间、控制台、中断、调度、同步、诊断、回归 profile 都已经具备明确实现；另外，独立 `user_hello` profile 已打通最小 Ring 3 bring-up、P1 timer round-trip、P2 raw syscall 自检，并在当前 HEAD 上进一步把 P3 的 teardown-before-termination -> idle/reaper reclaim 证据链固定成显式合同，但这还不能等同于完整用户态子系统。
+整体上，HimuOS 当前已经是一个**仍以 Ke 层为主、但 bootstrap launch / init / teardown 已收口到 Ex 的教学原型系统**：启动、内存、时间、控制台、中断、调度、同步、诊断、回归 profile 都已经具备明确实现；另外，独立 `user_hello` profile 已打通最小 Ring 3 bring-up、P1 timer round-trip、P2 raw syscall 自检，并在当前 HEAD 上进一步把 P3 的 teardown-before-termination -> idle/reaper reclaim 证据链固定成显式合同，但这还不能等同于完整用户态子系统。
 
 | 能力域 | 结论 | 主要依据 |
 | --- | --- | --- |
@@ -55,8 +56,8 @@
 | 固定大小对象池 | 已有 | `src/kernel/ke/mm/pool.c`、`src/include/kernel/ke/pool.h`，OpenSpec `kernel-object-pool` |
 | 系统信息查询（sysinfo） | 已有 | `src/kernel/ke/sysinfo/sysinfo.c`、`src/include/kernel/ke/sysinfo.h`，已支持 CPU、页表、内存、GDT/TSS/IDT、时间、scheduler、VMM 等查询 |
 | 内核线程（KTHREAD） | 已有 | `src/kernel/ke/thread/kthread.c`、`src/include/kernel/ke/kthread.h`，支持创建 joinable / detached 线程 |
-| bootstrap-only 最小用户态执行路径 | 已有 | `src/kernel/demo/user_hello.c`、`src/kernel/ke/user_bootstrap.c`、`src/kernel/ke/user_bootstrap_syscall.c`、`src/arch/amd64/user_bootstrap.asm`、`src/kernel/ke/thread/scheduler/scheduler.c` 已打通独立 `user_hello` profile 下的 staging 用户映射、首次进入 Ring 3、来自 CPL3 的 P1 timer round-trip、P2 raw syscall 证据链，并用 `bootstrap teardown complete` / `fallback staging reclaim` 锚点明确 P3 teardown-before-termination → idle/reaper reclaim 合同；scheduler / timer 中的 bootstrap 硬编码分支已收口为 Ke 回调槽位，由 `src/kernel/ex/ex_bootstrap_adapter.c` 注册实现 |
-| 最小 raw syscall 入口 | 已有 | `src/include/kernel/ke/user_bootstrap.h`、`src/kernel/ke/user_bootstrap_syscall.c`、`src/kernel/init/init.c` 已实现同步 `int 0x80` 入口、`SYS_RAW_WRITE` / `SYS_RAW_EXIT`、bootstrap user-range 校验与 bounded copy-in helper，以及 P2/P3 稳定日志锚点 |
+| bootstrap-only 最小用户态执行路径 | 已有 | `src/kernel/demo/user_hello.c`、`src/kernel/ex/ex_bootstrap.c`、`src/kernel/ex/ex_bootstrap_adapter.c`、`src/kernel/ke/user_bootstrap.c`、`src/kernel/ke/user_bootstrap_syscall.c`、`src/arch/amd64/user_bootstrap.asm` 已打通独立 `user_hello` profile 下的 staging 用户映射、首次进入 Ring 3、来自 CPL3 的 P1 timer round-trip、P2 raw syscall 证据链，并用 `bootstrap teardown complete` / `fallback staging reclaim` 锚点明确 P3 teardown-before-termination → idle/reaper reclaim 合同；当前 bootstrap launch / init / teardown owner 已收口到 Ex，`user_hello` 经由 Ex facade 启动，scheduler / timer / finalizer / reaper 通过 Ex ownership query / callbacks 判断 bootstrap 路径，`KTHREAD_FLAG_BOOTSTRAP_USER` 与 `UserBootstrapContext` 已删除 |
+| 最小 raw syscall 入口 | 已有 | `src/include/kernel/ex/ex_bootstrap.h`、`src/include/kernel/ex/ex_bootstrap_abi.h`、`src/kernel/ex/ex_bootstrap.c`、`src/kernel/ke/user_bootstrap_syscall.c`、`src/kernel/init/init.c` 已实现同步 `int 0x80` 入口、`SYS_RAW_WRITE` / `SYS_RAW_EXIT`、bootstrap user-range 校验与 bounded copy-in helper，以及 P2/P3 稳定日志锚点；bootstrap ABI 常量、固定窗口语义和外部可见证据锚点现由 Ex 头文件暴露，而 trap / copy-in 机制仍由 Ke 提供 |
 | 调度器 | 已有 | `src/kernel/ke/thread/scheduler/scheduler.c`、`timer.c`、`diag.c`，OpenSpec `scheduler` / `scheduler-observability` |
 | 单对象等待模型 | 已有 | `src/kernel/ke/thread/scheduler/wait.c`，提供 `KeWaitForSingleObject` 与统一 wait-completion 路径，OpenSpec `dispatcher-objects` |
 | 事件（KEVENT） | 已有 | `src/kernel/ke/thread/scheduler/sync.c`、`src/include/kernel/ke/event.h`、OpenSpec `kevent` |
@@ -75,7 +76,7 @@
 
 这里的用户态能力只指独立 `user_hello` profile 下的最小执行路径与 raw syscall 入口，不应外推为完整进程地址空间、正式系统调用子系统或 Ex 层对象模型。
 
-更具体地说，当前 `user_hello` 只是一条 bootstrap/staging 性质的脚手架测试路径，用来验证“最小用户页映射 -> 首次进入 Ring 3 -> 来自 CPL3 的 P1 timer round-trip -> P1 gate armed -> invalid raw write rejected -> hello write succeeds -> `SYS_RAW_EXIT` -> bootstrap teardown complete -> thread terminated -> idle/reaper reclaimed -> back to idle”这条最小证据链。这里的 P1 gate、后续 P2 raw syscall 自检以及当前 HEAD 上进一步补强的 P3 exit/reap 合同，都只是同一个 `user_hello` profile 内部的分阶段验证，不是新增独立的 P1-only、P2-only 或 P3-only profile。现阶段共享 imported root 仍保留 boot 阶段遗留的低 2GB identity mapping，因此 bootstrap 固定用户窗口需要显式避开该区域；这属于当前 bring-up 模型的临时约束，不代表长期用户虚拟地址布局合同，也不意味着当前 bootstrap raw syscall 已经承诺未来正式用户态 ABI。P3 现在明确要求正常路径由 `SYS_RAW_EXIT` 在进入 `KeThreadExit()` 前完成 bootstrap 用户资源释放并打印 `bootstrap teardown complete`，scheduler finalizer 只保留 `fallback staging reclaim` 这类防御性兜底语义。后续引入真实 ELF 加载器与正式用户地址空间时，系统预期会为用户态重建或派生独立页表根，并以干净的 low-half 布局替代当前 fixed bootstrap window，因此这条 staging 限制与长期目标并不冲突。
+更具体地说，当前 `user_hello` 只是一条 bootstrap/staging 性质的脚手架测试路径，用来验证“最小用户页映射 -> 首次进入 Ring 3 -> 来自 CPL3 的 P1 timer round-trip -> P1 gate armed -> invalid raw write rejected -> hello write succeeds -> `SYS_RAW_EXIT` -> bootstrap teardown complete -> thread terminated -> idle/reaper reclaimed -> back to idle”这条最小证据链。当前 launch / init / teardown 与对外 bootstrap ABI surface 已由 Ex facade 持有，Ke 继续负责 staging、trap、线程与调度等底层机制；当前代码也已经删除 `KTHREAD_FLAG_BOOTSTRAP_USER` 与 `UserBootstrapContext`，因此 scheduler / timer / finalizer / idle/reaper 只通过 Ex 注册的 ownership query / callback contract 判断是否走 bootstrap 路径。这里的 P1 gate、后续 P2 raw syscall 自检以及当前 HEAD 上进一步补强的 P3 exit/reap 合同，都只是同一个 `user_hello` profile 内部的分阶段验证，不是新增独立的 P1-only、P2-only 或 P3-only profile。现阶段共享 imported root 仍保留 boot 阶段遗留的低 2GB identity mapping，因此 bootstrap 固定用户窗口需要显式避开该区域；这属于当前 bring-up 模型的临时约束，不代表长期用户虚拟地址布局合同，也不意味着当前 bootstrap raw syscall 已经承诺未来正式用户态 ABI。P3 现在明确要求正常路径由 `SYS_RAW_EXIT` 在进入 `KeThreadExit()` 前完成 bootstrap 用户资源释放并打印 `bootstrap teardown complete`，scheduler finalizer 只保留 `fallback staging reclaim` 这类防御性兜底语义。而 `complete-ex-bootstrap-migration` 的 Phase B 才开始承接正式地址空间语义：届时系统预期会为用户态重建或派生独立页表根，并以干净的 low-half 布局替代当前 fixed bootstrap window，因此这条 staging 限制与长期目标并不冲突。
 
 它已经不只是“能启动的内核骨架”，而是具备以下连续能力链：
 
@@ -103,9 +104,9 @@
 | 待完成功能 | 为什么仍算缺口 | 现有状态 |
 | --- | --- | --- |
 | 完整用户态子系统 / 通用用户程序模型 | README 明确承诺“内核态与用户态安全隔离” | 当前只有挂在独立 `user_hello` profile 下的 bootstrap-only 最小执行路径，尚不具备通用用户程序装载、可恢复故障或稳定用户对象模型 |
-| 正式进程地址空间 / 进程级地址空间切换 | README 把虚拟内存目标描述为“为内核和用户程序提供隔离地址空间” | 当前用户页仍以 staging 方式挂在 imported root 上，不是正式进程地址空间模型 |
+| 正式进程地址空间 / 进程级地址空间切换 | README 把虚拟内存目标描述为“为内核和用户程序提供隔离地址空间” | 这部分从 `complete-ex-bootstrap-migration` 的 Phase B 才开始承接；当前用户页仍以 staging 方式挂在 imported root 上，不是正式进程地址空间模型 |
 | handle-oriented 正式 syscall 表面 | README 明确承诺“系统调用是用户态获取内核服务的唯一入口” | 当前只有同步 `int 0x80` 的 bootstrap raw syscall 入口，且 ABI 仅限 `SYS_RAW_WRITE` / `SYS_RAW_EXIT`，还不是正式的 handle-oriented syscall 接口 |
-| Ex 层 / Object Manager | 只有 bootstrap 适配薄壳 | 当前已引入 `src/kernel/ex/` 目录与极薄的 `ExProcess` / `ExThread` bootstrap 适配层，scheduler / timer 已通过 Ke 回调槽位分发 bootstrap 语义；但仍不具备正式对象管理器、对象命名/生命周期框架或通用进程模型 |
+| Ex 层 / Object Manager | 只有 bootstrap 适配薄壳 | 当前 Ex 已成为 bootstrap launch / init / teardown owner，并对外暴露 bootstrap facade / ABI；但这仍只是 bootstrap-only 薄运行时，不具备正式对象管理器、对象命名/生命周期框架或通用进程模型 |
 | Capability 句柄模型 | README 把它作为用户态/内核态隔离的重要机制 | 当前没有对象句柄表、capability 校验、句柄引用/销毁等子系统 |
 | 优先级调度 | README 承诺“基于优先级和时间片轮转（RR）的调度器” | 当前 OpenSpec `scheduler` 与代码都明确是**单优先级 RR**；`KTHREAD.Priority` 只是保留字段 |
 | 键盘循环缓冲输入 | README 明确承诺“键盘循环缓冲输入”与“标准 QWERTY 键盘输入支持” | 当前没有内核键盘驱动、扫描码处理或输入缓冲队列；只有 bootloader 的 UEFI 文本输入 |
@@ -121,7 +122,7 @@
 
 当前的 HimuOS 更准确的定位是：
 
-- **已经完成的部分**：UEFI 启动、Ke 层核心机制、内核内存管理、线程调度与同步、诊断与教学回归 profile，以及挂在 `user_hello` 上的 bootstrap-only P1/P2/P3 最小用户态证据链
+- **已经完成的部分**：UEFI 启动、Ke 层核心机制、内核内存管理、线程调度与同步、诊断与教学回归 profile，以及挂在 `user_hello` 上、由 Ex 持有 launch / init / teardown owner 的 bootstrap-only P1/P2/P3 最小用户态证据链
 - **尚未完成的部分**：README 中更接近“完整 OS 对外语义”的那一层，尤其是正式进程地址空间、handle-oriented syscall、Ex/Object Manager、capability handle、键盘输入、优先级调度
 
 换句话说，当前系统已经是一个**功能明确、结构清晰的内核教学原型**，其中还带有一条 bootstrap-only 的最小用户态 bring-up 路径；但它还**不是** README 最初叙述里的那个“具备正式进程地址空间 / handle-oriented syscall / Ex 层对象模型”的更完整版本。
