@@ -70,15 +70,23 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
     keParams.ConstBytes = params->ConstBytes;
     keParams.ConstLength = params->ConstLength;
 
-    HO_STATUS status = KeUserBootstrapCreateStaging(&keParams, &staging);
-    if (status != EC_SUCCESS)
-        return status;
-
     process = (EX_PROCESS *)kzalloc(sizeof(*process));
     if (process == NULL)
+        return EC_OUT_OF_RESOURCE;
+
+    HO_STATUS status = KeCreateProcessAddressSpace(&process->AddressSpace);
+    if (status != EC_SUCCESS)
     {
-        status = KeUserBootstrapDestroyStaging(staging);
-        return status == EC_SUCCESS ? EC_OUT_OF_RESOURCE : status;
+        kfree(process);
+        return status;
+    }
+
+    status = KeUserBootstrapCreateStaging(&keParams, &process->AddressSpace, &staging);
+    if (status != EC_SUCCESS)
+    {
+        HO_STATUS destroyStatus = KeDestroyProcessAddressSpace(&process->AddressSpace);
+        kfree(process);
+        return destroyStatus == EC_SUCCESS ? status : destroyStatus;
     }
 
     process->Staging = staging;
@@ -103,6 +111,15 @@ ExBootstrapDestroyProcess(EX_PROCESS *process)
 
         /* Destroy consumes the staging object even when teardown reports an error. */
         process->Staging = NULL;
+    }
+
+    if (process->AddressSpace.Initialized)
+    {
+        HO_STATUS addrStatus = KeDestroyProcessAddressSpace(&process->AddressSpace);
+        if (addrStatus != EC_SUCCESS && status == EC_SUCCESS)
+        {
+            status = addrStatus;
+        }
     }
 
     kfree(process);
@@ -204,6 +221,15 @@ ExBootstrapTeardownThread(EX_THREAD *thread)
 
         /* Destroy consumes the staging object even when teardown reports an error. */
         process->Staging = NULL;
+    }
+
+    if (process != NULL && process->AddressSpace.Initialized)
+    {
+        HO_STATUS addrStatus = KeDestroyProcessAddressSpace(&process->AddressSpace);
+        if (firstError == EC_SUCCESS)
+        {
+            firstError = addrStatus;
+        }
     }
 
     HO_STATUS threadStatus = KiDestroyNewThread(thread->Thread);

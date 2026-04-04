@@ -11,12 +11,12 @@
 #include <_hobase.h>
 
 /*
- * The fixed low-half user window below records the Phase A bootstrap-only
- * history. It reuses the shared imported kernel root for the first user-mode
- * slice and must not be treated as the long-term per-process address-space
- * contract. Phase B process-private roots are expected to replace this window.
- * Keep it above the boot-time low 2GB identity import so hole validation sees
- * an unmapped slot in the shared root.
+ * Fixed low-half bootstrap-only layout.  These constants define the user
+ * window that the bootstrap staging path maps for each process.  When the
+ * owning EX_PROCESS holds a process-private root, the pages live in that
+ * root's low-half rather than the shared imported kernel root.  The layout
+ * constants remain fixed for the bootstrap-only slice; a dynamic per-process
+ * layout allocator is a future phase.
  */
 #define KE_USER_BOOTSTRAP_PAGE_SIZE              0x1000ULL
 #define KE_USER_BOOTSTRAP_WINDOW_BASE            0x0000000080000000ULL

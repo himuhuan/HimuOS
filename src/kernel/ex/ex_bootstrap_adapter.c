@@ -8,7 +8,9 @@
 
 #include "ex_bootstrap_internal.h"
 
+#include <arch/amd64/pm.h>
 #include <kernel/ex/ex_bootstrap_adapter.h>
+#include <kernel/init.h>
 #include <kernel/ke/bootstrap_callbacks.h>
 #include <kernel/ke/kthread.h>
 #include <kernel/ke/mm.h>
@@ -25,6 +27,32 @@ ExBootstrapEnterCallback(KTHREAD *thread)
     {
         HO_KPANIC(status, "Failed to wrap bootstrap thread in Ex adapter");
     }
+
+    if (gExBootstrapProcess == NULL || !gExBootstrapProcess->AddressSpace.Initialized)
+    {
+        HO_KPANIC(EC_INVALID_STATE, "Bootstrap enter: process root not initialized");
+    }
+
+    status = KeSwitchAddressSpace(gExBootstrapProcess->AddressSpace.RootPageTablePhys);
+    if (status != EC_SUCCESS)
+    {
+        HO_KPANIC(status, "Bootstrap enter: failed to install process root");
+    }
+
+    BOOT_CAPSULE *bootCapsule = KeGetBootCapsule();
+    if (bootCapsule == NULL)
+    {
+        HO_KPANIC(EC_INVALID_STATE, "Bootstrap enter: boot capsule unavailable");
+    }
+
+    TSS64 tss = bootCapsule->CpuInfo.Tss;
+    if (InitCpuCoreLocalData(&bootCapsule->CpuInfo, sizeof(bootCapsule->CpuInfo)) == NULL)
+    {
+        HO_KPANIC(EC_INVALID_STATE, "Bootstrap enter: failed to rebuild high-half GDT/TSS");
+    }
+
+    bootCapsule->CpuInfo.Tss = tss;
+    LoadGdtAndTss(&bootCapsule->CpuInfo);
 
     KeUserBootstrapEnterCurrentThread();
 }
@@ -88,12 +116,38 @@ ExBootstrapAdapterFinalizeThread(KTHREAD *thread)
 
     process = gExBootstrapThread->Process;
 
+    /* Ensure the kernel root is active before tearing down the process root. */
+    if (process != NULL && process->AddressSpace.Initialized)
+    {
+        HO_PHYSICAL_ADDRESS activeRoot = 0;
+        if (KeQueryActiveRootPageTable(&activeRoot) == EC_SUCCESS &&
+            activeRoot == process->AddressSpace.RootPageTablePhys)
+        {
+            const KE_KERNEL_ADDRESS_SPACE *kernelSpace = KeGetKernelAddressSpace();
+            HO_STATUS switchStatus = KeSwitchAddressSpace(kernelSpace->RootPageTablePhys);
+            if (switchStatus != EC_SUCCESS)
+                status = switchStatus;
+        }
+    }
+
     if (process != NULL && process->Staging != NULL)
     {
-        status = KeUserBootstrapDestroyStaging(process->Staging);
-
-        /* Destroy consumes the staging object even when teardown reports an error. */
+        HO_STATUS stagingStatus = KeUserBootstrapDestroyStaging(process->Staging);
         process->Staging = NULL;
+
+        if (status == EC_SUCCESS)
+        {
+            status = stagingStatus;
+        }
+    }
+
+    if (process != NULL && process->AddressSpace.Initialized)
+    {
+        HO_STATUS addrStatus = KeDestroyProcessAddressSpace(&process->AddressSpace);
+        if (status == EC_SUCCESS)
+        {
+            status = addrStatus;
+        }
     }
 
     KiDestroyBootstrapWrapperObjects();
@@ -133,17 +187,31 @@ ExBootstrapAdapterHandleRawExit(KTHREAD *thread)
     if (process == NULL || process->Staging == NULL)
         return EC_INVALID_STATE;
 
-    HO_STATUS status = KeUserBootstrapDestroyStaging(process->Staging);
+    /* Restore the kernel root before teardown so DestroyProcessAddressSpace
+       sees a non-active root and staging unmap operates on a non-active PT. */
+    const KE_KERNEL_ADDRESS_SPACE *kernelSpace = KeGetKernelAddressSpace();
+    HO_STATUS status = KeSwitchAddressSpace(kernelSpace->RootPageTablePhys);
+    if (status != EC_SUCCESS)
+        return status;
 
-    /* Destroy consumes the staging object even when teardown reports an error. */
+    HO_STATUS stagingStatus = KeUserBootstrapDestroyStaging(process->Staging);
     process->Staging = NULL;
 
-    if (status != EC_SUCCESS)
+    if (process->AddressSpace.Initialized)
+    {
+        HO_STATUS addrStatus = KeDestroyProcessAddressSpace(&process->AddressSpace);
+        if (stagingStatus == EC_SUCCESS)
+        {
+            stagingStatus = addrStatus;
+        }
+    }
+
+    if (stagingStatus != EC_SUCCESS)
     {
         KiDestroyBootstrapWrapperObjects();
     }
 
-    return status;
+    return stagingStatus;
 }
 
 static void
