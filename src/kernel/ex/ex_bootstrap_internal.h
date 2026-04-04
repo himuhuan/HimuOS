@@ -44,6 +44,7 @@ struct EX_THREAD
 
 void ExBootstrapInitializeProcessObject(EX_PROCESS *process);
 void ExBootstrapInitializeThreadObject(EX_THREAD *thread);
+HO_STATUS ExBootstrapTeardownProcessPayload(EX_PROCESS *process);
 EX_PROCESS *ExBootstrapRetainProcess(EX_PROCESS *process);
 HO_STATUS ExBootstrapReleaseProcess(EX_PROCESS *process);
 HO_STATUS ExBootstrapReleaseThread(EX_THREAD *thread);

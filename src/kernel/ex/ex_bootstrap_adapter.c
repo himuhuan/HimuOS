@@ -16,7 +16,6 @@
 #include <kernel/hodbg.h>
 
 static HO_STATUS KiDestroyBootstrapWrapperObjects(void);
-static HO_STATUS KiRestoreImportedRootForProcessTeardown(const EX_PROCESS *process);
 
 static HO_NORETURN void
 ExBootstrapEnterCallback(KTHREAD *thread)
@@ -50,31 +49,6 @@ ExBootstrapEnterCallback(KTHREAD *thread)
     }
 
     KeUserBootstrapEnterCurrentThread();
-}
-
-static HO_STATUS
-KiRestoreImportedRootForProcessTeardown(const EX_PROCESS *process)
-{
-    HO_PHYSICAL_ADDRESS activeRoot = 0;
-
-    if (process == NULL || !process->AddressSpace.Initialized)
-    {
-        return EC_SUCCESS;
-    }
-
-    if (KeQueryActiveRootPageTable(&activeRoot) != EC_SUCCESS ||
-        activeRoot != process->AddressSpace.RootPageTablePhys)
-    {
-        return EC_SUCCESS;
-    }
-
-    const KE_KERNEL_ADDRESS_SPACE *kernelSpace = KeGetKernelAddressSpace();
-    if (kernelSpace == NULL || !kernelSpace->Initialized || kernelSpace->RootPageTablePhys == 0)
-    {
-        return EC_INVALID_STATE;
-    }
-
-    return KeSwitchAddressSpace(kernelSpace->RootPageTablePhys);
 }
 
 static BOOL
@@ -156,40 +130,17 @@ HO_STATUS
 ExBootstrapAdapterFinalizeThread(KTHREAD *thread)
 {
     EX_PROCESS *process = NULL;
-    HO_STATUS status = EC_SUCCESS;
 
     if (gExBootstrapThread == NULL || gExBootstrapThread->Thread != thread)
         return EC_SUCCESS;
 
     process = gExBootstrapThread->Process;
 
-    status = KiRestoreImportedRootForProcessTeardown(process);
-
-    if (process != NULL && process->Staging != NULL)
-    {
-        HO_STATUS stagingStatus = KeUserBootstrapDestroyStaging(process->Staging);
-        process->Staging = NULL;
-
-        if (status == EC_SUCCESS)
-        {
-            status = stagingStatus;
-        }
-    }
-
-    if (process != NULL && process->AddressSpace.Initialized)
-    {
-        HO_STATUS addrStatus = KeDestroyProcessAddressSpace(&process->AddressSpace);
-        if (status == EC_SUCCESS)
-        {
-            status = addrStatus;
-        }
-    }
+    HO_STATUS status = ExBootstrapTeardownProcessPayload(process);
 
     HO_STATUS releaseStatus = KiDestroyBootstrapWrapperObjects();
     if (status == EC_SUCCESS)
-    {
         status = releaseStatus;
-    }
 
     return status;
 }
@@ -227,32 +178,11 @@ ExBootstrapAdapterHandleRawExit(KTHREAD *thread)
     if (process == NULL || process->Staging == NULL)
         return EC_INVALID_STATE;
 
-    HO_STATUS status = KiRestoreImportedRootForProcessTeardown(process);
+    HO_STATUS status = ExBootstrapTeardownProcessPayload(process);
     if (status != EC_SUCCESS)
-        return status;
+        (void)KiDestroyBootstrapWrapperObjects();
 
-    HO_STATUS stagingStatus = KeUserBootstrapDestroyStaging(process->Staging);
-    process->Staging = NULL;
-
-    if (process->AddressSpace.Initialized)
-    {
-        HO_STATUS addrStatus = KeDestroyProcessAddressSpace(&process->AddressSpace);
-        if (stagingStatus == EC_SUCCESS)
-        {
-            stagingStatus = addrStatus;
-        }
-    }
-
-    if (stagingStatus != EC_SUCCESS)
-    {
-        HO_STATUS releaseStatus = KiDestroyBootstrapWrapperObjects();
-        if (stagingStatus == EC_SUCCESS)
-        {
-            stagingStatus = releaseStatus;
-        }
-    }
-
-    return stagingStatus;
+    return status;
 }
 
 static HO_STATUS
