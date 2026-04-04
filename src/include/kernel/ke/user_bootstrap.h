@@ -47,12 +47,28 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserBootstrapDestroyStaging(KE_USER_BOOTS
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserBootstrapAttachThread(KTHREAD *thread,
                                                                  KE_USER_BOOTSTRAP_STAGING *staging);
 
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserBootstrapDetachThread(KTHREAD *thread,
+                                                                 KE_USER_BOOTSTRAP_STAGING *staging);
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserBootstrapPatchConstBytes(KE_USER_BOOTSTRAP_STAGING *staging,
+                                                                    uint64_t offset,
+                                                                    const void *bytes,
+                                                                    uint64_t length);
+
 /*
  * Query the live bootstrap layout attached to the current thread. The range
  * spans the full bootstrap slice so guard holes remain range-valid and are
  * rejected later by page validation rather than by the range gate.
  */
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserBootstrapQueryCurrentThreadLayout(KE_USER_BOOTSTRAP_LAYOUT *outLayout);
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserBootstrapCopyInBytes(void *kernelDestination,
+                                                                HO_VIRTUAL_ADDRESS userSource,
+                                                                uint64_t length);
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserBootstrapWriteConsoleBytes(const char *bytes,
+                                                                      uint64_t length,
+                                                                      uint64_t *outWritten);
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserBootstrapRawSyscallInit(void);
 

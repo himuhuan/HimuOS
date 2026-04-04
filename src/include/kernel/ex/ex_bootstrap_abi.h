@@ -43,8 +43,9 @@
  * - RAX carries the raw syscall number on entry and the return value on exit.
  * - RDI, RSI, and RDX carry the first three bootstrap arguments.
  *
- * The SYS_RAW_* namespace is intentionally scoped to bring-up only. Future
- * handle-oriented SYS_* services may use different numbers and semantics.
+ * The SYS_RAW_* namespace is intentionally scoped to bring-up only. Bootstrap
+ * capability SYS_* services use a separate number range so raw semantics stay
+ * fixed while the pilot evolves.
  */
 #define KE_USER_BOOTSTRAP_SYSCALL_VECTOR             0x80U
 #define KE_USER_BOOTSTRAP_SYS_RAW_WRITE_MAX_LENGTH   256U
@@ -52,6 +53,37 @@
 #define SYS_RAW_INVALID                              0U
 #define SYS_RAW_WRITE                                1U
 #define SYS_RAW_EXIT                                 2U
+
+/*
+ * Bootstrap capability syscall ABI:
+ * - Shares the int 0x80 trap entry and register convention with SYS_RAW_*.
+ * - Uses a distinct number range and process-private generation-checked handles.
+ */
+#define KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE         0x100U
+
+#define SYS_WRITE                                          (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 0U)
+#define SYS_CLOSE                                          (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 1U)
+
+#define KE_USER_BOOTSTRAP_CAPABILITY_INVALID_HANDLE        0U
+#define KE_USER_BOOTSTRAP_CAPABILITY_SEED_VERSION          1U
+#define KE_USER_BOOTSTRAP_CAPABILITY_SEED_VERSION_OFFSET   0U
+#define KE_USER_BOOTSTRAP_CAPABILITY_SEED_SIZE_OFFSET      4U
+#define KE_USER_BOOTSTRAP_CAPABILITY_PROCESS_SELF_OFFSET   8U
+#define KE_USER_BOOTSTRAP_CAPABILITY_THREAD_SELF_OFFSET    12U
+#define KE_USER_BOOTSTRAP_CAPABILITY_STDOUT_OFFSET         16U
+#define KE_USER_BOOTSTRAP_CAPABILITY_WAIT_OBJECT_OFFSET    20U
+#define KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK_SIZE       24U
+#define KE_USER_BOOTSTRAP_CONST_PAYLOAD_OFFSET             KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK_SIZE
+
+typedef struct __attribute__((packed)) KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK
+{
+    uint32_t Version;
+    uint32_t Size;
+    uint32_t ProcessSelf;
+    uint32_t ThreadSelf;
+    uint32_t Stdout;
+    uint32_t WaitObject;
+} KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK;
 
 /*
  * Bootstrap raw write keeps both rejection and success paths on the same
@@ -74,6 +106,10 @@
 #define KE_USER_BOOTSTRAP_LOG_HELLO_WRITE_SUCCEEDED    "[USERBOOT] hello write succeeds"
 #define KE_USER_BOOTSTRAP_LOG_SYS_RAW_EXIT             "[USERBOOT] SYS_RAW_EXIT"
 #define KE_USER_BOOTSTRAP_LOG_INVALID_SYSCALL          "[USERBOOT] invalid raw syscall"
+#define KE_USER_BOOTSTRAP_LOG_INVALID_CAP_SYSCALL      "[USERCAP] invalid capability syscall"
+#define KE_USER_BOOTSTRAP_LOG_CAP_WRITE_SUCCEEDED      "[USERCAP] stdout capability write succeeds"
+#define KE_USER_BOOTSTRAP_LOG_CAP_CLOSE_SUCCEEDED      "[USERCAP] SYS_CLOSE succeeded"
+#define KE_USER_BOOTSTRAP_LOG_CAP_REJECTED             "[USERCAP] capability syscall rejected"
 #define KE_USER_BOOTSTRAP_LOG_INVALID_USER_BUFFER      "[USERBOOT] invalid user buffer"
 #define KE_USER_BOOTSTRAP_LOG_TEARDOWN_FAILED          "[USERBOOT] bootstrap teardown failed"
 #define KE_USER_BOOTSTRAP_LOG_TEARDOWN_COMPLETE        "[USERBOOT] bootstrap teardown complete"

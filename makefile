@@ -83,7 +83,7 @@ KRN_BUILDROOT := build/kernel$(if $(strip $(BUILD_FLAVOR)),/$(BUILD_FLAVOR),)
 KRN_OBJDIR    := $(KRN_BUILDROOT)/obj
 KRN_BINDIR    := $(KRN_BUILDROOT)/bin
 
-VALID_TEST_MODULES := schedule guard_wait owned_exit irql_wait irql_sleep irql_yield irql_exit pf_imported pf_guard pf_fixmap pf_heap kthread_pool_race user_hello list
+VALID_TEST_MODULES := schedule guard_wait owned_exit irql_wait irql_sleep irql_yield irql_exit pf_imported pf_guard pf_fixmap pf_heap kthread_pool_race user_hello user_caps list
 TEST_MODULE_GOALS  := $(filter-out test,$(MAKECMDGOALS))
 TEST_MODULE        := $(if $(strip $(TEST_MODULE_GOALS)),$(firstword $(TEST_MODULE_GOALS)),list)
 TEST_BUILD_FLAVOR  := test-$(TEST_MODULE)
@@ -101,14 +101,15 @@ TEST_DEFINE_pf_fixmap := HO_DEMO_TEST_PF_FIXMAP
 TEST_DEFINE_pf_heap := HO_DEMO_TEST_PF_HEAP
 TEST_DEFINE_kthread_pool_race := HO_DEMO_TEST_KTHREAD_POOL_RACE
 TEST_DEFINE_user_hello := HO_DEMO_TEST_USER_HELLO
+TEST_DEFINE_user_caps := HO_DEMO_TEST_USER_CAPS
 
 ifneq ($(filter test,$(MAKECMDGOALS)),)
 ifneq ($(words $(TEST_MODULE_GOALS)),0)
 ifneq ($(words $(TEST_MODULE_GOALS)),1)
-$(error Usage: make test <module>. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap, kthread_pool_race, user_hello. Use `make test` or `make test list` to inspect supported modules)
+$(error Usage: make test <module>. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap, kthread_pool_race, user_hello, user_caps. Use `make test` or `make test list` to inspect supported modules)
 endif
 ifneq ($(filter $(TEST_MODULE),$(VALID_TEST_MODULES)), $(TEST_MODULE))
-$(error Unknown test module '$(TEST_MODULE)'. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap, kthread_pool_race, user_hello. Use `make test list` to inspect supported modules)
+$(error Unknown test module '$(TEST_MODULE)'. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap, kthread_pool_race, user_hello, user_caps. Use `make test list` to inspect supported modules)
 endif
 endif
 endif
@@ -188,6 +189,7 @@ SRCS_KERNEL_C := \
     src/kernel/demo/semaphore.c                         \
     src/kernel/demo/thread.c                            \
 	src/kernel/demo/user_hello.c                        \
+	src/kernel/demo/user_caps.c                         \
     src/kernel/init/cpu.c                               \
     src/kernel/init/font.c                              \
     src/kernel/init/hhdm.c                              \
@@ -338,6 +340,7 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  pf_heap     - page-fault demo: NX execute fault in heap-backed KVA page"
 	@echo "  kthread_pool_race - regression suite for KTHREAD pool synchronization"
 	@echo "  user_hello  - staged minimal user-mode bootstrap profile scaffold"
+	@echo "  user_caps   - staged bootstrap stdout capability pilot regression"
 	@echo "Recommended explicit workflow:"
 	@echo "  make clean"
 	@echo "  # schedule"
@@ -354,13 +357,14 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  make test pf_heap    # run heap-backed page-fault observability demo"
 	@echo "  make test kthread_pool_race # run the KTHREAD pool race regression suite"
 	@echo "  make test user_hello # select the staged minimal user-mode bootstrap profile"
+	@echo "  make test user_caps  # select the staged bootstrap capability pilot profile"
 	@echo "  make test            # list available test modules"
 else
 	@echo "Starting test module: $(TEST_MODULE)"
 	@$(MAKE) run BUILD_FLAVOR=$(TEST_BUILD_FLAVOR) HO_DEMO_TEST_NAME=$(TEST_MODULE) HO_DEMO_TEST_DEFINE=$(TEST_DEFINE_$(TEST_MODULE))
 endif
 
-schedule user_hello list:
+schedule user_hello user_caps list:
 	@:
 		
 debug: copy

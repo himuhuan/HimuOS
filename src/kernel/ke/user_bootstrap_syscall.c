@@ -2,7 +2,7 @@
  * HimuOperatingSystem
  *
  * File: ke/user_bootstrap_syscall.c
- * Description: Minimal bootstrap raw syscall dispatcher and user-copy helpers.
+ * Description: Minimal bootstrap syscall trap, raw dispatcher, and user-copy helpers.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
@@ -30,11 +30,11 @@ static HO_STATUS KiValidateBootstrapUserRange(const KE_USER_BOOTSTRAP_LAYOUT *la
 static HO_STATUS KiValidateBootstrapUserReadablePages(const KE_KERNEL_ADDRESS_SPACE *space,
                                                       HO_VIRTUAL_ADDRESS userBase,
                                                       HO_VIRTUAL_ADDRESS endExclusive);
-static HO_STATUS KiCopyInBootstrapUserBytes(void *kernelDestination, HO_VIRTUAL_ADDRESS userSource, uint64_t length);
 static int64_t KiRejectRawWrite(uint64_t userBuffer, uint64_t length, HO_STATUS status);
 static int64_t KiHandleRawWrite(uint64_t userBuffer, uint64_t length);
 static int64_t KiHandleRawExit(uint64_t exitCode);
 static int64_t KiDispatchRawSyscall(uint64_t rawSyscallNumber, uint64_t arg0, uint64_t arg1, uint64_t arg2);
+static int64_t KiDispatchBootstrapSyscall(uint64_t syscallNumber, uint64_t arg0, uint64_t arg1, uint64_t arg2);
 static void KiHandleRawSyscallTrap(void *frame, void *context);
 
 static int64_t
@@ -139,8 +139,8 @@ KiValidateBootstrapUserReadablePages(const KE_KERNEL_ADDRESS_SPACE *space,
     return EC_SUCCESS;
 }
 
-static HO_STATUS
-KiCopyInBootstrapUserBytes(void *kernelDestination, HO_VIRTUAL_ADDRESS userSource, uint64_t length)
+HO_KERNEL_API HO_NODISCARD HO_STATUS
+KeUserBootstrapCopyInBytes(void *kernelDestination, HO_VIRTUAL_ADDRESS userSource, uint64_t length)
 {
     if (!kernelDestination)
         return EC_ILLEGAL_ARGUMENT;
@@ -194,6 +194,31 @@ KiCopyInBootstrapUserBytes(void *kernelDestination, HO_VIRTUAL_ADDRESS userSourc
     return EC_SUCCESS;
 }
 
+HO_KERNEL_API HO_NODISCARD HO_STATUS
+KeUserBootstrapWriteConsoleBytes(const char *bytes, uint64_t length, uint64_t *outWritten)
+{
+    if (outWritten == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    *outWritten = 0;
+
+    if (length == 0)
+        return EC_SUCCESS;
+
+    if (bytes == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    for (uint64_t index = 0; index < length; ++index)
+    {
+        if (ConsoleWriteChar(bytes[index]) < 0)
+            return EC_FAILURE;
+
+        ++(*outWritten);
+    }
+
+    return EC_SUCCESS;
+}
+
 static int64_t
 KiRejectRawWrite(uint64_t userBuffer, uint64_t length, HO_STATUS status)
 {
@@ -223,24 +248,20 @@ KiHandleRawWrite(uint64_t userBuffer, uint64_t length)
         return 0;
 
     char scratch[KE_USER_BOOTSTRAP_SYS_RAW_WRITE_MAX_LENGTH];
-    HO_STATUS status = KiCopyInBootstrapUserBytes(scratch, (HO_VIRTUAL_ADDRESS)userBuffer, length);
+    HO_STATUS status = KeUserBootstrapCopyInBytes(scratch, (HO_VIRTUAL_ADDRESS)userBuffer, length);
     if (status != EC_SUCCESS)
         return KiRejectRawWrite(userBuffer, length, status);
 
-    uint64_t written = 0;
     KTHREAD *thread = KeGetCurrentThread();
-    for (uint64_t index = 0; index < length; ++index)
+    uint64_t written = 0;
+    status = KeUserBootstrapWriteConsoleBytes(scratch, length, &written);
+    if (status != EC_SUCCESS)
     {
-        if (ConsoleWriteChar(scratch[index]) < 0)
-        {
-            klog(KLOG_LEVEL_ERROR,
-                 "[USERBOOT] SYS_RAW_WRITE console emit failed index=%lu thread=%u\n",
-                 (unsigned long)index,
-                 thread ? thread->ThreadId : 0U);
-            return KiEncodeRawSyscallStatus(EC_FAILURE);
-        }
-
-        ++written;
+        klog(KLOG_LEVEL_ERROR,
+             "[USERBOOT] SYS_RAW_WRITE console emit failed index=%lu thread=%u\n",
+             (unsigned long)written,
+             thread ? thread->ThreadId : 0U);
+        return KiEncodeRawSyscallStatus(status);
     }
 
     klog(KLOG_LEVEL_INFO,
@@ -309,14 +330,23 @@ KiDispatchRawSyscall(uint64_t rawSyscallNumber, uint64_t arg0, uint64_t arg1, ui
     }
 }
 
+static int64_t
+KiDispatchBootstrapSyscall(uint64_t syscallNumber, uint64_t arg0, uint64_t arg1, uint64_t arg2)
+{
+    if (syscallNumber < KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE)
+        return KiDispatchRawSyscall(syscallNumber, arg0, arg1, arg2);
+
+    return ExBootstrapAdapterDispatchCapabilitySyscall(syscallNumber, arg0, arg1, arg2);
+}
+
 static void
 KiHandleRawSyscallTrap(void *frame, MAYBE_UNUSED void *context)
 {
     INTERRUPT_FRAME *interruptFrame = (INTERRUPT_FRAME *)frame;
-    int64_t returnValue = KiDispatchRawSyscall(interruptFrame->Context.RAX,
-                                               interruptFrame->Context.RDI,
-                                               interruptFrame->Context.RSI,
-                                               interruptFrame->Context.RDX);
+    int64_t returnValue = KiDispatchBootstrapSyscall(interruptFrame->Context.RAX,
+                                                     interruptFrame->Context.RDI,
+                                                     interruptFrame->Context.RSI,
+                                                     interruptFrame->Context.RDX);
     interruptFrame->Context.RAX = (uint64_t)returnValue;
 }
 
