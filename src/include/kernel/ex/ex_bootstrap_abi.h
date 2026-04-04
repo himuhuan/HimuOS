@@ -63,6 +63,10 @@
 
 #define SYS_WRITE                                          (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 0U)
 #define SYS_CLOSE                                          (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 1U)
+#define SYS_WAIT_ONE                                       (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 2U)
+
+#define KE_USER_BOOTSTRAP_WAIT_ONE_TIMEOUT_MAX_MS          0xFFFFFFFFULL
+#define KE_USER_BOOTSTRAP_WAIT_ONE_TIMEOUT_NS_PER_MS       1000000ULL
 
 #define KE_USER_BOOTSTRAP_CAPABILITY_INVALID_HANDLE        0U
 #define KE_USER_BOOTSTRAP_CAPABILITY_SEED_VERSION          1U
@@ -109,6 +113,7 @@ typedef struct __attribute__((packed)) KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK
 #define KE_USER_BOOTSTRAP_LOG_INVALID_CAP_SYSCALL      "[USERCAP] invalid capability syscall"
 #define KE_USER_BOOTSTRAP_LOG_CAP_WRITE_SUCCEEDED      "[USERCAP] stdout capability write succeeds"
 #define KE_USER_BOOTSTRAP_LOG_CAP_CLOSE_SUCCEEDED      "[USERCAP] SYS_CLOSE succeeded"
+#define KE_USER_BOOTSTRAP_LOG_CAP_WAIT_SUCCEEDED       "[USERCAP] SYS_WAIT_ONE succeeded"
 #define KE_USER_BOOTSTRAP_LOG_CAP_REJECTED             "[USERCAP] capability syscall rejected"
 #define KE_USER_BOOTSTRAP_LOG_INVALID_USER_BUFFER      "[USERBOOT] invalid user buffer"
 #define KE_USER_BOOTSTRAP_LOG_TEARDOWN_FAILED          "[USERBOOT] bootstrap teardown failed"

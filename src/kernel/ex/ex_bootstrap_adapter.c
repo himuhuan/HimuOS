@@ -26,6 +26,13 @@ static int64_t KiHandleCapabilityWrite(EX_PROCESS *process,
                                        uint64_t userBuffer,
                                        uint64_t length);
 static int64_t KiHandleCapabilityClose(EX_PROCESS *process, EX_PRIVATE_HANDLE handle);
+static HO_STATUS KiDecodeCapabilityWaitTimeoutNs(uint64_t timeoutMsRaw,
+                                                 uint64_t reserved,
+                                                 uint64_t *outTimeoutNs);
+static int64_t KiHandleCapabilityWaitOne(EX_PROCESS *process,
+                                         EX_PRIVATE_HANDLE handle,
+                                         uint64_t timeoutMsRaw,
+                                         uint64_t reserved);
 static HO_STATUS KiDestroyBootstrapWrapperObjects(void);
 
 static int64_t
@@ -138,6 +145,79 @@ KiHandleCapabilityClose(EX_PROCESS *process, EX_PRIVATE_HANDLE handle)
          KE_USER_BOOTSTRAP_LOG_CAP_CLOSE_SUCCEEDED " handle=%u thread=%u\n",
          handle,
          thread ? thread->ThreadId : 0U);
+
+    return 0;
+}
+
+static HO_STATUS
+KiDecodeCapabilityWaitTimeoutNs(uint64_t timeoutMsRaw, uint64_t reserved, uint64_t *outTimeoutNs)
+{
+    if (outTimeoutNs == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (reserved != 0 || timeoutMsRaw > KE_USER_BOOTSTRAP_WAIT_ONE_TIMEOUT_MAX_MS)
+        return EC_ILLEGAL_ARGUMENT;
+
+    *outTimeoutNs = timeoutMsRaw * KE_USER_BOOTSTRAP_WAIT_ONE_TIMEOUT_NS_PER_MS;
+    return EC_SUCCESS;
+}
+
+static int64_t
+KiHandleCapabilityWaitOne(EX_PROCESS *process,
+                          EX_PRIVATE_HANDLE handle,
+                          uint64_t timeoutMsRaw,
+                          uint64_t reserved)
+{
+    EX_OBJECT_HEADER *objectHeader = NULL;
+    EX_WAITABLE_OBJECT *waitObject = NULL;
+    KTHREAD *thread = KeGetCurrentThread();
+    uint64_t timeoutNs = 0;
+
+    if (process == NULL)
+        return KiRejectCapabilitySyscall("SYS_WAIT_ONE", SYS_WAIT_ONE, handle, EC_INVALID_STATE);
+
+    if (handle == EX_PRIVATE_HANDLE_INVALID)
+        return KiRejectCapabilitySyscall("SYS_WAIT_ONE", SYS_WAIT_ONE, handle, EC_ILLEGAL_ARGUMENT);
+
+    HO_STATUS status = KiDecodeCapabilityWaitTimeoutNs(timeoutMsRaw, reserved, &timeoutNs);
+    if (status != EC_SUCCESS)
+        return KiRejectCapabilitySyscall("SYS_WAIT_ONE", SYS_WAIT_ONE, handle, status);
+
+    status = ExBootstrapResolvePrivateHandle(process,
+                                             handle,
+                                             EX_OBJECT_TYPE_WAITABLE,
+                                             EX_PRIVATE_HANDLE_RIGHT_WAIT,
+                                             &objectHeader);
+    if (status != EC_SUCCESS)
+        return KiRejectCapabilitySyscall("SYS_WAIT_ONE", SYS_WAIT_ONE, handle, status);
+
+    waitObject = CONTAINING_RECORD(objectHeader, EX_WAITABLE_OBJECT, Header);
+    if (waitObject->Dispatcher == NULL)
+    {
+        status = EC_INVALID_STATE;
+    }
+    else
+    {
+        status = KeWaitForSingleObject(waitObject->Dispatcher, timeoutNs);
+    }
+
+    HO_STATUS releaseStatus = ExBootstrapReleaseResolvedObject(objectHeader);
+    if ((status == EC_SUCCESS || status == EC_TIMEOUT) && releaseStatus != EC_SUCCESS)
+        status = releaseStatus;
+
+    if (status != EC_SUCCESS)
+    {
+        if (status == EC_TIMEOUT)
+            return KiEncodeCapabilitySyscallStatus(status);
+
+        return KiRejectCapabilitySyscall("SYS_WAIT_ONE", SYS_WAIT_ONE, handle, status);
+    }
+
+    klog(KLOG_LEVEL_INFO,
+         KE_USER_BOOTSTRAP_LOG_CAP_WAIT_SUCCEEDED " handle=%u thread=%u timeout_ms=%lu\n",
+         handle,
+         thread ? thread->ThreadId : 0U,
+         (unsigned long)timeoutMsRaw);
 
     return 0;
 }
@@ -320,6 +400,8 @@ ExBootstrapAdapterDispatchCapabilitySyscall(uint64_t syscallNumber,
         return KiHandleCapabilityWrite(process, (EX_PRIVATE_HANDLE)arg0, arg1, arg2);
     case SYS_CLOSE:
         return KiHandleCapabilityClose(process, (EX_PRIVATE_HANDLE)arg0);
+    case SYS_WAIT_ONE:
+        return KiHandleCapabilityWaitOne(process, (EX_PRIVATE_HANDLE)arg0, arg1, arg2);
     default:
         klog(KLOG_LEVEL_WARNING,
              KE_USER_BOOTSTRAP_LOG_INVALID_CAP_SYSCALL " nr=%lu thread=%u args=(%p,%p,%p)\n",
