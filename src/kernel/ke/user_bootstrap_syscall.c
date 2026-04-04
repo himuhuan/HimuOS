@@ -8,6 +8,7 @@
 
 #include <arch/amd64/idt.h>
 #include <arch/amd64/pm.h>
+#include <kernel/ex/ex_bootstrap_adapter.h>
 #include <kernel/hodbg.h>
 #include <kernel/ke/console.h>
 #include <kernel/ke/mm.h>
@@ -223,7 +224,7 @@ static int64_t
 KiHandleRawExit(uint64_t exitCode)
 {
     KTHREAD *thread = KeGetCurrentThread();
-    if (!thread || thread->UserBootstrapContext == NULL)
+    if (!thread || ExBootstrapAdapterQueryThreadStaging(thread) == NULL)
         KiAbortRawExit(thread, exitCode, EC_INVALID_STATE, "Bootstrap raw exit missing staging");
 
     klog(KLOG_LEVEL_INFO,
@@ -231,7 +232,7 @@ KiHandleRawExit(uint64_t exitCode)
          (unsigned long)exitCode,
          thread->ThreadId);
 
-    HO_STATUS status = KeUserBootstrapDestroyStaging(thread->UserBootstrapContext);
+    HO_STATUS status = ExBootstrapAdapterHandleRawExit(thread);
     if (status != EC_SUCCESS)
         KiAbortRawExit(thread, exitCode, status, "Bootstrap raw exit teardown failed after no-return transition");
 
@@ -247,7 +248,7 @@ static int64_t
 KiDispatchRawSyscall(uint64_t rawSyscallNumber, uint64_t arg0, uint64_t arg1, uint64_t arg2)
 {
     KTHREAD *thread = KeGetCurrentThread();
-    if (!thread || thread->UserBootstrapContext == NULL)
+    if (!thread || ExBootstrapAdapterQueryThreadStaging(thread) == NULL)
     {
         if (rawSyscallNumber == SYS_RAW_EXIT)
             KiAbortRawExit(thread, arg0, EC_INVALID_STATE, "Bootstrap raw exit missing staging");

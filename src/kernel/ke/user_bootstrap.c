@@ -7,6 +7,7 @@
  */
 
 #include <arch/amd64/pm.h>
+#include <kernel/ex/ex_bootstrap_adapter.h>
 #include <kernel/ke/mm.h>
 #include <kernel/ke/scheduler.h>
 #include <kernel/ke/user_bootstrap.h>
@@ -211,10 +212,13 @@ static KE_USER_BOOTSTRAP_STAGING *
 KiGetCurrentThreadStaging(void)
 {
     KTHREAD *thread = KeGetCurrentThread();
-    if (!thread || thread->UserBootstrapContext == NULL)
+    if (!thread)
         return NULL;
 
-    KE_USER_BOOTSTRAP_STAGING *staging = thread->UserBootstrapContext;
+    KE_USER_BOOTSTRAP_STAGING *staging = ExBootstrapAdapterQueryThreadStaging(thread);
+    if (staging == NULL)
+        return NULL;
+
     if (staging->AttachedThread != thread)
         return NULL;
 
@@ -330,8 +334,6 @@ KeUserBootstrapDestroyStaging(KE_USER_BOOTSTRAP_STAGING *staging)
 
     if (staging->AttachedThread != NULL)
     {
-        HO_KASSERT(staging->AttachedThread->UserBootstrapContext == staging, EC_INVALID_STATE);
-        staging->AttachedThread->UserBootstrapContext = NULL;
         staging->AttachedThread = NULL;
     }
 
@@ -383,8 +385,6 @@ KeUserBootstrapAttachThread(KTHREAD *thread, KE_USER_BOOTSTRAP_STAGING *staging)
         return EC_INVALID_STATE;
     if (thread->State != KTHREAD_STATE_NEW)
         return EC_INVALID_STATE;
-    if (thread->UserBootstrapContext != NULL && thread->UserBootstrapContext != staging)
-        return EC_INVALID_STATE;
     if (staging->AttachedThread != NULL && staging->AttachedThread != thread)
         return EC_INVALID_STATE;
     if (KiFindMappedPage(staging, KE_USER_BOOTSTRAP_MAPPING_KIND_CODE) == NULL)
@@ -393,7 +393,6 @@ KeUserBootstrapAttachThread(KTHREAD *thread, KE_USER_BOOTSTRAP_STAGING *staging)
         return EC_INVALID_STATE;
 
     staging->AttachedThread = thread;
-    thread->UserBootstrapContext = staging;
     return EC_SUCCESS;
 }
 
@@ -438,9 +437,9 @@ KeUserBootstrapEnterCurrentThread(void)
 {
     KTHREAD *thread = KeGetCurrentThread();
     HO_KASSERT(thread != NULL, EC_INVALID_STATE);
-    HO_KASSERT(thread->UserBootstrapContext != NULL, EC_INVALID_STATE);
 
-    KE_USER_BOOTSTRAP_STAGING *staging = thread->UserBootstrapContext;
+    KE_USER_BOOTSTRAP_STAGING *staging = KiGetCurrentThreadStaging();
+    HO_KASSERT(staging != NULL, EC_INVALID_STATE);
     HO_KASSERT(staging->AttachedThread == thread, EC_INVALID_STATE);
     HO_KASSERT(KiFindMappedPage(staging, KE_USER_BOOTSTRAP_MAPPING_KIND_CODE) != NULL, EC_INVALID_STATE);
     HO_KASSERT(KiFindMappedPage(staging, KE_USER_BOOTSTRAP_MAPPING_KIND_STACK) != NULL, EC_INVALID_STATE);

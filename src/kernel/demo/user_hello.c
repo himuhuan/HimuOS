@@ -9,7 +9,18 @@
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
+/*
+ * Refactor anchor: keep the user_hello clean-pass evidence chain fixed as
+ * first entry, timer round-trip, rejected raw write, hello write,
+ * SYS_RAW_EXIT, bootstrap teardown complete, and idle/reaper reclaim.
+ * This change only permits boundary refactoring around ownership and
+ * registration seams for bootstrap user support.
+ * It must not change the profile's logs, ordering contract, or pass/fail behavior.
+ */
+
 #include "demo_internal.h"
+
+#include <kernel/ex/ex_bootstrap.h>
 
 #define KI_U32_BYTE(value, shift) ((uint8_t)((((uint32_t)(value)) >> (shift)) & 0xFFU))
 #define KI_U32_LE_BYTES(value)    KI_U32_BYTE((value), 0), KI_U32_BYTE((value), 8), KI_U32_BYTE((value), 16), \
@@ -71,31 +82,29 @@ KiUnexpectedUserHelloKernelEntry(void *arg)
 void
 RunUserHelloDemo(void)
 {
-    KE_USER_BOOTSTRAP_CREATE_PARAMS createParams = {
+    EX_BOOTSTRAP_PROCESS_CREATE_PARAMS createParams = {
         .CodeBytes = gKiUserHelloCodeBytes,
         .CodeLength = sizeof(gKiUserHelloCodeBytes),
         .EntryOffset = KI_USER_HELLO_PAYLOAD_ENTRY_OFFSET,
         .ConstBytes = gKiUserHelloConstBytes,
         .ConstLength = KI_USER_HELLO_PAYLOAD_HELLO_LENGTH,
     };
-    KE_USER_BOOTSTRAP_STAGING *staging = NULL;
-    KTHREAD *thread = NULL;
+    EX_BOOTSTRAP_THREAD_CREATE_PARAMS threadParams = {
+        .EntryPoint = KiUnexpectedUserHelloKernelEntry,
+        .EntryArg = NULL,
+    };
+    EX_PROCESS *process = NULL;
+    EX_THREAD *thread = NULL;
 
-    HO_STATUS status = KeUserBootstrapCreateStaging(&createParams, &staging);
+    HO_STATUS status = ExBootstrapCreateProcess(&createParams, &process);
     if (status != EC_SUCCESS)
         HO_KPANIC(status, "Failed to create staged user_hello payload");
 
-    status = KeThreadCreate(&thread, KiUnexpectedUserHelloKernelEntry, NULL);
+    status = ExBootstrapCreateThread(&process, &threadParams, &thread);
     if (status != EC_SUCCESS)
         HO_KPANIC(status, "Failed to create user_hello bootstrap thread");
 
-    thread->Flags |= KTHREAD_FLAG_BOOTSTRAP_USER;
-
-    status = KeUserBootstrapAttachThread(thread, staging);
-    if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to attach staged user_hello payload to bootstrap thread");
-
-    status = KeThreadStart(thread);
+    status = ExBootstrapStartThread(&thread);
     if (status != EC_SUCCESS)
         HO_KPANIC(status, "Failed to start user_hello bootstrap thread");
 }

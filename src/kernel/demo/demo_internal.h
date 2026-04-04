@@ -10,6 +10,7 @@
 #pragma once
 
 #include <kernel/demo.h>
+#include <kernel/ex/ex_bootstrap_abi.h>
 #include <kernel/hodbg.h>
 #include <kernel/ke/scheduler.h>
 #include <kernel/ke/kthread.h>
@@ -18,7 +19,6 @@
 #include <kernel/ke/event.h>
 #include <kernel/ke/mutex.h>
 #include <kernel/ke/semaphore.h>
-#include <kernel/ke/user_bootstrap.h>
 
 #define HO_DEMO_TEST_NONE              0
 #define HO_DEMO_TEST_SCHEDULE          1
