@@ -25,14 +25,17 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS ExBootstrapCreateProcess(const EX_BOOTSTRAP
 
 /**
  * Destroy an owning bootstrap process handle that has not been transferred to
- * a bootstrap thread.
+ * a bootstrap thread. The runtime registry only exposes a non-owning alias for
+ * lookup, so final release still happens through this explicit destroy path or
+ * through thread-owned teardown after ExBootstrapCreateThread().
  */
 HO_KERNEL_API HO_NODISCARD HO_STATUS ExBootstrapDestroyProcess(EX_PROCESS *process);
 
 /**
  * Create a bootstrap thread and transfer process ownership into it.
  * On success this consumes *processHandle, sets it to NULL, and returns a new
- * owning EX_THREAD handle in *outThread.
+ * owning EX_THREAD handle in *outThread. The runtime registry then publishes a
+ * non-owning alias for KTHREAD-based lookup only.
  * On failure *processHandle remains owned by the caller.
  */
 HO_KERNEL_API HO_NODISCARD HO_STATUS ExBootstrapCreateThread(EX_PROCESS **processHandle,
@@ -42,7 +45,8 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS ExBootstrapCreateThread(EX_PROCESS **proces
 /**
  * Start a bootstrap thread and transfer thread ownership to the runtime.
  * On success this consumes *threadHandle, sets it to NULL, and the runtime
- * finalizer becomes responsible for teardown.
+ * finalizer becomes responsible for teardown and final release; the published
+ * runtime alias remains non-owning.
  * On failure *threadHandle remains owned by the caller.
  */
 HO_KERNEL_API HO_NODISCARD HO_STATUS ExBootstrapStartThread(EX_THREAD **threadHandle);

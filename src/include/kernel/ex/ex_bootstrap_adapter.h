@@ -29,7 +29,8 @@ HO_KERNEL_API HO_STATUS ExBootstrapAdapterWrapThread(struct KTHREAD *thread);
 
 /**
  * Finalize the Ex ownership for a terminated bootstrap thread: destroy the
- * staging through ExProcess ownership, then free Ex objects.
+ * staging through ExProcess ownership, then clear the non-owning runtime alias
+ * and free Ex objects through the existing final release path.
  * Called by the registered bootstrap finalize callback.
  * Returns EC_SUCCESS if the thread had no Ex wrapper (non-bootstrap path).
  */
@@ -37,21 +38,23 @@ HO_KERNEL_API HO_STATUS ExBootstrapAdapterFinalizeThread(struct KTHREAD *thread)
 
 /**
  * Query whether a KTHREAD currently has an Ex bootstrap wrapper.
- * Returns TRUE if the adapter owns an EX_THREAD for this KTHREAD.
+ * Returns TRUE if the runtime registry currently exposes a non-owning
+ * EX_THREAD alias for this KTHREAD.
  */
 HO_KERNEL_API BOOL ExBootstrapAdapterHasWrapper(const struct KTHREAD *thread);
 
 /**
  * Query the Ex-owned bootstrap staging associated with a KTHREAD.
- * Returns NULL if the thread is not owned by the Ex bootstrap runtime or if
- * the clean raw-exit path has already consumed the staging.
+ * Returns NULL if the runtime registry has no alias for the thread or if the
+ * clean raw-exit path has already consumed the staging.
  */
 HO_KERNEL_API struct KE_USER_BOOTSTRAP_STAGING *ExBootstrapAdapterQueryThreadStaging(const struct KTHREAD *thread);
 
 /**
  * Destroy bootstrap staging for a clean SYS_RAW_EXIT handoff.
  * On success the staging is consumed but the minimal Ex wrapper remains until
- * finalizer/reaper release the bootstrap thread identity.
+ * finalizer/reaper perform the final wrapper release; the runtime alias stays
+ * non-owning throughout that handoff.
  * On failure both staging ownership and Ex wrapper state are cleared.
  */
 HO_KERNEL_API HO_NODISCARD HO_STATUS ExBootstrapAdapterHandleRawExit(struct KTHREAD *thread);

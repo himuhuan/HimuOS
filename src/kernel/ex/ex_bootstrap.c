@@ -19,6 +19,226 @@
 EX_PROCESS *gExBootstrapProcess = NULL;
 EX_THREAD *gExBootstrapThread = NULL;
 
+static void
+KiInitializeObjectHeader(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE type)
+{
+    if (header == NULL)
+        return;
+
+    header->Type = type;
+    header->ReferenceCount = 1;
+}
+
+static HO_STATUS
+KiRetainObject(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE expectedType)
+{
+    if (header == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (header->Type != expectedType || header->ReferenceCount == 0)
+        return EC_INVALID_STATE;
+
+    header->ReferenceCount++;
+    return EC_SUCCESS;
+}
+
+static HO_STATUS
+KiReleaseObject(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE expectedType, uint32_t *remainingReferences)
+{
+    if (header == NULL || remainingReferences == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (header->Type != expectedType || header->ReferenceCount == 0)
+        return EC_INVALID_STATE;
+
+    header->ReferenceCount--;
+    *remainingReferences = header->ReferenceCount;
+    return EC_SUCCESS;
+}
+
+static HO_STATUS
+KiRestoreImportedRootForProcessTeardown(const EX_PROCESS *process)
+{
+    HO_PHYSICAL_ADDRESS activeRoot = 0;
+
+    if (process == NULL || !process->AddressSpace.Initialized)
+        return EC_SUCCESS;
+
+    if (KeQueryActiveRootPageTable(&activeRoot) != EC_SUCCESS ||
+        activeRoot != process->AddressSpace.RootPageTablePhys)
+    {
+        return EC_SUCCESS;
+    }
+
+    const KE_KERNEL_ADDRESS_SPACE *kernelSpace = KeGetKernelAddressSpace();
+    if (kernelSpace == NULL || !kernelSpace->Initialized || kernelSpace->RootPageTablePhys == 0)
+        return EC_INVALID_STATE;
+
+    return KeSwitchAddressSpace(kernelSpace->RootPageTablePhys);
+}
+
+void
+ExBootstrapInitializeProcessObject(EX_PROCESS *process)
+{
+    if (process == NULL)
+        return;
+
+    KiInitializeObjectHeader(&process->Header, EX_OBJECT_TYPE_PROCESS);
+}
+
+void
+ExBootstrapInitializeThreadObject(EX_THREAD *thread)
+{
+    if (thread == NULL)
+        return;
+
+    KiInitializeObjectHeader(&thread->Header, EX_OBJECT_TYPE_THREAD);
+}
+
+BOOL
+ExBootstrapHasRuntimeAlias(void)
+{
+    return gExBootstrapProcess != NULL || gExBootstrapThread != NULL;
+}
+
+BOOL
+ExBootstrapRuntimeAliasMatchesProcess(const EX_PROCESS *process)
+{
+    return process != NULL && gExBootstrapProcess == process;
+}
+
+EX_THREAD *
+ExBootstrapLookupRuntimeThread(const KTHREAD *thread)
+{
+    if (thread == NULL || gExBootstrapThread == NULL || gExBootstrapThread->Thread != thread)
+        return NULL;
+
+    return gExBootstrapThread;
+}
+
+EX_PROCESS *
+ExBootstrapLookupRuntimeProcess(const KTHREAD *thread)
+{
+    EX_THREAD *runtimeThread = ExBootstrapLookupRuntimeThread(thread);
+    if (runtimeThread == NULL)
+        return NULL;
+
+    return runtimeThread->Process;
+}
+
+HO_STATUS
+ExBootstrapPublishRuntimeAlias(EX_PROCESS *process, EX_THREAD *thread)
+{
+    if (process == NULL || thread == NULL || thread->Thread == NULL || thread->Process != process)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (ExBootstrapHasRuntimeAlias())
+        return EC_INVALID_STATE;
+
+    gExBootstrapProcess = process;
+    gExBootstrapThread = thread;
+    return EC_SUCCESS;
+}
+
+void
+ExBootstrapUnpublishRuntimeAlias(EX_THREAD **outThread, EX_PROCESS **outProcess)
+{
+    EX_THREAD *thread = gExBootstrapThread;
+    EX_PROCESS *process = gExBootstrapProcess;
+
+    gExBootstrapThread = NULL;
+    gExBootstrapProcess = NULL;
+
+    if (outThread != NULL)
+        *outThread = thread;
+
+    if (outProcess != NULL)
+        *outProcess = process;
+}
+
+HO_STATUS
+ExBootstrapTeardownProcessPayload(EX_PROCESS *process)
+{
+    HO_STATUS status = KiRestoreImportedRootForProcessTeardown(process);
+
+    if (process == NULL)
+        return status;
+
+    if (process->Staging != NULL)
+    {
+        HO_STATUS stagingStatus = KeUserBootstrapDestroyStaging(process->Staging);
+
+        /* Destroy consumes the staging object even when teardown reports an error. */
+        process->Staging = NULL;
+
+        if (status == EC_SUCCESS)
+            status = stagingStatus;
+    }
+
+    if (process->AddressSpace.Initialized)
+    {
+        HO_STATUS addrStatus = KeDestroyProcessAddressSpace(&process->AddressSpace);
+        if (status == EC_SUCCESS)
+            status = addrStatus;
+    }
+
+    return status;
+}
+
+EX_PROCESS *
+ExBootstrapRetainProcess(EX_PROCESS *process)
+{
+    if (process == NULL)
+        return NULL;
+
+    if (KiRetainObject(&process->Header, EX_OBJECT_TYPE_PROCESS) != EC_SUCCESS)
+        return NULL;
+
+    return process;
+}
+
+HO_STATUS
+ExBootstrapReleaseProcess(EX_PROCESS *process)
+{
+    uint32_t remainingReferences = 0;
+    HO_STATUS status = EC_SUCCESS;
+
+    if (process == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    status = KiReleaseObject(&process->Header, EX_OBJECT_TYPE_PROCESS, &remainingReferences);
+    if (status != EC_SUCCESS || remainingReferences != 0)
+        return status;
+
+    kfree(process);
+    return EC_SUCCESS;
+}
+
+HO_STATUS
+ExBootstrapReleaseThread(EX_THREAD *thread)
+{
+    EX_PROCESS *process = NULL;
+    uint32_t remainingReferences = 0;
+    HO_STATUS status = EC_SUCCESS;
+
+    if (thread == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    status = KiReleaseObject(&thread->Header, EX_OBJECT_TYPE_THREAD, &remainingReferences);
+    if (status != EC_SUCCESS || remainingReferences != 0)
+        return status;
+
+    process = thread->Process;
+    thread->Thread = NULL;
+    thread->Process = NULL;
+    kfree(thread);
+
+    if (process != NULL)
+        return ExBootstrapReleaseProcess(process);
+
+    return EC_SUCCESS;
+}
+
 static HO_STATUS
 KiDestroyNewThread(KTHREAD *thread)
 {
@@ -74,10 +294,15 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
     if (process == NULL)
         return EC_OUT_OF_RESOURCE;
 
+    ExBootstrapInitializeProcessObject(process);
+
     HO_STATUS status = KeCreateProcessAddressSpace(&process->AddressSpace);
     if (status != EC_SUCCESS)
     {
-        kfree(process);
+        HO_STATUS releaseStatus = ExBootstrapReleaseProcess(process);
+        if (releaseStatus != EC_SUCCESS)
+            return releaseStatus;
+
         return status;
     }
 
@@ -85,8 +310,12 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
     if (status != EC_SUCCESS)
     {
         HO_STATUS destroyStatus = KeDestroyProcessAddressSpace(&process->AddressSpace);
-        kfree(process);
-        return destroyStatus == EC_SUCCESS ? status : destroyStatus;
+        HO_STATUS releaseStatus = ExBootstrapReleaseProcess(process);
+
+        if (destroyStatus != EC_SUCCESS)
+            return destroyStatus;
+
+        return releaseStatus == EC_SUCCESS ? status : releaseStatus;
     }
 
     process->Staging = staging;
@@ -97,32 +326,18 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
 HO_STATUS
 ExBootstrapDestroyProcess(EX_PROCESS *process)
 {
-    HO_STATUS status = EC_SUCCESS;
-
     if (process == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (process == gExBootstrapProcess)
+    if (ExBootstrapRuntimeAliasMatchesProcess(process))
         return EC_INVALID_STATE;
 
-    if (process->Staging != NULL)
-    {
-        status = KeUserBootstrapDestroyStaging(process->Staging);
+    HO_STATUS status = ExBootstrapTeardownProcessPayload(process);
 
-        /* Destroy consumes the staging object even when teardown reports an error. */
-        process->Staging = NULL;
-    }
+    HO_STATUS releaseStatus = ExBootstrapReleaseProcess(process);
+    if (status == EC_SUCCESS)
+        status = releaseStatus;
 
-    if (process->AddressSpace.Initialized)
-    {
-        HO_STATUS addrStatus = KeDestroyProcessAddressSpace(&process->AddressSpace);
-        if (addrStatus != EC_SUCCESS && status == EC_SUCCESS)
-        {
-            status = addrStatus;
-        }
-    }
-
-    kfree(process);
     return status;
 }
 
@@ -144,17 +359,22 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
     if (process == NULL || params == NULL || params->EntryPoint == NULL || process->Staging == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (gExBootstrapProcess != NULL || gExBootstrapThread != NULL)
+    if (ExBootstrapHasRuntimeAlias())
         return EC_INVALID_STATE;
 
     thread = (EX_THREAD *)kzalloc(sizeof(*thread));
     if (thread == NULL)
         return EC_OUT_OF_RESOURCE;
 
+    ExBootstrapInitializeThreadObject(thread);
+
     HO_STATUS status = KeThreadCreate(&kernelThread, (KTHREAD_ENTRY)params->EntryPoint, params->EntryArg);
     if (status != EC_SUCCESS)
     {
-        kfree(thread);
+        HO_STATUS releaseStatus = ExBootstrapReleaseThread(thread);
+        if (releaseStatus != EC_SUCCESS)
+            return releaseStatus;
+
         return status;
     }
 
@@ -162,15 +382,32 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
     if (status != EC_SUCCESS)
     {
         HO_STATUS destroyStatus = KiDestroyNewThread(kernelThread);
-        kfree(thread);
-        return destroyStatus == EC_SUCCESS ? status : destroyStatus;
+        HO_STATUS releaseStatus = ExBootstrapReleaseThread(thread);
+
+        if (destroyStatus != EC_SUCCESS)
+            return destroyStatus;
+
+        return releaseStatus == EC_SUCCESS ? status : releaseStatus;
     }
 
     thread->Thread = kernelThread;
     thread->Process = process;
 
-    gExBootstrapProcess = process;
-    gExBootstrapThread = thread;
+    status = ExBootstrapPublishRuntimeAlias(process, thread);
+    if (status != EC_SUCCESS)
+    {
+        HO_STATUS destroyStatus = KiDestroyNewThread(kernelThread);
+
+        thread->Thread = NULL;
+        thread->Process = NULL;
+
+        HO_STATUS releaseStatus = ExBootstrapReleaseThread(thread);
+
+        if (destroyStatus != EC_SUCCESS)
+            return destroyStatus;
+
+        return releaseStatus == EC_SUCCESS ? status : releaseStatus;
+    }
 
     *outThread = thread;
     *processHandle = NULL;
@@ -202,49 +439,29 @@ HO_STATUS
 ExBootstrapTeardownThread(EX_THREAD *thread)
 {
     EX_PROCESS *process = NULL;
-    HO_STATUS firstError = EC_SUCCESS;
 
     if (thread == NULL || thread->Thread == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (gExBootstrapThread != thread)
+    if (ExBootstrapLookupRuntimeThread(thread->Thread) != thread)
         return EC_INVALID_STATE;
 
     if (thread->Thread->State != KTHREAD_STATE_NEW)
         return EC_INVALID_STATE;
 
-    process = thread->Process;
+    process = ExBootstrapLookupRuntimeProcess(thread->Thread);
 
-    if (process != NULL && process->Staging != NULL)
-    {
-        firstError = KeUserBootstrapDestroyStaging(process->Staging);
-
-        /* Destroy consumes the staging object even when teardown reports an error. */
-        process->Staging = NULL;
-    }
-
-    if (process != NULL && process->AddressSpace.Initialized)
-    {
-        HO_STATUS addrStatus = KeDestroyProcessAddressSpace(&process->AddressSpace);
-        if (firstError == EC_SUCCESS)
-        {
-            firstError = addrStatus;
-        }
-    }
+    HO_STATUS firstError = ExBootstrapTeardownProcessPayload(process);
 
     HO_STATUS threadStatus = KiDestroyNewThread(thread->Thread);
     if (firstError == EC_SUCCESS)
         firstError = threadStatus;
 
-    gExBootstrapThread = NULL;
-    gExBootstrapProcess = NULL;
+    ExBootstrapUnpublishRuntimeAlias(NULL, NULL);
 
-    thread->Thread = NULL;
-    thread->Process = NULL;
-    kfree(thread);
-
-    if (process != NULL)
-        kfree(process);
+    HO_STATUS releaseStatus = ExBootstrapReleaseThread(thread);
+    if (firstError == EC_SUCCESS)
+        firstError = releaseStatus;
 
     return firstError;
 }
