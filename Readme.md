@@ -1,26 +1,29 @@
 # Himu Operating System (HimuOS)
 
-*Design and Implementation of a UEFI-based x86_64 User-Mode Operating System Kernel*
+*A UEFI-based x86_64 Macro Kernel with a Dual-Process User-Mode MVP*
 
 ## 概要
 本项目旨在从零开始设计并实现一个名为 "HimuOS" 的x86_64架构宏内核操作系统。
 
 与传统的依赖Legacy BIOS的教学系统不同，本项目将专注于现代PC的UEFI (统一可扩展固件接口) 引导标准。系统将通过一个自定义的UEFI引导管理器 (HimuBootManager) 加载，该管理器负责初始化图形输出、获取内存映射，并最终将执行权交给内核。
 
-在内核架构层面，HimuOS 借鉴 Windows NT 的分层宏内核设计思想，将内核划分为机制层（Ke 层）与策略层（Ex 层）两个层次。Ke 层负责硬件状态的原子化抽象与维护，包括中断描述符表（Interrupt Descriptor Table，IDT）管理、时间源（Time Source）与时钟事件（Clock Event）等底层机制的封装；Ex 层在 Ke 层之上引入对象管理器（Object Manager），将内核资源统一抽象为受控对象，并通过基于能力（Capability）的句柄模型实现用户态与内核态之间的安全隔离。两层之间遵循严格的单向依赖原则，即 Ex 层依赖 Ke 层而非反向调用，从而有效降低模块间耦合度。
+在内核架构层面，HimuOS 借鉴 Windows NT 的分层宏内核设计思想，将内核划分为机制层（Ke 层）与策略层（Ex 层）两个层次。Ke 层负责硬件状态的原子化抽象与维护，包括中断描述符表（Interrupt Descriptor Table，IDT）管理、时间源（Time Source）与时钟事件（Clock Event）等底层机制的封装；Ex 层在 Ke 层之上持有用户态可见的进程、线程、句柄与系统调用 contract。两层之间遵循严格的单向依赖原则，即 Ex 层依赖 Ke 层而非反向调用，从而有效降低模块间耦合度；从项目对外口径上，**用户态只能通过 Ex 暴露的接口访问内核服务**。
 
-在 Ke 层的具体实现中，本文采用设备—汇（Device-Sink）抽象模式，为控制台、时间源与时钟事件等子系统提供统一的硬件抽象接口，支持多种底层驱动实现（如时间戳计数器 TSC、高精度事件定时器 HPET、本地高级可编程中断控制器定时器 LAPIC Timer 等）的透明切换。系统建立了基于四级页表的虚拟内存管理机制，实现了内核态（Ring 0）与用户态（Ring 3）的特权级隔离，并设计了基于系统调用的统一服务入口。
+在 Ke 层的具体实现中，本文采用设备—汇（Device-Sink）抽象模式，为控制台、时间源与时钟事件等子系统提供统一的硬件抽象接口，支持多种底层驱动实现（如时间戳计数器 TSC、高精度事件定时器 HPET、本地高级可编程中断控制器定时器 LAPIC Timer 等）的透明切换。系统建立了基于四级页表的虚拟内存管理机制，实现了内核态（Ring 0）与用户态（Ring 3）的特权级隔离，并通过共享 `int 0x80` trap entry + Ex-facing syscall contract 为用户态提供最小服务入口。
 
-内核将以x86_64长模式 (Long Mode) 运行，并实现现代操作系统的核心功能：
+当前 README 以本轮 **MVP 交付范围** 为准，而不再继续承诺完整用户子系统的最终形态。该 MVP 的目标是交付一个**正式成立、可论证、可演示的双进程用户态原型操作系统**。
 
-- 虚拟内存管理： 建立并启用四级页表，为内核和用户程序提供隔离的、平坦的虚拟地址空间。
-- 特权级分离： 实现内核态 (Ring 0) 和用户态 (Ring 3) 的安全隔离。
-- 系统调用： 设计并实现一个系统调用接口，作为用户态程序获取内核服务的唯一入口。
-- 并发与调度： 在单处理器（AP）上实现一个基于优先级和时间片轮转（RR）的多任务调度器，支持内核级线程和上下文切换。
-- 基础驱动： 支持基于GOP（UEFI）的彩色文本界面和键盘循环缓冲输入。
+本轮 MVP 以以下能力为交付目标：
+
+- 虚拟内存管理：建立并启用四级页表，为内核和每个用户进程提供隔离的地址空间。
+- 特权级分离：实现内核态（Ring 0）和用户态（Ring 3）的安全隔离。
+- 用户程序模型：以**编译型 C 用户程序**作为正式用户程序形态，并将其装载到每个 `ExProcess` 的私有地址空间中。
+- 系统调用与句柄：以 Ex-facing 的最小句柄化 syscall contract 作为用户态请求服务的正式方向，当前聚焦 stdout、wait、close、exit 等原型级能力。
+- 并发与调度：在单处理器（AP）上以抢占式时间片轮转（RR）为基线支撑双进程原型；若团队时间允许，再补入简化版优先级调度。
+- 可观测性：以 GOP 文本输出和 COM1 串口输出作为主要演示与诊断界面。
 
 > [!IMPORTANT]
-> 本项目**不包含**文件系统和多核（SMP）支持.
+> 本轮 MVP **不包含** 文件系统、多核（SMP）、键盘输入、Shell、通用 ELF Loader 与完整 Object Manager。
 
 ## HimuOS 参数说明
 
@@ -34,14 +37,16 @@
 | 存储器    | 四级页表；页式虚拟存储器                              |
 | 物理内存   | 最低 32MB, 最高 128GB                         |
 | 特权级    | 支持内核态（Ring 0) 和用户态 (Ring 3)               |
-| 用户空间   | 约 16 EB - 128 TB 地址空间                     |
-| 并发与同步  | 支持；仅支持 单AP 下的多任务调度                        |
+| 用户空间   | 每进程私有地址空间；当前以固定 bootstrap window 装载用户映像   |
+| 用户程序模型 | 目标为编译型 C 用户程序；当前 MVP 以双进程原型为交付目标         |
+| 系统调用   | 目标方向为 `int 0x80` + Ex-facing 最小句柄化 syscall contract |
+| 并发与同步  | 仅支持 单AP；当前下限为 RR，简化优先级调度为可选增强项            |
 | 多线程    | 支持内核级线程调度                                 |
 | 动态内存分配 | 支持                                        |
 | 中断     | 支持中断                                      |
 | 文件系统   | 不支持                                       |
-| 显示器    | 支持彩色的文本界面                                 |
-| 设备支持   | 标准 VGA 显示器、标准QWERTY键盘输入支持；MMIO 支持         |
+| 显示器    | 支持 GOP 彩色文本界面与 COM1 串口输出                  |
+| 设备支持   | GOP / COM1 / MMIO 支持；键盘与 Shell 不在本轮 MVP 范围 |
 
 ## 回归 profile 与推荐执行流程
 
@@ -63,6 +68,7 @@ BUILD_FLAVOR=<flavor> HO_DEMO_TEST_NAME=<profile> HO_DEMO_TEST_DEFINE=<define> \
 | ------ | ------ | ------ | ------ | ------ |
 | `schedule` | `test-schedule` | `HO_DEMO_TEST_SCHEDULE` | clean pass with continued boot/idle | scheduler smoke coverage, thread/event/semaphore/mutex 基线路径 |
 | `user_hello` | `test-user_hello` | `HO_DEMO_TEST_USER_HELLO` | bootstrap-only minimal user-mode bring-up | 最小 Ring 3 进入、来自 CPL3 的 P1 timer round-trip、P1 gate 之后的 rejected raw write probe / successful hello write / `SYS_RAW_EXIT`、P3 teardown-complete → thread terminated → idle/reaper reclaimed 证据链 |
+| `user_caps` | `test-user_caps` | `HO_DEMO_TEST_USER_CAPS` | bootstrap-only capability pilot | 版本化 capability seed block、stdout capability write、`SYS_CLOSE`、stale-handle rejection、`SYS_WAIT_ONE` 与 clean exit 证据链 |
 | `guard_wait` | `test-guard_wait` | `HO_DEMO_TEST_GUARD_WAIT` | diagnosable contract violation or panic | critical-section guard misuse |
 | `owned_exit` | `test-owned_exit` | `HO_DEMO_TEST_OWNED_EXIT` | diagnosable contract violation or panic | exit while owning a mutex |
 | `irql_wait` | `test-irql_wait` | `HO_DEMO_TEST_IRQL_WAIT` | diagnosable contract violation or panic | wait at `DISPATCH_LEVEL` |
@@ -74,7 +80,7 @@ BUILD_FLAVOR=<flavor> HO_DEMO_TEST_NAME=<profile> HO_DEMO_TEST_DEFINE=<define> \
 | `pf_fixmap` | `test-pf_fixmap` | `HO_DEMO_TEST_PF_FIXMAP` | intentional fatal page-fault halt with bounded diagnostics | active fixmap alias diagnosis |
 | `pf_heap` | `test-pf_heap` | `HO_DEMO_TEST_PF_HEAP` | intentional fatal page-fault halt with bounded diagnostics | heap-backed KVA diagnosis |
 
-其中 `user_hello` 是 bootstrap-only 的最小用户态 bring-up profile，用来固定“进入用户态 -> timer from user #1 -> timer from user #2 -> P1 gate armed -> invalid raw write rejected -> hello write succeeds -> `SYS_RAW_EXIT` -> idle/reaper 回收”的单一证据链。也就是说，P1 的 timer round-trip 和后续 P2 raw syscall 自检都属于同一个 `user_hello` profile 内部的分阶段验证，而不是新增独立的 P1-only 或 P2-only profile。它刻意复用当前 staging/imported-root 模型，因此**不是**最终进程地址空间合同，也不代表 Ex / handle-oriented 用户态接口已经定型；这里的 bootstrap raw syscall 也不构成未来正式 syscall ABI 的承诺。P3 进一步固定了 teardown-before-termination 的次序合同：正常路径下 `SYS_RAW_EXIT` 在进入 `KeThreadExit()` 之前完成 bootstrap 用户资源释放，scheduler finalizer 仅作为非预期残留的防御性兜底。
+当前用户态相关的稳定锚点主要是 `user_hello` 与 `user_caps`。前者固定最小 Ring 3 进入与 clean exit 证据链，后者固定 capability / handle 路径的最小合同。README 描述的 MVP 方向，是在这两条稳定锚点之上继续推进到**编译型、双进程、Ex-facing 的用户态原型**；因此，这两条 profile 应被视为当前主线的阶段性回归基础，而不是最终用户 ABI 的全部形态。
 
 ### 例子
 
@@ -91,17 +97,11 @@ bear -- make all BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DE
 BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO \
     bash scripts/qemu_capture.sh 30 /tmp/himuos-user-hello.log
 
-# guard-misuse profile
+# bootstrap capability pilot
 make clean
-bear -- make all BUILD_FLAVOR=test-guard_wait HO_DEMO_TEST_NAME=guard_wait HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_GUARD_WAIT
-BUILD_FLAVOR=test-guard_wait HO_DEMO_TEST_NAME=guard_wait HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_GUARD_WAIT \
-    bash scripts/qemu_capture.sh 30 /tmp/himuos-guard-wait.log
-
-# page-fault profile
-make clean
-bear -- make all BUILD_FLAVOR=test-pf_guard HO_DEMO_TEST_NAME=pf_guard HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_PF_GUARD
-BUILD_FLAVOR=test-pf_guard HO_DEMO_TEST_NAME=pf_guard HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_PF_GUARD \
-    bash scripts/qemu_capture.sh 30 /tmp/himuos-pf-guard.log
+bear -- make all BUILD_FLAVOR=test-user_caps HO_DEMO_TEST_NAME=user_caps HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_CAPS
+BUILD_FLAVOR=test-user_caps HO_DEMO_TEST_NAME=user_caps HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_CAPS \
+    bash scripts/qemu_capture.sh 30 /tmp/himuos-user-caps.log
 ```
 
 ## 版权与许可
