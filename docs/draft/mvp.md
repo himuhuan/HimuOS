@@ -188,6 +188,7 @@ User -> KE raw syscall service
 - 两个用户程序都是真实编译产物
 - 两个程序运行在不同进程上下文中
 - 两个程序都能使用自己的 capability / syscall 路径
+- 两个程序都优先使用 capability 路径
 - 两个程序都能被系统正确回收
 
 ### 关键任务
