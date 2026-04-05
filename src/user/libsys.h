@@ -72,6 +72,12 @@ HoUserWaitForP1Gate(void)
         ;
 }
 
+static inline const void *
+HoUserBootstrapStackGuardBase(void)
+{
+    return (const void *)(uint64_t)KE_USER_BOOTSTRAP_STACK_GUARD_BASE;
+}
+
 static inline const KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK *
 HoUserCapabilitySeedBlock(void)
 {
@@ -131,6 +137,12 @@ static inline int64_t
 HoUserRawWrite(const void *buffer, uint64_t length)
 {
     return HoUserRawSyscall3(HO_USER_INTERNAL_SYS_RAW_WRITE, (uint64_t)(const void *)buffer, length, 0);
+}
+
+static inline int64_t
+HoUserRawProbeGuardPageByte(void)
+{
+    return HoUserRawWrite(HoUserBootstrapStackGuardBase(), 1U);
 }
 
 static inline HO_NORETURN void

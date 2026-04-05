@@ -9,11 +9,6 @@
 
 #include "libsys.h"
 
-enum
-{
-    KI_USER_HELLO_PROBE_LENGTH = 1U,
-};
-
 static const char gKiUserHelloMessage[] = KE_USER_BOOTSTRAP_LOG_HELLO "\n";
 
 enum
@@ -28,7 +23,7 @@ main(void)
 
     HoUserWaitForP1Gate();
 
-    status = HoUserRawWrite((const void *)(uint64_t)KE_USER_BOOTSTRAP_STACK_GUARD_BASE, KI_USER_HELLO_PROBE_LENGTH);
+    status = HoUserRawProbeGuardPageByte();
     if (status != -(int64_t)EC_ILLEGAL_ARGUMENT)
         HoUserAbort();
 
