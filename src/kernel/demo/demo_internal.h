@@ -93,6 +93,7 @@ void PageFaultFixmapThread(void *arg);
 void PageFaultHeapThread(void *arg);
 
 void RunIrqlSelfTest(void);
+void RunPriorityReadyQueueSmokeDemo(void);
 void RunScheduleDemo(void);
 void RunThreadDemo(void);
 void RunEventDemo(void);
