@@ -45,8 +45,7 @@ HO_KERNEL_API BOOL ExBootstrapAdapterHasWrapper(const struct KTHREAD *thread);
 
 /**
  * Query the Ex-owned bootstrap staging associated with a KTHREAD.
- * Returns NULL if the runtime registry has no alias for the thread or if the
- * clean raw-exit path has already consumed the staging.
+ * Returns NULL if the runtime registry has no alias for the thread.
  */
 HO_KERNEL_API struct KE_USER_BOOTSTRAP_STAGING *ExBootstrapAdapterQueryThreadStaging(const struct KTHREAD *thread);
 
@@ -60,10 +59,8 @@ HO_KERNEL_API HO_NODISCARD int64_t ExBootstrapAdapterDispatchCapabilitySyscall(u
 																			   uint64_t arg2);
 
 /**
- * Destroy bootstrap staging for a clean SYS_RAW_EXIT handoff.
- * On success the staging is consumed but the minimal Ex wrapper remains until
- * finalizer/reaper perform the final wrapper release; the runtime alias stays
- * non-owning throughout that handoff.
- * On failure both staging ownership and Ex wrapper state are cleared.
+ * Validate a clean SYS_RAW_EXIT handoff.
+ * Raw exit must not consume bootstrap staging in place; the terminated-thread
+ * finalizer remains responsible for payload teardown and final wrapper release.
  */
 HO_KERNEL_API HO_NODISCARD HO_STATUS ExBootstrapAdapterHandleRawExit(struct KTHREAD *thread);

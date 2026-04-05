@@ -98,8 +98,9 @@ typedef struct __attribute__((packed)) KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK
  * - bounded copy-in into a kernel scratch buffer
  *
  * Stable user_hello evidence-chain anchors then record P1 milestones first,
- * followed by raw-write rejection/success and raw-exit handoff. The fixed
- * addresses above remain bootstrap layout defaults, not a shared-root ABI.
+ * followed by raw-write rejection/success, SYS_RAW_EXIT, thread termination,
+ * finalizer teardown completion, and idle/reaper reclaim. The fixed addresses
+ * above remain bootstrap layout defaults, not a shared-root ABI.
  */
 #define KE_USER_BOOTSTRAP_LOG_ENTER_USER_MODE          "[USERBOOT] enter user mode"
 #define KE_USER_BOOTSTRAP_LOG_P1_FIRST_ENTRY           KE_USER_BOOTSTRAP_LOG_ENTER_USER_MODE
@@ -118,6 +119,5 @@ typedef struct __attribute__((packed)) KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK
 #define KE_USER_BOOTSTRAP_LOG_INVALID_USER_BUFFER      "[USERBOOT] invalid user buffer"
 #define KE_USER_BOOTSTRAP_LOG_TEARDOWN_FAILED          "[USERBOOT] bootstrap teardown failed"
 #define KE_USER_BOOTSTRAP_LOG_TEARDOWN_COMPLETE        "[USERBOOT] bootstrap teardown complete"
-#define KE_USER_BOOTSTRAP_LOG_FALLBACK_RECLAIM         "[USERBOOT] fallback staging reclaim in finalizer"
 #define KE_USER_BOOTSTRAP_LOG_THREAD_TERMINATED_FORMAT "[SCHED] Thread %u terminated"
 #define KE_USER_BOOTSTRAP_LOG_IDLE_REAPER              "[USERBOOT] idle/reaper reclaimed user_hello thread"

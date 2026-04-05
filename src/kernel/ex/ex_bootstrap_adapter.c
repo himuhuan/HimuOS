@@ -295,11 +295,6 @@ ExBootstrapThreadRootQueryCallback(const KTHREAD *thread, HO_PHYSICAL_ADDRESS *o
 static HO_STATUS
 ExBootstrapFinalizeCallback(KTHREAD *thread)
 {
-    if (thread != NULL && ExBootstrapAdapterQueryThreadStaging(thread) != NULL)
-    {
-        klog(KLOG_LEVEL_WARNING, "[USERBOOT] fallback staging reclaim in finalizer thread=%u\n", thread->ThreadId);
-    }
-
     return ExBootstrapAdapterFinalizeThread(thread);
 }
 
@@ -351,6 +346,10 @@ ExBootstrapAdapterFinalizeThread(KTHREAD *thread)
     process = runtimeThread->Process;
 
     HO_STATUS status = ExBootstrapTeardownProcessPayload(process);
+    if (status == EC_SUCCESS)
+    {
+        klog(KLOG_LEVEL_INFO, KE_USER_BOOTSTRAP_LOG_TEARDOWN_COMPLETE " thread=%u\n", thread->ThreadId);
+    }
 
     HO_STATUS releaseStatus = KiDestroyBootstrapWrapperObjects(thread);
     if (status == EC_SUCCESS)
@@ -431,11 +430,7 @@ ExBootstrapAdapterHandleRawExit(KTHREAD *thread)
     if (process == NULL || process->Staging == NULL)
         return EC_INVALID_STATE;
 
-    HO_STATUS status = ExBootstrapTeardownProcessPayload(process);
-    if (status != EC_SUCCESS)
-        (void)KiDestroyBootstrapWrapperObjects(thread);
-
-    return status;
+    return EC_SUCCESS;
 }
 
 static HO_STATUS
