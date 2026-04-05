@@ -2,9 +2,9 @@
  * HimuOperatingSystem
  *
  * File: demo/user_hello.c
- * Description: Minimal fixed-layout user_hello payload covering P1 gate wiring,
+ * Description: Minimal compiled user_hello artifact bridge covering P1 gate wiring,
  *              P2 raw-syscall self-check, and P3 exit-reap teardown-before-termination
- *              evidence on the shared imported root staging model.
+ *              evidence for the userspace path built from src/user/.
  *
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
@@ -14,7 +14,7 @@
  * first entry, timer round-trip, rejected raw write, hello write,
  * SYS_RAW_EXIT, bootstrap teardown complete, and idle/reaper reclaim.
  * This change only permits boundary refactoring around ownership and
- * registration seams for bootstrap user support.
+ * registration seams for the compiled userspace bring-up path.
  * It must not change the profile's logs, ordering contract, or pass/fail behavior.
  */
 

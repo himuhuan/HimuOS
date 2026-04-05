@@ -425,7 +425,7 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  pf_fixmap   - page-fault demo: NX execute fault in active fixmap slot"
 	@echo "  pf_heap     - page-fault demo: NX execute fault in heap-backed KVA page"
 	@echo "  kthread_pool_race - regression suite for KTHREAD pool synchronization"
-	@echo "  user_hello  - staged minimal user-mode bootstrap profile scaffold"
+	@echo "  user_hello  - compiled minimal userspace hello regression profile"
 	@echo "  user_caps   - staged bootstrap stdout capability pilot regression"
 	@echo "Recommended explicit workflow:"
 	@echo "  make clean"
@@ -442,7 +442,7 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  make test irql_wait  # run a dispatch-guard misuse panic regression"
 	@echo "  make test pf_heap    # run heap-backed page-fault observability demo"
 	@echo "  make test kthread_pool_race # run the KTHREAD pool race regression suite"
-	@echo "  make test user_hello # select the staged minimal user-mode bootstrap profile"
+	@echo "  make test user_hello # select the compiled minimal userspace hello profile"
 	@echo "  make test user_caps  # select the staged bootstrap capability pilot profile"
 	@echo "  make test            # list available test modules"
 else
