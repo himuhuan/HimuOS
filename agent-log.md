@@ -1,119 +1,66 @@
-# Agent Log: introduce-ex-bootstrap-adapter
+# Agent Log — MVP P1: Introduce Minimal Userspace Toolchain
 
-## 阶段计划
-
-agent 正在统筹 `introduce-ex-bootstrap-adapter` 的四阶段实施计划。
-
-### Phase 1: Contract & Scaffolding (tasks 1.1, 1.2)
-- 1.1: 在 `user_hello` 相关代码注释中固定 clean-pass 验收锚点，明确本 change 只允许边界重构
-- 1.2: 新建 `src/kernel/ex/` 和 `src/include/kernel/ex/` 目录结构，创建骨架头文件和源文件，更新 makefile
-
-### Phase 2: Thin Ex Ownership Layer (tasks 2.1, 2.2)
-- 2.1: 定义 `EX_PROCESS` / `EX_THREAD` 最小结构体与辅助接口
-- 2.2: 将 bootstrap staging 创建/关联/生命周期聚拢到 Ex 薄壳对象
-
-### Phase 3: Ke Callback Decoupling (tasks 3.1, 3.2, 3.3)
-- 3.1: 在 Ke 中引入 `KE_BOOTSTRAP_CALLBACKS` 注册合同（enter / finalize / timer_observe）
-- 3.2: scheduler.c 中硬编码 bootstrap 分支改为回调分发
-- 3.3: timer.c 中硬编码观察逻辑改为回调分发 + fail-fast
-
-### Phase 4: Validation & Documentation Sync (tasks 4.1, 4.2, 4.3)
-- 构建验证、运行 profile 验证 evidence chain、文档同步
+**Change:** `introduce-minimal-userspace-toolchain`  
+**Branch:** `feature/introduce-compiled-bootstrap-user-programs`  
+**Commits:** `8619ad1` → `519fb96` → `5b54918`  
+**Date:** 2026-04-05
 
 ---
 
-## 实施记录
+## Scope and Result
 
-### Phase 1 开始
-agent 正在启动 Phase 1: Contract & Scaffolding 实施。
-- impl 完成 1.1（anchor comment）、1.2（目录骨架 + makefile）
-- reviewer PASS
-- commit: `phase-1: contract anchor and Ex scaffold`
-
-### Phase 2 开始
-agent 正在启动 Phase 2: Thin Ex Ownership Layer 实施。
-- impl 完成 2.1（EX_PROCESS / EX_THREAD 结构定义）、2.2（staging 生命周期聚拢到 Ex）
-- reviewer 首次 BLOCK：FinalizeThread 在 staging destroy 失败时提前返回导致 Ex 对象泄漏
-- 修复：移除 early return，始终清理 Ex 对象，仅传播错误状态
-- reviewer 二次 PASS
-- commit: `phase-2: thin Ex ownership layer (EX_PROCESS / EX_THREAD)`
-
-### Phase 3 开始
-agent 正在启动 Phase 3: Ke Callback Decoupling 实施。
-- impl 完成 3.1（bootstrap_callbacks.h/c 注册合同）、3.2（scheduler 回调分发）、3.3（timer 回调分发）
-- scheduler.c / timer.c 不再 `#include <kernel/ke/user_bootstrap.h>`
-- Ex 注册三个回调实现，init.c 调用 ExBootstrapAdapterInit
-- reviewer PASS
-- commit: `phase-3: Ke callback decoupling (enter / finalize / timer_observe)`
-
-### Phase 4 开始
-agent 正在启动 Phase 4: Validation & Documentation Sync 实施。
-- 4.1: `make clean; bear -- make all BUILD_FLAVOR=test-user_hello ...` 构建成功
-- 4.2: `qemu_capture.sh` evidence chain 全部 10 个锚点验证通过
-- 4.3: 更新 `docs/current-ability.md` 反映 Ex 适配层与回调收口
-- 所有 tasks 完成
+MVP P1 replaces the previously hand-assembled `user_hello` bytecodes with a real compiled userspace program. `src/user/user_hello/main.c` is now the authoritative source; the kernel consumes flat binary artifacts (`user_hello.code.bin`, `user_hello.const.bin`) — generated from source during the build — linked into the kernel image. The `ExBootstrapCreateProcess()` `CodeBytes`/`ConstBytes` launch contract is unchanged.
 
 ---
 
-# Agent Log: complete-ex-bootstrap-migration
+## Implementation — Phase Summary
 
-## 阶段计划
+| Phase | Commit | Change |
+|---|---|---|
+| 1 — Toolchain scaffold | `8619ad1` | Added `src/user/crt0.S` (syscall `int 0x80` entry/exit), `src/user/libsys.h` (inline wrappers for `SYS_RAW_WRITE`, `SYS_RAW_EXIT`, `HoUserWaitForP1Gate`, `HoUserAbort`), `src/user/user.ld` (`.text` at `0x80000000`, `.rodata` at const-page slot), and `src/user/user_hello/main.c` (P1 evidence chain: wait gate → probe illegal write → write hello → exit). Makefile gained `USER_CFLAGS`, `USER_LDFLAGS`, `USR_BUILDROOT` directories, and a `user` phony target producing `.elf`, `.code.bin`, and `.const.bin` via `objcopy`. `all` now depends on `efi kernel user`. |
+| 2 — Kernel wiring | `519fb96` | Added `src/kernel/demo/user_hello_artifact_bridge.c`, which exports `KiUserHelloGetEmbeddedArtifacts()`. The bridge resolves four `extern` boundary symbols (`gKiUserHelloCode/ConstBytesStart/End`) exposed by the Makefile embedding pipeline: `ld -r -b binary` turns each `.bin` into a relocatable object, then `objcopy --rename-section` and `--redefine-sym` rename the data section and rewrite the auto-generated linker symbols to the canonical `gKiUserHello{Code,Const}Bytes{Start,End}` names. The bridge computes lengths with an underflow guard and panics on empty artifacts. `demo_internal.h` gained `KI_USER_HELLO_EMBEDDED_ARTIFACTS`. `user_hello.c` was stripped of its old inline bytecode and now calls the bridge. The two embedded artifact objects (`user_hello.code.bin.o`, `user_hello.const.bin.o`) are appended to `OBJS_KERNEL` unconditionally; `BUILD_FLAVOR` only redirects output directories. |
+| 3 — Documentation | `5b54918` | `Readme.md` updated to show the `BUILD_FLAVOR=test-user_hello` invocation. `user_hello.c` inline comment corrected to name `src/user/user_hello` as the source. Makefile comment wording cleaned up. |
 
-agent 正在统筹 `complete-ex-bootstrap-migration` 的串行实施计划。
+---
 
-### Phase 1: Ex Runtime And Launch API (tasks 1.1, 1.2)
-- 1.1: 新增 Ex-owned bootstrap runtime 初始化入口，收口 raw syscall trap 初始化与 bootstrap callback 注册
-- 1.2: 定义最小 Ex bootstrap create/start/teardown API 与参数类型，对外只暴露 Ex 头文件和 Ex 薄对象
+## Review Notes
 
-### Phase 2: Demo Launch Cutover (tasks 2.1, 2.2)
-- 2.1: 将 `user_hello` 迁移到 Ex create/start API 链路，移除手工 staging attach 与 bootstrap flag 设置
-- 2.2: 让 Ex 在 thread start 前建立 bootstrap ownership，使 trampoline 首次进入与 timer observe 可以走 Ex 查询面
+- **Phase 1** — No blocking issues. Non-blocking: the `test` / `run` path did not yet force the generated user artifacts into the kernel-side path because phase 1 stopped at standalone artifact generation. Resolved by phase 2.
+- **Phase 2** — No blocking issues. Non-blocking: `KiUserHelloGetEmbeddedArtifacts()` panics if `ConstLength == 0`, which is acceptable given the current `src/user/user_hello/main.c` payload always carries rodata; noted as a known assumption.
+- **Phase 3** — No blocking issues. One wording pass after review: docs and inline comment now explicitly state the path is built from `src/user/user_hello` sources.
 
-### Phase 3: Ke Residue Removal (tasks 3.1, 3.2, 3.3, 3.4)
-- 3.1: 扩展最小 bootstrap callback contract，引入 thread ownership query，并收口 finalizer/reaper 判定
-- 3.2: 将 `SYS_RAW_EXIT` clean-path teardown 改成 Ex-owned lifecycle helper，并保证 destroy 失败时仍清理 Ex wrapper / registry
-- 3.3: 删除 `KTHREAD_FLAG_BOOTSTRAP_USER` 与 `UserBootstrapContext`，收掉 scheduler、timer、demo、init 中的直接读取
-- 3.4: 通过 Ex-owned facade 隐藏 `user_bootstrap*` 的公开 surface；如无必要，不做物理迁移
+---
 
-### Phase 4: Validation And Docs (tasks 4.1, 4.2, 4.3)
-- 4.1: 按 test-user_hello flavor 执行 clean rebuild
-- 4.2: 用 `scripts/qemu_capture.sh` 采集日志并核对 evidence chain 与 idle/reaper reclaim
-- 4.3: 同步更新能力与设计文档，说明 Ex 已成为 bootstrap launch/init/teardown owner
+## Validation
 
-## 实施记录
+Build and capture sequence:
 
-### Phase 1 开始
-agent 正在启动 Phase 1: Ex Runtime And Launch API 实施。
-- 当前策略：先以最小改动新增 Ex facade 与 runtime init 收口，不提前删除 Ke 残留字段。
-- 当前检查结果：`user_hello` 仍直接创建 staging、设置 `KTHREAD_FLAG_BOOTSTRAP_USER` 并 attach 到 `KTHREAD`；`InitKernel()` 仍直接调用 `KeUserBootstrapRawSyscallInit()`。
-- reviewer 首轮 BLOCK：新公开的 Ex bootstrap 句柄在 start 后会被内核侧异步释放，post-start ownership contract 不安全；同时 `ExBootstrapTeardownThread()` 对已启动线程会过早销毁 staging。
-- 当前修复方向：收紧 public API ownership 语义，让 create/start 显式转移句柄所有权，并把 `ExBootstrapTeardownThread()` 限制为 pre-start cancel path。
-- impl 已完成 Phase 1：新增 `ExBootstrapInit()`、bootstrap-scoped Ex process/thread create/start/teardown facade、私有 Ex wrapper 共享状态，并将 `InitKernel()` 切换为单一 Ex 初始化入口。
-- reviewer 二次 PASS：确认 started-thread 不会再被 public teardown 提前销毁，public handle 的 ownership transfer contract 已收紧到安全边界。
-- 构建验证：`make clean && bear -- make all` 成功。
-- commit: `phase-1: Ex bootstrap runtime and launch facade` (`4daafbf`)
+```sh
+make clean && bear -- make all BUILD_FLAVOR=test-user_hello \
+    HO_DEMO_TEST_NAME=user_hello HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO
 
-### Phase 2 开始
-agent 正在启动 Phase 2: Demo Launch Cutover 实施。
-- 当前策略：将 `user_hello` 切到 Ex facade，同时只把 trampoline 和 timer 的 bootstrap 判定切到 Ex ownership query；finalizer/reaper 留到 Phase 3 统一处理。
-- impl 已完成 Phase 2：`user_hello` 已迁移到 Ex bootstrap facade，Ke bootstrap callback contract 增加 thread ownership query，trampoline 与 timer observe 改为通过 Ex registry 判断。
-- reviewer PASS：确认本阶段改动在当前单 bootstrap-thread 模型下自洽，未发现阻塞问题。
-- 验证结果：`make clean && bear -- make all BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO` 成功；`qemu_capture.sh` 日志锚点保持不变，包含 `enter user mode`、`timer from user #1/#2`、`invalid raw write rejected`、`hello write succeeds`、`SYS_RAW_EXIT`、`bootstrap teardown complete`、`idle/reaper reclaimed`。
-- commit: `phase-2: cut over user_hello launch to Ex facade` (`86c974c`)
+BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello \
+    HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO \
+    bash scripts/qemu_capture.sh 30 /tmp/himuos-user-hello-final.log
+```
 
-### Phase 3 开始
-agent 正在启动 Phase 3: Ke Residue Removal 实施。
-- 当前策略：删除 `KTHREAD_FLAG_BOOTSTRAP_USER` 与 `UserBootstrapContext`，让 staging/ownership 全部通过 Ex 内部 registry 查询；clean `SYS_RAW_EXIT` 由 Ex helper 销毁 staging，但保留最小 Ex wrapper 直到 finalizer/reaper 消费完 bootstrap identity。
-- impl 已完成 Phase 3：新增 Ex-owned bootstrap ABI 头；finalizer/reaper 切到 Ex ownership query；`SYS_RAW_EXIT` 改为 Ex helper teardown；`KTHREAD_FLAG_BOOTSTRAP_USER` 与 `UserBootstrapContext` 已删除；demo 和 arch 不再直接 include `kernel/ke/user_bootstrap.h`。
-- reviewer PASS：确认 Phase 3 在当前单 bootstrap-thread registry 模型下自洽，未发现阻塞问题。
-- 静态校验：残留字段全仓引用已清空，受影响文件诊断无错误。
-- commit: `phase-3: remove Ke bootstrap residue` (`7b050b2`)
+QEMU capture confirmed these key anchors in order:
 
-### Phase 4 开始
-agent 正在启动 Phase 4: Validation And Documentation Sync 实施。
-- 4.1: `make clean && bear -- make all BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO` 成功，生成 `build/kernel/test-user_hello/bin/kernel.bin`。
-- 4.2: `BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO bash scripts/qemu_capture.sh 30 /tmp/himuos-user-hello.log` 已重跑；串口日志保持 `enter user mode`、`timer from user #1/#2`、`P1 gate armed`、`invalid raw write rejected`、`hello write succeeds`、`SYS_RAW_EXIT`、`bootstrap teardown complete`、`idle/reaper reclaimed` 锚点。脚本按 bounded capture 预期以 124 结束。
-- 4.3: 已同步更新 `docs/current-ability.md` 与 `docs/draft/userspace.md`，明确 Ex 已成为 bootstrap launch/init/teardown owner，正式地址空间语义从 Phase B 才开始承接。
-- reviewer PASS：文档与当前实现一致，未发现阻塞问题。
-- 所有 tasks 完成
+1. `enter user mode`
+2. `P1 gate armed`
+3. `invalid raw write rejected`
+4. `hello write succeeds`
+5. `SYS_RAW_EXIT`
+6. `bootstrap teardown complete`
+7. `idle/reaper reclaimed`
 
+The captured log also retained the intermediate P1 timer round-trip and thread-termination evidence. No panics or unexpected halts were observed.
+
+---
+
+## Final Repository State
+
+- **New files:** `src/user/crt0.S`, `src/user/libsys.h`, `src/user/user.ld`, `src/user/user_hello/main.c`, `src/kernel/demo/user_hello_artifact_bridge.c`
+- **Modified:** `makefile` (toolchain rules, `ld -r -b binary` / `objcopy` artifact embedding, `user` target), `src/kernel/demo/demo_internal.h` (`KI_USER_HELLO_EMBEDDED_ARTIFACTS`, `KiUserHelloGetEmbeddedArtifacts` decl), `src/kernel/demo/user_hello.c` (removed inline bytecodes, calls bridge), `Readme.md`
+- **Kernel launch contract:** unchanged — `ExBootstrapCreateProcess()` still takes raw `CodeBytes`/`ConstBytes`; artifact content is now compiler-generated rather than hand-written
+- **OpenSpec change files:** not committed (intentional, per project convention)
