@@ -3,7 +3,7 @@
  *
  * File: ke/thread/scheduler/scheduler.c
  * Description:
- * Ke Layer - Minimal Round-Robin tickless scheduler.
+ * Ke Layer - Minimal priority-aware tickless scheduler.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
@@ -133,7 +133,7 @@ KeThreadStart(KTHREAD *thread)
     KeEnterCriticalSection(&criticalSection);
 
     thread->State = KTHREAD_STATE_READY;
-    LinkedListInsertTail(KiGetDefaultReadyQueue(), &thread->ReadyLink);
+    LinkedListInsertTail(KiGetReadyQueueForThread(thread), &thread->ReadyLink);
     gStats.TotalThreadsCreated++;
     gStats.ActiveThreadCount++;
 
@@ -167,7 +167,7 @@ KeYield(void)
 
     gStats.YieldCount++;
 
-    if (LinkedListIsEmpty(KiGetDefaultReadyQueue()))
+    if (!KiHasAnyReadyThread())
     {
         KeLeaveCriticalSection(&criticalSection);
         KeReleaseIrqlGuard(&irqlGuard);
@@ -175,7 +175,7 @@ KeYield(void)
     }
 
     gCurrentThread->State = KTHREAD_STATE_READY;
-    LinkedListInsertTail(KiGetDefaultReadyQueue(), &gCurrentThread->ReadyLink);
+    LinkedListInsertTail(KiGetReadyQueueForThread(gCurrentThread), &gCurrentThread->ReadyLink);
 
     KeLeaveCriticalSection(&criticalSection);
     KiSchedule();
@@ -586,9 +586,12 @@ KiSchedule(void)
     KTHREAD *prev = gCurrentThread;
     KTHREAD *next;
 
-    if (!LinkedListIsEmpty(KiGetDefaultReadyQueue()))
+    LINKED_LIST_TAG *readyQueue = KiGetHighestPriorityReadyQueue();
+
+    if (readyQueue != NULL)
     {
-        LINKED_LIST_TAG *entry = KiGetDefaultReadyQueue()->Flink;
+        HO_KASSERT(!LinkedListIsEmpty(readyQueue), EC_INVALID_STATE);
+        LINKED_LIST_TAG *entry = readyQueue->Flink;
         LinkedListRemove(entry);
         next = CONTAINING_RECORD(entry, KTHREAD, ReadyLink);
     }
