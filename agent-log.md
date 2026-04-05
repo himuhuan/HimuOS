@@ -1,167 +1,114 @@
-# HimuOS MVP P2 实现报告
+# 实施报告：priority-ready-queues
 
-**变更标识**：`p2-dual-user-process-bringup`
-**完成时间**：2026-04-05
-**状态**：全部任务已完成 ✅
-
----
-
-## 概述
-
-本次工作基于 `docs/draft/mvp.md` P2 阶段目标，以 OpenSpec 提案的形式组织，由 impl / reviewer / writer 三类 Agent 串行协作完成。目标是在 HimuOS 内核中引入对多个并发用户态引导进程的支持，并通过一个双进程演示剖面验证端到端路径。
-
-P2 在 P1（单用户 `user_hello` 已落地）的基础上推进三项工作：
-
-1. 将 ex 层的单例引导运行时别名升级为支持多线程的注册表；
-2. 新增第二个编译型用户态程序（`user_counter`）及其构建/嵌入链路；
-3. 新增 `user_dual` 演示剖面，同时启动两个用户态线程并验证双路引导完整流程。
+**日期**：2026-04-05  
+**变更 ID**：priority-ready-queues  
+**状态**：✅ 已完成，当前实现已提交到本地 `main`
 
 ---
 
-## OpenSpec 变更档案
+## 1. 变更目标
 
-变更名称：`p2-dual-user-process-bringup`
+为 HimuOS 内核调度器引入固定 3 级优先级 ready queue（LOW / NORMAL / HIGH），替换原有的单条 ready 链表。具体目标：
 
-产物目录：`openspec/changes/p2-dual-user-process-bringup/`
-
-| 文件 | 内容 |
-|------|------|
-| `proposal.md` | 需求背景与目标描述 |
-| `design.md` | 架构决策与实现设计 |
-| `specs/compiled-userspace-artifacts/spec.md` | 编译型用户态制品规格 |
-| `specs/dual-user-process-demo/spec.md` | 双进程演示规格 |
-| `tasks.md` | 阶段任务清单（全部已勾选） |
-
-> 注：`openspec/` 目录已在 `.gitignore` 中排除，OpenSpec 文件不随代码提交入库，均为本次 Session 内带外维护的规划文档。
+- `KTHREAD_PRIORITY_LOW = 0`、`KTHREAD_PRIORITY_NORMAL = 1`、`KTHREAD_PRIORITY_HIGH = 2`，新线程默认 NORMAL；
+- dispatch 时始终选最高非空优先级队列的队头，调度选择点上 HIGH 优先于 LOW/NORMAL；
+- 同一优先级队列内保持原有 round-robin + quantum 机制不变；
+- wait/sync 唤醒路径按线程自身优先级回队，不再统一入同一链表；
+- `KE_SYSINFO_SCHEDULER_DATA` 增加 `ReadyQueueDepthByPriority[KTHREAD_PRIORITY_COUNT]`，同时保留 `ReadyQueueDepth` 总量；
+- 在已有 `schedule` demo profile 中增加 priority smoke 测试，不新建独立 profile。
 
 ---
 
-## 分阶段实现记录
+## 2. Phase 执行摘要
 
-### Phase 1 — Bootstrap Runtime Registry
+| Phase | Commit | 主要内容 |
+|---|---|---|
+| P1：基础结构 | `6839a81` | 引入 `gReadyQueues[KTHREAD_PRIORITY_COUNT]` 数组，`KTHREAD.Priority` 字段，`scheduler_internal.h` 中的全套内联辅助函数（`KiGetReadyQueueForPriority`、`KiGetHighestPriorityReadyQueue`、`KiCountAllReadyThreads` 等），将旧单队列改写为按优先级初始化的多队列 |
+| P2：dispatch 改写 | `68bfe41` | `KiSchedule` 从 `KiGetHighestPriorityReadyQueue()` 选队列；timer ISR preemption 路径将当前线程按其优先级送回对应队列 |
+| P3：唤醒对齐与可观测性 | `54e3241` | `wait.c` 中的 `KiCompleteWait` 改为按线程优先级回队，`sync.c` 的 idle wake 判定切到全队列检查；`KE_SYSINFO_SCHEDULER_DATA` 增加 `ReadyQueueDepthByPriority` 数组；`init.c` 自测补充 per-priority depth 断言；`diag.c` 诊断输出对应更新 |
+| P4：smoke 测试 | `c7c6241` | `src/kernel/demo/thread.c` 新增 `priority_order_test`（HIGH 先于 LOW 执行验证）和 `priority_rr_test`（同 HIGH 优先级 ABABAB round-robin 验证）；`demo.c` / `demo_internal.h` 接入 schedule profile |
 
-**提交**：`69f657e` — `ex: support multiple bootstrap runtime aliases`
-
-**背景**：原有实现在 `ex_bootstrap.c` 中以单例指针持有当前引导线程的运行时别名，仅支持一个线程的生命周期。若两个引导线程并发运行，第二个线程会覆盖第一个的别名，导致 teardown 时释放错误对象。
-
-**主要变更**（3 个文件，+231 / -41 行）：
-
-- `src/kernel/ex/ex_bootstrap.c`：将单例替换为以 `KTHREAD *` 为键的小型注册表，并用 `KE_CRITICAL_SECTION` 序列化所有注册表访问，同时修正 teardown 路径上的 alias unpublish 顺序；
-- `src/kernel/ex/ex_bootstrap_internal.h`：更新内部接口声明；
-- `src/kernel/ex/ex_bootstrap_adapter.c`：适配新注册表查找路径，保持 teardown 顺序（别名 unpublish 先于 `KTHREAD` 销毁）。
-
-**reviewer 关注点**：teardown 顺序正确性及临界区覆盖完整性，经审核无遗留 blocker。
+总计改动文件 13 个，新增 362 行、删除 18 行。
 
 ---
 
-### Phase 2 — Compiled Userspace Artifacts
+## 3. 实际提交
 
-**提交**：`ab7a807` — `build: add compiled user_counter artifacts`
-
-**背景**：P1 仅嵌入了 `user_hello` 一个用户态二进制。P2 需要第二个程序以便在双进程剖面中展示差异化行为。
-
-**主要变更**（7 个文件，+168 / -8 行）：
-
-- `src/user/user_counter/main.c`：新增 `user_counter` 用户态程序，循环输出 `[USERCOUNTER] count=N`（N = 0,1,2）后退出；
-- `src/user/libsys.h`：抽取最小 `libsys` 能力 stdout 辅助宏，供两个用户态程序共用；
-- `src/kernel/demo/user_counter_artifact_bridge.c`：为 `user_counter` 生成与 `user_hello` 对称的内核侧制品桥接；
-- `src/kernel/demo/demo_internal.h`：将制品描述结构泛化，支持任意已嵌入二进制的统一描述；
-- `makefile`：扩展构建规则，新增 `user_counter` 的编译、objcopy 内嵌及 depfile 生成；同时修复 `user_counter` 缺少 depfile include 的漏洞（reviewer 阶段发现的 blocker）。
+```
+6839a81  Add scheduler priority queue foundation
+68bfe41  Add priority-aware scheduler dispatch
+54e3241  Align scheduler wakeups and observability
+c7c6241  Add scheduler priority smoke coverage
+```
 
 ---
 
-### Phase 3 — Dual-Process Demo Profile
+## 4. 关键实现点
 
-**提交**：`fe179e9` — `demo: add dual-user bootstrap profile`
+**多队列数据结构**  
+`scheduler_internal.h` 将原来单个 `gReadyQueue` 换为 `gReadyQueues[KTHREAD_PRIORITY_COUNT]`（外部声明，在 `scheduler.c` 中定义）。所有入队/出队操作通过 `KiGetReadyQueueForPriority` / `KiGetReadyQueueForThread` 路由，消除了散落各处的直接链表操作。
 
-**背景**：两个底层能力就绪后，需要一个演示剖面将它们串联：同时启动 `user_hello` 和 `user_counter`，验证双路引导、并发运行和独立 teardown 全链路。
+**最高优先级选择**  
+`KiGetHighestPriorityReadyQueue()` 从 `KTHREAD_PRIORITY_HIGH` 向 `KTHREAD_PRIORITY_LOW` 遍历，返回第一个非空队列的指针。`KiSchedule` 直接从该队列取队头，保证严格优先级抢占，时间复杂度 O(KTHREAD_PRIORITY_COUNT)，即 O(3)。
 
-**主要变更**（4 个文件，+114 / -5 行）：
+**preemption 回队路径**  
+timer ISR 触发 preemption 时，原来总是入同一个链表；修改后调用 `KiGetReadyQueueForThread(current)` 送回当前线程对应的优先级队列，RR 语义不变。
 
-- `src/kernel/demo/user_dual.c`：新增 `user_dual` 演示实现，依次创建并启动两个引导线程（分别加载 `user_hello` 和 `user_counter` 制品），并交由现有 scheduler / idle reaper 完成后续回收；
-- `src/kernel/demo/demo.c`：注册 `HO_DEMO_TEST_USER_DUAL` 条件分支；
-- `src/kernel/demo/demo_internal.h`：声明新剖面入口；
-- `makefile`：新增 `BUILD_FLAVOR=test-user_dual` 构建目标。
+**唤醒路径对齐**  
+`wait.c` 中的 `KiCompleteWait` 改用 `KiGetReadyQueueForThread`，确保从 sleep/wait 恢复的线程回到与其优先级匹配的 ready queue；`sync.c` 中 idle 场景下的 need-schedule 判定也切到 `KiHasAnyReadyThread()`，不再只盯默认队列。
 
----
-
-## 验证结果
-
-### 单用户回归测试（user_hello）
-
-构建命令：
-```
-make clean && bear -- make all \
-  BUILD_FLAVOR=test-user_hello \
-  HO_DEMO_TEST_NAME=user_hello \
-  HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO
-```
-
-运行命令：
-```
-BUILD_FLAVOR=test-user_hello \
-HO_DEMO_TEST_NAME=user_hello \
-HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO \
-bash scripts/qemu_capture.sh 20 /tmp/himuos-final-user-hello.log
-```
-
-关键日志锚点（全部命中）：
-
-| 锚点 | 说明 |
-|------|------|
-| `[DEMO] Selected profile: user_hello` | 剖面正确选中 |
-| `[USERBOOT] enter user mode` | 进入用户态成功 |
-| `[USERBOOT] hello` | 用户程序正常输出 |
-| `[USERBOOT] bootstrap teardown complete code=0 thread=1` | 正常退出，code=0 |
-| `[USERBOOT] idle/reaper reclaimed user_hello thread thread=1` | 线程被 reaper 回收 |
-
-### 双进程新剖面测试（user_dual）
-
-构建命令：
-```
-make clean && bear -- make all \
-  BUILD_FLAVOR=test-user_dual \
-  HO_DEMO_TEST_NAME=user_dual \
-  HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_DUAL
-```
-
-运行命令：
-```
-BUILD_FLAVOR=test-user_dual \
-HO_DEMO_TEST_NAME=user_dual \
-HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_DUAL \
-bash scripts/qemu_capture.sh 25 /tmp/himuos-final-user-dual.log
-```
-
-关键日志锚点（全部命中）：
-
-| 锚点 | 说明 |
-|------|------|
-| `[DEMO] Selected profile: user_dual` | 剖面正确选中 |
-| `Thread 1 created` + `Thread 2 created` | 两个引导线程均已创建 |
-| 两条 `[USERBOOT] enter user mode` | 两路独立进入用户态 |
-| `[USERCOUNTER] count=0/1/2` | user_counter 程序正常运行 |
-| `[USERBOOT] hello` | user_hello 程序正常输出 |
-| 两条 `[USERBOOT] bootstrap teardown complete ...` | 两路均正常退出 |
-| 两条 idle/reaper reclaim 行 | 两路线程均被正确回收 |
+**sysinfo 可观测性**  
+`KE_SYSINFO_SCHEDULER_DATA.ReadyQueueDepthByPriority[KTHREAD_PRIORITY_COUNT]` 由 `KeQuerySchedulerInfo` 填充；`init.c` 的 scheduler observability 自测新增了“初始化后各优先级 ready depth 全为 0”的断言。
 
 ---
 
-## 提交汇总
+## 5. 最终验证结果
 
-| 提交 SHA | 信息 | 阶段 |
-|----------|------|------|
-| `69f657e` | `ex: support multiple bootstrap runtime aliases` | Phase 1 |
-| `ab7a807` | `build: add compiled user_counter artifacts` | Phase 2 |
-| `fe179e9` | `demo: add dual-user bootstrap profile` | Phase 3 |
+验证日志：`/tmp/himuos-schedule-final.log`（共 680 行）
 
-上述三个实现提交均已在本地 `main` 生成；是否推送到远端需按仓库工作流另行处理。
+### Priority smoke（第 86–135 行）
+
+**优先级顺序子测试**
+
+| 行号 | 锚点 |
+|---|---|
+| 86 | `[PRIO] smoke start` |
+| 95 | `[PRIO] order slot=0 token=H step=0 thread=3 priority=2` |
+| 101 | `[PRIO] order slot=1 token=L step=0 thread=2 priority=0` |
+| 107 | `[PRIO] order observed=HL expected=HL` |
+| 108 | `[PRIO] order passed` |
+
+HIGH（priority=2）线程在 LOW（priority=0）线程之前完成，调度顺序符合预期。
+
+**同优先级 Round-Robin 子测试**
+
+| 行号 | 锚点 |
+|---|---|
+| 117 | `rr slot=0 token=A priority=2` |
+| 119 | `rr slot=1 token=B priority=2` |
+| 121 | `rr slot=2 token=A priority=2` |
+| 123 | `rr slot=3 token=B priority=2` |
+| 125 | `rr slot=4 token=A priority=2` |
+| 129 | `rr slot=5 token=B priority=2` |
+| 133 | `[PRIO] rr observed=ABABAB expected=ABABAB` |
+| 134 | `[PRIO] rr passed` |
+| 135 | `[PRIO] smoke passed` |
+
+两个同为 HIGH 优先级的线程严格交替调度，RR 语义在多队列结构下保持正确。
+
+### Thread termination collaboration（第 675 行）
+
+```
+[TEST] thread termination collaboration demo passed
+```
+
+原有 join/detach/timeout 全套测试在多队列调度器下通过，无回归。
 
 ---
 
-## 遗留说明
+## 6. 本次未纳入的事项
 
-- **OpenSpec 文件**：`openspec/changes/p2-dual-user-process-bringup/` 下的所有规划文档已在本次 Session 内维护完毕，但因该目录被 `.gitignore` 排除，不会随代码提交入库。如需存档，需手动处理。
-- **推送**：本次三个提交均仅在本地 `main`，尚待推送或提 PR。
-- **worktree 脏文件**：`docs/draft/mvp.md` 在工作区中仍有用户侧未暂存修改；本文件（`agent-log.md`）为本次 closeout 生成结果，未计入上述三次实现阶段提交统计。
-- **后续方向**：P2 目标已全部达成。P3 及后续阶段可参考 `docs/draft/mvp.md` 中的规划继续推进。
+- 优先级动态调整接口（如 `KeSetThreadPriority` 之类的公开 API）未实现，本次只实现了调度器内部消费 `KTHREAD.Priority`；
+- 优先级继承（用于 mutex 防止 priority inversion）未实现；
+- 用户态线程优先级透传接口未实现；
+- `KTHREAD_PRIORITY_COUNT` 固定为 3，扩展优先级级数需改动 enum 及相关数组，未做抽象。
