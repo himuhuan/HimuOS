@@ -1,16 +1,18 @@
 #!/bin/bash
 # QEMU Output Capture Script for HimuOS
 # Usage: ./qemu_capture.sh [timeout_seconds] [output_file]
+# Optional env: QEMU_CAPTURE_MODE=host|tcg|custom (default: host)
 
 set -u
 
 TIMEOUT=${1:-30}
 OUTPUT_FILE=${2:-/tmp/qemu_output.log}
-SUDO_PASS=${SUDO_PASS:-liuhuan123}
+SUDO_PASS=${SUDO_PASS:-${SUDO_PASSWORD:-liuhuan123}}
 BUILD_FLAVOR=${BUILD_FLAVOR:-}
 HO_DEMO_TEST_NAME=${HO_DEMO_TEST_NAME:-}
 HO_DEMO_TEST_DEFINE=${HO_DEMO_TEST_DEFINE:-}
 QEMU_DISPLAY=${QEMU_DISPLAY:-none}
+QEMU_CAPTURE_MODE=${QEMU_CAPTURE_MODE:-host}
 TMP_DIR=$(mktemp -d /tmp/qemu_capture.XXXXXX)
 FIFO_PATH="${TMP_DIR}/output.fifo"
 RUNNER_PID=""
@@ -18,6 +20,27 @@ RUNNER_PGID=""
 TEE_PID=""
 WATCHDOG_PID=""
 TIMED_OUT=0
+UNSET_SENTINEL="__HIMUOS_UNSET__"
+RUN_QEMU_ACCEL_MODE="$QEMU_CAPTURE_MODE"
+RUN_QEMU_ACCEL_ARGS="$UNSET_SENTINEL"
+RUN_QEMU_CPU_FLAGS="$UNSET_SENTINEL"
+
+case "$QEMU_CAPTURE_MODE" in
+	host|tcg)
+		;;
+	custom)
+		if [ "${QEMU_ACCEL_ARGS+x}" = x ]; then
+			RUN_QEMU_ACCEL_ARGS="$QEMU_ACCEL_ARGS"
+		fi
+		if [ "${QEMU_CPU_FLAGS+x}" = x ]; then
+			RUN_QEMU_CPU_FLAGS="$QEMU_CPU_FLAGS"
+		fi
+		;;
+	*)
+		echo "Unsupported QEMU_CAPTURE_MODE=${QEMU_CAPTURE_MODE}. Use host, tcg, or custom." >&2
+		exit 2
+		;;
+esac
 
 cleanup() {
 	rm -f "$FIFO_PATH"
@@ -44,6 +67,19 @@ if [ -n "$HO_DEMO_TEST_NAME" ] && [ -n "$HO_DEMO_TEST_DEFINE" ]; then
 	echo "Using demo profile ${HO_DEMO_TEST_NAME} (${HO_DEMO_TEST_DEFINE})"
 fi
 echo "Using QEMU_DISPLAY=${QEMU_DISPLAY}"
+echo "Using QEMU_CAPTURE_MODE=${QEMU_CAPTURE_MODE}"
+if [ "$QEMU_CAPTURE_MODE" = "custom" ]; then
+	if [ "$RUN_QEMU_ACCEL_ARGS" != "$UNSET_SENTINEL" ]; then
+		echo "Using custom QEMU_ACCEL_ARGS=${RUN_QEMU_ACCEL_ARGS}"
+	else
+		echo "Using custom QEMU_ACCEL_ARGS=<makefile default>"
+	fi
+	if [ "$RUN_QEMU_CPU_FLAGS" != "$UNSET_SENTINEL" ]; then
+		echo "Using custom QEMU_CPU_FLAGS=${RUN_QEMU_CPU_FLAGS}"
+	else
+		echo "Using custom QEMU_CPU_FLAGS=<makefile default>"
+	fi
+fi
 
 mkfifo "$FIFO_PATH"
 tee "$OUTPUT_FILE" <"$FIFO_PATH" &
@@ -51,8 +87,24 @@ TEE_PID=$!
 
 # Start make/qemu in its own process group so timeout handling can terminate
 # the whole tree instead of only the shell or tee process.
-setsid bash -lc 'exec make run SUDO_PASSWORD="$1" BUILD_FLAVOR="$2" HO_DEMO_TEST_NAME="$3" HO_DEMO_TEST_DEFINE="$4" QEMU_DISPLAY="$5"' \
-	_ "$SUDO_PASS" "$BUILD_FLAVOR" "$HO_DEMO_TEST_NAME" "$HO_DEMO_TEST_DEFINE" "$QEMU_DISPLAY" >"$FIFO_PATH" 2>&1 &
+setsid bash -lc '
+make_args=(
+	run
+	SUDO_PASSWORD="$1"
+	BUILD_FLAVOR="$2"
+	HO_DEMO_TEST_NAME="$3"
+	HO_DEMO_TEST_DEFINE="$4"
+	QEMU_DISPLAY="$5"
+	QEMU_ACCEL_MODE="$6"
+)
+if [ "$7" != "__HIMUOS_UNSET__" ]; then
+	make_args+=(QEMU_ACCEL_ARGS="$7")
+fi
+if [ "$8" != "__HIMUOS_UNSET__" ]; then
+	make_args+=(QEMU_CPU_FLAGS="$8")
+fi
+exec make "${make_args[@]}"
+' _ "$SUDO_PASS" "$BUILD_FLAVOR" "$HO_DEMO_TEST_NAME" "$HO_DEMO_TEST_DEFINE" "$QEMU_DISPLAY" "$RUN_QEMU_ACCEL_MODE" "$RUN_QEMU_ACCEL_ARGS" "$RUN_QEMU_CPU_FLAGS" >"$FIFO_PATH" 2>&1 &
 RUNNER_PID=$!
 RUNNER_PGID=$(ps -o pgid= -p "$RUNNER_PID" | tr -d '[:space:]')
 

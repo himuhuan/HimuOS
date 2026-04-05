@@ -38,13 +38,25 @@ KRNL_ENTRY_POINT := 0xFFFF800000000000
 HO_DEBUG_BUILD ?= 1
 HO_ENABLE_TIMESTAMP_LOG ?= $(HO_DEBUG_BUILD)
 SUDO ?= sudo
-QEMU_CPU_FLAGS ?= host,+invtsc
+QEMU_ACCEL_MODE ?= host
 QEMU_DISPLAY ?= gtk
 
-ifeq ($(strip $(SUDO_PASSWORD)),)
-SUDO_RUN := $(SUDO)
+ifeq ($(QEMU_ACCEL_MODE),host)
+QEMU_ACCEL_ARGS ?= -enable-kvm
+QEMU_CPU_FLAGS ?= host,+invtsc
+else ifeq ($(QEMU_ACCEL_MODE),tcg)
+QEMU_ACCEL_ARGS ?= -accel tcg
+QEMU_CPU_FLAGS ?= max
+else ifeq ($(QEMU_ACCEL_MODE),custom)
+QEMU_CPU_FLAGS ?= max
 else
-SUDO_RUN := printf '%s\n' "$(SUDO_PASSWORD)" | $(SUDO) -S
+$(error Unknown QEMU_ACCEL_MODE '$(QEMU_ACCEL_MODE)'. Use host, tcg, or custom.)
+endif
+
+ifeq ($(strip $(SUDO_PASSWORD)),)
+SUDO_RUN := $(SUDO) -p ''
+else
+SUDO_RUN := printf '%s\n' "$(SUDO_PASSWORD)" | $(SUDO) -S -p ''
 endif
 
 # UEFI firmware path for QEMU (override with: make run OVMF_CODE=/path/to/OVMF_CODE.fd)
@@ -450,14 +462,13 @@ run: copy
 		echo "Set it explicitly, e.g. make run OVMF_CODE=/usr/share/edk2/x64/OVMF.4m.fd"; \
 		exit 1; \
 	fi
-	@echo "Starting VM with EFI..."
+	@echo "Starting VM with EFI (mode=$(QEMU_ACCEL_MODE), cpu=$(QEMU_CPU_FLAGS))..."
 	@$(SUDO_RUN) qemu-system-x86_64 \
 		-m 512M \
 		-bios "$(OVMF_CODE)" \
 		-net none \
 		-display $(QEMU_DISPLAY) \
-		-cpu $(QEMU_CPU_FLAGS) \
-		-enable-kvm \
+		-cpu $(QEMU_CPU_FLAGS) $(QEMU_ACCEL_ARGS) \
 		-drive file=fat:rw:esp,index=0,format=vvfat \
 		-serial stdio
 
@@ -489,6 +500,13 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  bear -- make all BUILD_FLAVOR=test-kthread_pool_race HO_DEMO_TEST_NAME=kthread_pool_race HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_KTHREAD_POOL_RACE"
 	@echo "  BUILD_FLAVOR=test-kthread_pool_race HO_DEMO_TEST_NAME=kthread_pool_race HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_KTHREAD_POOL_RACE \\" 
 	@echo "      bash scripts/qemu_capture.sh 30 /tmp/himuos-kthread-pool-race.log"
+	@echo "  # user_dual (timing-sensitive: collect both host and tcg evidence)"
+	@echo "  make clean"
+	@echo "  bear -- make all BUILD_FLAVOR=test-user_dual HO_DEMO_TEST_NAME=user_dual HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_DUAL"
+	@echo "  BUILD_FLAVOR=test-user_dual HO_DEMO_TEST_NAME=user_dual HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_DUAL \\"
+	@echo "      QEMU_CAPTURE_MODE=host bash scripts/qemu_capture.sh 30 /tmp/himuos-user-dual-host.log"
+	@echo "  BUILD_FLAVOR=test-user_dual HO_DEMO_TEST_NAME=user_dual HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_DUAL \\"
+	@echo "      QEMU_CAPTURE_MODE=tcg bash scripts/qemu_capture.sh 30 /tmp/himuos-user-dual-tcg.log"
 	@echo "Usage:"
 	@echo "  make test schedule   # run the scheduler demo suite"
 	@echo "  make test irql_wait  # run a dispatch-guard misuse panic regression"
@@ -496,7 +514,7 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  make test kthread_pool_race # run the KTHREAD pool race regression suite"
 	@echo "  make test user_hello # select the compiled minimal userspace hello profile"
 	@echo "  make test user_caps  # select the staged bootstrap capability pilot profile"
-	@echo "  make test user_dual  # select the dual compiled-userspace bring-up profile"
+	@echo "  make test user_dual  # select the dual compiled-userspace bring-up profile (use qemu_capture host+tcg)"
 	@echo "  make test            # list available test modules"
 else
 	@echo "Starting test module: $(TEST_MODULE)"

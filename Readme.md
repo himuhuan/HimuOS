@@ -60,7 +60,10 @@ BUILD_FLAVOR=<flavor> HO_DEMO_TEST_NAME=<profile> HO_DEMO_TEST_DEFINE=<define> \
     bash scripts/qemu_capture.sh 30 /tmp/himuos-<profile>.log
 ```
 
-其中 `scripts/qemu_capture.sh` 是主运行与串口捕获入口；不要把隐式 `make run` 或 `make test` 当作默认验证路径。
+其中 `scripts/qemu_capture.sh` 是主运行与串口捕获入口；不要把隐式 `make run` 或 `make test` 当作默认验证路径。脚本默认使用 `QEMU_CAPTURE_MODE=host`（host/KVM），也支持显式选择 `QEMU_CAPTURE_MODE=tcg` 或 `QEMU_CAPTURE_MODE=custom`。
+
+> [!IMPORTANT]
+> 对 `user_dual` 以及其他时序敏感 / 销毁敏感 profile，**单份 host/KVM 捕获不再视为充分证据**。回归结论必须同时给出 host 与 TCG 两份日志；若两条执行模型结果不一致，必须在缺陷记录中明确注明。
 
 ### 稳定 profile 标识符
 
@@ -82,6 +85,8 @@ BUILD_FLAVOR=<flavor> HO_DEMO_TEST_NAME=<profile> HO_DEMO_TEST_DEFINE=<define> \
 
 当前用户态相关的稳定锚点主要是 `user_hello` 与 `user_caps`。前者已经固定为**由 `src/user/user_hello` 源码编译产生的用户程序**的最小 Ring 3 进入与 clean exit 证据链，后者固定 capability / handle 路径的最小合同。README 描述的 MVP 方向，是在这两条稳定锚点之上继续推进到**编译型、双进程、Ex-facing 的用户态原型**；因此，这两条 profile 应被视为当前主线的阶段性回归基础，而不是最终用户 ABI 的全部形态。
 
+`user_dual` 则应被视为**双进程 bring-up 的时序敏感回归项**：当它涉及 teardown / preemption 相关结论时，必须同时检查 `QEMU_CAPTURE_MODE=host` 与 `QEMU_CAPTURE_MODE=tcg` 两条路径。
+
 ### 例子
 
 ```bash
@@ -102,6 +107,14 @@ make clean
 bear -- make all BUILD_FLAVOR=test-user_caps HO_DEMO_TEST_NAME=user_caps HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_CAPS
 BUILD_FLAVOR=test-user_caps HO_DEMO_TEST_NAME=user_caps HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_CAPS \
     bash scripts/qemu_capture.sh 30 /tmp/himuos-user-caps.log
+
+# dual userspace bring-up (timing-sensitive: collect both execution models)
+make clean
+bear -- make all BUILD_FLAVOR=test-user_dual HO_DEMO_TEST_NAME=user_dual HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_DUAL
+BUILD_FLAVOR=test-user_dual HO_DEMO_TEST_NAME=user_dual HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_DUAL \
+    QEMU_CAPTURE_MODE=host bash scripts/qemu_capture.sh 30 /tmp/himuos-user-dual-host.log
+BUILD_FLAVOR=test-user_dual HO_DEMO_TEST_NAME=user_dual HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_DUAL \
+    QEMU_CAPTURE_MODE=tcg bash scripts/qemu_capture.sh 30 /tmp/himuos-user-dual-tcg.log
 ```
 
 ## 版权与许可
