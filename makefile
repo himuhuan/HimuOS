@@ -200,6 +200,7 @@ SRCS_KERNEL_C := \
 	src/kernel/demo/kthread_pool_race.c                 \
     src/kernel/demo/semaphore.c                         \
     src/kernel/demo/thread.c                            \
+    src/kernel/demo/user_hello_artifact_bridge.c        \
 	src/kernel/demo/user_hello.c                        \
 	src/kernel/demo/user_caps.c                         \
     src/kernel/init/cpu.c                               \
@@ -268,7 +269,6 @@ SRCS_KERNEL_ALL := $(SRCS_KERNEL_C) $(SRCS_LIBC) $(SRCS_ELF) $(SRCS_KERNEL_ASM)
 
 OBJS_KERNEL_C   := $(patsubst src/%.c,$(KRN_OBJDIR)/%.o,$(filter %.c,$(SRCS_KERNEL_ALL)))
 OBJS_KERNEL_ASM := $(patsubst src/%.asm,$(KRN_OBJDIR)/%.o,$(filter %.asm,$(SRCS_KERNEL_ALL)))
-OBJS_KERNEL     := $(OBJS_KERNEL_C) $(OBJS_KERNEL_ASM)
 
 TARGET_KERNEL := $(KRN_BINDIR)/kernel.bin
 
@@ -289,6 +289,16 @@ TARGET_USER_HELLO_ELF       := $(USR_BINDIR)/user_hello.elf
 TARGET_USER_HELLO_CODE_BIN  := $(USR_BINDIR)/user_hello.code.bin
 TARGET_USER_HELLO_CONST_BIN := $(USR_BINDIR)/user_hello.const.bin
 TARGET_USER_HELLO           := $(TARGET_USER_HELLO_ELF) $(TARGET_USER_HELLO_CODE_BIN) $(TARGET_USER_HELLO_CONST_BIN)
+
+path_to_symbol = $(subst -,_,$(subst .,_,$(subst /,_,$(1))))
+
+TARGET_USER_HELLO_CODE_OBJ  := $(KRN_OBJDIR)/demo/user_hello.code.bin.o
+TARGET_USER_HELLO_CONST_OBJ := $(KRN_OBJDIR)/demo/user_hello.const.bin.o
+OBJS_KERNEL_EMBEDDED        := $(TARGET_USER_HELLO_CODE_OBJ) $(TARGET_USER_HELLO_CONST_OBJ)
+OBJS_KERNEL                 := $(OBJS_KERNEL_C) $(OBJS_KERNEL_ASM) $(OBJS_KERNEL_EMBEDDED)
+
+USER_HELLO_CODE_BIN_SYMBOL_BASE  := _binary_$(call path_to_symbol,$(TARGET_USER_HELLO_CODE_BIN))
+USER_HELLO_CONST_BIN_SYMBOL_BASE := _binary_$(call path_to_symbol,$(TARGET_USER_HELLO_CONST_BIN))
 
 .PHONY: all clean copy run efi install clean_code vmware_img kernel user debug run_iso test schedule list
 
@@ -342,6 +352,24 @@ $(TARGET_USER_HELLO_CONST_BIN): $(TARGET_USER_HELLO_ELF)
 	@mkdir -p $(dir $@)
 	@echo "USER OBJCOPY $@"
 	@$(OBJCOPY) -O binary --only-section=.rodata $< $@
+
+$(TARGET_USER_HELLO_CODE_OBJ): $(TARGET_USER_HELLO_CODE_BIN)
+	@mkdir -p $(dir $@)
+	@echo "BINOBJ $@"
+	@$(LD) -r -b binary -o $@ $<
+	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
+		--redefine-sym $(USER_HELLO_CODE_BIN_SYMBOL_BASE)_start=gKiUserHelloCodeBytesStart \
+		--redefine-sym $(USER_HELLO_CODE_BIN_SYMBOL_BASE)_end=gKiUserHelloCodeBytesEnd \
+		$@
+
+$(TARGET_USER_HELLO_CONST_OBJ): $(TARGET_USER_HELLO_CONST_BIN)
+	@mkdir -p $(dir $@)
+	@echo "BINOBJ $@"
+	@$(LD) -r -b binary -o $@ $<
+	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
+		--redefine-sym $(USER_HELLO_CONST_BIN_SYMBOL_BASE)_start=gKiUserHelloConstBytesStart \
+		--redefine-sym $(USER_HELLO_CONST_BIN_SYMBOL_BASE)_end=gKiUserHelloConstBytesEnd \
+		$@
 
 $(USR_OBJDIR)/%.o: src/%.c
 	@mkdir -p $(dir $@)
