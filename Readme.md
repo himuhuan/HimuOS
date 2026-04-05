@@ -70,7 +70,7 @@ BUILD_FLAVOR=<flavor> HO_DEMO_TEST_NAME=<profile> HO_DEMO_TEST_DEFINE=<define> \
 | Profile | Build flavor | Define | Outcome class | Intent |
 | ------ | ------ | ------ | ------ | ------ |
 | `schedule` | `test-schedule` | `HO_DEMO_TEST_SCHEDULE` | clean pass with continued boot/idle | scheduler smoke coverage, thread/event/semaphore/mutex 基线路径 |
-| `user_hello` | `test-user_hello` | `HO_DEMO_TEST_USER_HELLO` | compiled minimal userspace bring-up | 由 `src/user/user_hello` 源码编译并接入 kernel 的最小 Ring 3 进入、来自 CPL3 的 P1 timer round-trip、P1 gate 之后的 rejected raw write probe / successful hello write / `SYS_RAW_EXIT`、P3 teardown-complete → thread terminated → idle/reaper reclaimed 证据链 |
+| `user_hello` | `test-user_hello` | `HO_DEMO_TEST_USER_HELLO` | compiled minimal userspace bring-up | 由 `src/user/user_hello` 源码编译并接入 kernel 的最小 Ring 3 进入、来自 CPL3 的 P1 timer round-trip、P1 gate 之后的 rejected raw write probe / successful hello write / `SYS_RAW_EXIT`、P3 thread-terminated → finalizer teardown → idle/reaper reclaimed 证据链 |
 | `user_caps` | `test-user_caps` | `HO_DEMO_TEST_USER_CAPS` | bootstrap-only capability pilot | 版本化 capability seed block、stdout capability write、`SYS_CLOSE`、stale-handle rejection、`SYS_WAIT_ONE` 与 clean exit 证据链 |
 | `guard_wait` | `test-guard_wait` | `HO_DEMO_TEST_GUARD_WAIT` | diagnosable contract violation or panic | critical-section guard misuse |
 | `owned_exit` | `test-owned_exit` | `HO_DEMO_TEST_OWNED_EXIT` | diagnosable contract violation or panic | exit while owning a mutex |
