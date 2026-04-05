@@ -24,6 +24,13 @@ SerialWriteByte(uint16_t port, char byte)
 }
 
 void
+SerialDrain(uint16_t port)
+{
+    while ((inb(SERIAL_LINE_STATUS_PORT(port)) & 0x60) != 0x60)
+        ;
+}
+
+void
 SerialWriteStr(const char *s)
 {
     while (*s)

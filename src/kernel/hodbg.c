@@ -389,5 +389,6 @@ KernelHalt(int64_t ec, void *dump)
         ShowKernelPanicInfo(ec, dump);
     }
 
+    ConsoleFlush();
     Halt();
 }

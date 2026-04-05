@@ -75,3 +75,4 @@ HO_PUBLIC_API uint64_t ConsoleWriteFmt(const char *fmt, ...);
 HO_PUBLIC_API uint64_t ConsoleWriteVFmt(const char *fmt, VA_LIST args);
 
 HO_PUBLIC_API void ConsoleClearScreen(COLOR32 color);
+HO_PUBLIC_API void ConsoleFlush(void);

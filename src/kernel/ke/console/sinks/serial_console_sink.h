@@ -22,3 +22,4 @@ HO_INTERNAL_STRUCT typedef struct
 } SERIAL_CONSOLE_SINK;
 
 HO_KERNEL_API void KeSerialConSinkInit(SERIAL_CONSOLE_SINK *sink, uint16_t port);
+HO_KERNEL_API void KeSerialConSinkSyncCursor(SERIAL_CONSOLE_SINK *sink, uint16_t x, uint16_t y);

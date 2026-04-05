@@ -26,4 +26,6 @@ void SerialInit(uint16_t port);
 
 void SerialWriteByte(uint16_t port, char byte);
 
+void SerialDrain(uint16_t port);
+
 void SerialWriteStr(const char *s);
