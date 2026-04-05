@@ -440,6 +440,60 @@ KeUserBootstrapAttachThread(KTHREAD *thread, KE_USER_BOOTSTRAP_STAGING *staging)
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
+KeUserBootstrapDetachThread(KTHREAD *thread, KE_USER_BOOTSTRAP_STAGING *staging)
+{
+    if (!thread || !staging)
+        return EC_ILLEGAL_ARGUMENT;
+    if (staging->AttachedThread == NULL)
+        return EC_SUCCESS;
+    if (staging->AttachedThread != thread)
+        return EC_INVALID_STATE;
+
+    staging->AttachedThread = NULL;
+    return EC_SUCCESS;
+}
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS
+KeUserBootstrapPatchConstBytes(KE_USER_BOOTSTRAP_STAGING *staging,
+                               uint64_t offset,
+                               const void *bytes,
+                               uint64_t length)
+{
+    if (staging == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (length == 0)
+        return EC_SUCCESS;
+
+    if (bytes == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (offset > KE_USER_BOOTSTRAP_PAGE_SIZE || length > KE_USER_BOOTSTRAP_PAGE_SIZE)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if ((offset + length) < offset || (offset + length) > KE_USER_BOOTSTRAP_PAGE_SIZE)
+        return EC_ILLEGAL_ARGUMENT;
+
+    const KE_USER_BOOTSTRAP_MAPPING_RECORD *constRecord =
+        KiFindMappedPage(staging, KE_USER_BOOTSTRAP_MAPPING_KIND_CONST);
+    if (constRecord == NULL)
+        return EC_INVALID_STATE;
+
+    KE_TEMP_PHYS_MAP_HANDLE patchHandle = {0};
+    HO_VIRTUAL_ADDRESS patchTempVirt = 0;
+    HO_STATUS status = KeTempPhysMapAcquire(constRecord->PhysicalBase,
+                                            PTE_WRITABLE | PTE_NO_EXECUTE,
+                                            &patchHandle,
+                                            &patchTempVirt);
+    if (status != EC_SUCCESS)
+        return status;
+
+    memcpy((void *)(uint64_t)(patchTempVirt + offset), bytes, (size_t)length);
+
+    return KeTempPhysMapRelease(&patchHandle);
+}
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS
 KeUserBootstrapQueryCurrentThreadLayout(KE_USER_BOOTSTRAP_LAYOUT *outLayout)
 {
     if (!outLayout)

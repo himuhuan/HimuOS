@@ -38,6 +38,7 @@
 #define HO_DEMO_TEST_PF_HEAP           15
 #define HO_DEMO_TEST_KTHREAD_POOL_RACE 16
 #define HO_DEMO_TEST_USER_HELLO        17
+#define HO_DEMO_TEST_USER_CAPS         18
 
 #ifndef HO_DEMO_TEST_SELECTION
 #define HO_DEMO_TEST_SELECTION HO_DEMO_TEST_NONE
@@ -100,3 +101,4 @@ void RunPageFaultFixmapDemo(void);
 void RunPageFaultHeapDemo(void);
 void RunKthreadPoolRaceDemo(void);
 void RunUserHelloDemo(void);
+void RunUserCapsDemo(void);

@@ -14,12 +14,15 @@
 
 struct KTHREAD;
 struct KE_USER_BOOTSTRAP_STAGING;
+struct EX_PROCESS;
 
 typedef enum EX_OBJECT_TYPE
 {
     EX_OBJECT_TYPE_INVALID = 0,
     EX_OBJECT_TYPE_PROCESS = 1,
     EX_OBJECT_TYPE_THREAD = 2,
+    EX_OBJECT_TYPE_STDOUT_SERVICE = 3,
+    EX_OBJECT_TYPE_WAITABLE = 4,
 } EX_OBJECT_TYPE;
 
 typedef struct EX_OBJECT_HEADER
@@ -39,6 +42,22 @@ typedef uint32_t EX_PRIVATE_HANDLE_RIGHTS;
 #define EX_PRIVATE_HANDLE_RIGHT_CLOSE        ((EX_PRIVATE_HANDLE_RIGHTS)0x00000002u)
 #define EX_PRIVATE_HANDLE_RIGHT_PROCESS_SELF ((EX_PRIVATE_HANDLE_RIGHTS)0x00000004u)
 #define EX_PRIVATE_HANDLE_RIGHT_THREAD_SELF  ((EX_PRIVATE_HANDLE_RIGHTS)0x00000008u)
+#define EX_PRIVATE_HANDLE_RIGHT_WRITE        ((EX_PRIVATE_HANDLE_RIGHTS)0x00000010u)
+#define EX_PRIVATE_HANDLE_RIGHT_WAIT         ((EX_PRIVATE_HANDLE_RIGHTS)0x00000020u)
+
+typedef struct EX_STDOUT_SERVICE
+{
+    EX_OBJECT_HEADER Header;
+    struct EX_PROCESS *Owner;
+} EX_STDOUT_SERVICE;
+
+typedef struct EX_WAITABLE_OBJECT
+{
+    EX_OBJECT_HEADER Header;
+    struct EX_PROCESS *Owner;
+    void *Dispatcher;
+    struct KTHREAD *CompanionThread;
+} EX_WAITABLE_OBJECT;
 
 typedef struct EX_PRIVATE_HANDLE_SLOT
 {
@@ -58,6 +77,10 @@ struct EX_PROCESS
     KE_PROCESS_ADDRESS_SPACE AddressSpace;
     struct KE_USER_BOOTSTRAP_STAGING *Staging;
     EX_PRIVATE_HANDLE SelfHandle;
+    EX_PRIVATE_HANDLE StdoutHandle;
+    EX_PRIVATE_HANDLE WaitHandle;
+    EX_STDOUT_SERVICE StdoutService;
+    EX_WAITABLE_OBJECT WaitObject;
     EX_PRIVATE_HANDLE_TABLE HandleTable;
 };
 
@@ -85,6 +108,7 @@ HO_STATUS ExBootstrapResolvePrivateHandle(EX_PROCESS *process,
                                           EX_OBJECT_TYPE expectedType,
                                           EX_PRIVATE_HANDLE_RIGHTS desiredRights,
                                           EX_OBJECT_HEADER **outObjectHeader);
+HO_STATUS ExBootstrapReleaseResolvedObject(EX_OBJECT_HEADER *objectHeader);
 HO_STATUS ExBootstrapClosePrivateHandle(EX_PROCESS *process, EX_PRIVATE_HANDLE *handle);
 HO_STATUS ExBootstrapCloseAllPrivateHandles(EX_PROCESS *process);
 BOOL ExBootstrapHasRuntimeAlias(void);
