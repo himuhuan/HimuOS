@@ -35,19 +35,6 @@ ConsoleWriteUnlocked(const char *str)
     return KeConDevPutStr(&gConsoleDevice, str);
 }
 
-#if __HO_DEBUG_BUILD__
-static inline void
-ConsoleSyncSerialCursorUnlocked(void)
-{
-    KeSerialConSinkSyncCursor(&gSerialConsoleSink, gConsoleDevice.CursorX, gConsoleDevice.CursorY);
-}
-#else
-static inline void
-ConsoleSyncSerialCursorUnlocked(void)
-{
-}
-#endif
-
 static uint64_t
 ConsoleWriteVFmtInternal(const char *fmt, VA_LIST args)
 {
@@ -359,7 +346,6 @@ ConsoleWriteChar(char c)
     KE_CRITICAL_SECTION criticalSection = {0};
     KeEnterCriticalSection(&criticalSection);
     int status = ConsoleWriteCharUnlocked(c);
-    ConsoleSyncSerialCursorUnlocked();
     KeLeaveCriticalSection(&criticalSection);
     return status;
 }
@@ -373,7 +359,6 @@ ConsoleWrite(const char *str)
     KE_CRITICAL_SECTION criticalSection = {0};
     KeEnterCriticalSection(&criticalSection);
     uint64_t written = ConsoleWriteUnlocked(str);
-    ConsoleSyncSerialCursorUnlocked();
     KeLeaveCriticalSection(&criticalSection);
     return written;
 }
@@ -392,7 +377,6 @@ ConsoleWriteFmt(const char *fmt, ...)
     uint64_t written = ConsoleWriteVFmtInternal(fmt, args);
     VA_END(args);
 
-    ConsoleSyncSerialCursorUnlocked();
     KeLeaveCriticalSection(&criticalSection);
     return written;
 }
@@ -406,7 +390,6 @@ ConsoleWriteVFmt(const char *fmt, VA_LIST args)
     KE_CRITICAL_SECTION criticalSection = {0};
     KeEnterCriticalSection(&criticalSection);
     uint64_t written = ConsoleWriteVFmtInternal(fmt, args);
-    ConsoleSyncSerialCursorUnlocked();
     KeLeaveCriticalSection(&criticalSection);
     return written;
 }
@@ -420,7 +403,6 @@ ConsoleClearScreen(COLOR32 color)
     KE_CRITICAL_SECTION criticalSection = {0};
     KeEnterCriticalSection(&criticalSection);
     KeConDevClearScreen(&gConsoleDevice, color);
-    ConsoleSyncSerialCursorUnlocked();
     KeLeaveCriticalSection(&criticalSection);
 }
 
@@ -432,9 +414,8 @@ ConsoleFlush(void)
 
     KE_CRITICAL_SECTION criticalSection = {0};
     KeEnterCriticalSection(&criticalSection);
-    ConsoleSyncSerialCursorUnlocked();
 #if __HO_DEBUG_BUILD__
-    SerialDrain(gSerialConsoleSink.Port);
+    KeSerialConSinkFlushPendingCursor(&gSerialConsoleSink, gConsoleDevice.CursorX, gConsoleDevice.CursorY);
 #endif
     KeLeaveCriticalSection(&criticalSection);
 }

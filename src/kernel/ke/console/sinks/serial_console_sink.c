@@ -20,15 +20,6 @@ SerialConSinkEmitCrlf(SERIAL_CONSOLE_SINK *sink)
 static inline void
 SerialConSinkAdvanceCursor(SERIAL_CONSOLE_SINK *sink, uint16_t x, uint16_t y)
 {
-    if (sink->CurrentRow > y)
-    {
-        if (sink->CurrentColumn != 0)
-            SerialConSinkEmitCrlf(sink);
-
-        sink->CurrentRow = 0;
-        sink->CurrentColumn = 0;
-    }
-
     while (sink->CurrentRow < y)
     {
         SerialConSinkEmitCrlf(sink);
@@ -89,9 +80,6 @@ SerialConSinkClear(void *self, MAYBE_UNUSED COLOR32 fillColor)
     if (!sink)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (sink->CurrentColumn != 0)
-        SerialConSinkEmitCrlf(sink);
-
     sink->CurrentRow = 0;
     sink->CurrentColumn = 0;
     return EC_SUCCESS;
@@ -110,10 +98,33 @@ KeSerialConSinkInit(SERIAL_CONSOLE_SINK *sink, uint16_t port)
 }
 
 void
-KeSerialConSinkSyncCursor(SERIAL_CONSOLE_SINK *sink, uint16_t x, uint16_t y)
+KeSerialConSinkFlushPendingCursor(SERIAL_CONSOLE_SINK *sink, uint16_t x, uint16_t y)
 {
     if (!sink)
         return;
 
-    SerialConSinkAdvanceCursor(sink, x, y);
+    if (sink->CurrentRow > y)
+    {
+        sink->CurrentRow = y;
+        sink->CurrentColumn = x;
+        SerialDrain(sink->Port);
+        return;
+    }
+
+    while (sink->CurrentRow < y)
+    {
+        SerialConSinkEmitCrlf(sink);
+        sink->CurrentRow++;
+    }
+
+    if (x < sink->CurrentColumn)
+    {
+        SerialWriteByte(sink->Port, '\r');
+        sink->CurrentColumn = 0;
+    }
+
+    if (x > sink->CurrentColumn)
+        sink->CurrentColumn = x;
+
+    SerialDrain(sink->Port);
 }
