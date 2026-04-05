@@ -50,17 +50,18 @@ HO_KERNEL_API BOOL ExBootstrapAdapterHasWrapper(const struct KTHREAD *thread);
 HO_KERNEL_API struct KE_USER_BOOTSTRAP_STAGING *ExBootstrapAdapterQueryThreadStaging(const struct KTHREAD *thread);
 
 /**
- * Dispatch a bootstrap capability syscall on behalf of the shared int 0x80
- * trap entry. Handle lookup and rights checks stay inside Ex.
+ * Dispatch an Ex-facing bootstrap syscall on behalf of the shared int 0x80
+ * trap entry. Handle lookup and rights checks stay inside Ex; the no-return
+ * SYS_EXIT handoff uses ExBootstrapAdapterHandleExit().
  */
-HO_KERNEL_API HO_NODISCARD int64_t ExBootstrapAdapterDispatchCapabilitySyscall(uint64_t syscallNumber,
-																			   uint64_t arg0,
-																			   uint64_t arg1,
-																			   uint64_t arg2);
+HO_KERNEL_API HO_NODISCARD int64_t ExBootstrapAdapterDispatchSyscall(uint64_t syscallNumber,
+                                                                     uint64_t arg0,
+                                                                     uint64_t arg1,
+                                                                     uint64_t arg2);
 
 /**
- * Validate a clean SYS_RAW_EXIT handoff.
- * Raw exit must not consume bootstrap staging in place; the terminated-thread
+ * Validate a clean SYS_EXIT / SYS_RAW_EXIT handoff.
+ * Exit must not consume bootstrap staging in place; the terminated-thread
  * finalizer remains responsible for payload teardown and final wrapper release.
  */
-HO_KERNEL_API HO_NODISCARD HO_STATUS ExBootstrapAdapterHandleRawExit(struct KTHREAD *thread);
+HO_KERNEL_API HO_NODISCARD HO_STATUS ExBootstrapAdapterHandleExit(struct KTHREAD *thread);

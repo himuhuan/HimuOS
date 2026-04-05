@@ -1,5 +1,14 @@
-#define KI_USER_BOOTSTRAP_SYSCALL_VECTOR 0x80
-#define KI_USER_BOOTSTRAP_SYS_RAW_EXIT   2
+#include <kernel/ex/ex_bootstrap_abi.h>
+
+/*
+ * Public compiled-userspace startup/return path:
+ * - _start enters main() with a 16-byte aligned stack.
+ * - Returning from main issues the formal SYS_EXIT contract over int 0x80.
+ * - RAX carries the syscall number / return value, while RDI, RSI, and RDX
+ *   carry the first three arguments.
+ * - Failures return negative HO_STATUS values in RAX, but SYS_EXIT is a
+ *   no-return termination path for the normal contract.
+ */
 
     .section .text._start, "ax", @progbits
     .global _start
@@ -10,10 +19,10 @@ _start:
     call main
 
     movl %eax, %edi
-    movl $KI_USER_BOOTSTRAP_SYS_RAW_EXIT, %eax
+    movl $SYS_EXIT, %eax
     xorl %esi, %esi
     xorl %edx, %edx
-    int $KI_USER_BOOTSTRAP_SYSCALL_VECTOR
+    int $KE_USER_BOOTSTRAP_SYSCALL_VECTOR
     ud2
 
     .size _start, . - _start

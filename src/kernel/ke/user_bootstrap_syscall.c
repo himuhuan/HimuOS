@@ -19,10 +19,11 @@
 static BOOL gKeUserBootstrapRawSyscallInitialized;
 
 static int64_t KiEncodeRawSyscallStatus(HO_STATUS status);
-static HO_NORETURN void KiAbortRawExit(KTHREAD *thread,
-                                       uint64_t exitCode,
-                                       HO_STATUS status,
-                                       const char *reason);
+static HO_NORETURN void KiAbortBootstrapExit(KTHREAD *thread,
+                                             uint64_t exitCode,
+                                             HO_STATUS status,
+                                             const char *exitKind,
+                                             const char *reason);
 static HO_STATUS KiValidateBootstrapUserRange(const KE_USER_BOOTSTRAP_LAYOUT *layout,
                                               HO_VIRTUAL_ADDRESS userBase,
                                               uint64_t length,
@@ -32,7 +33,9 @@ static HO_STATUS KiValidateBootstrapUserReadablePages(const KE_KERNEL_ADDRESS_SP
                                                       HO_VIRTUAL_ADDRESS endExclusive);
 static int64_t KiRejectRawWrite(uint64_t userBuffer, uint64_t length, HO_STATUS status);
 static int64_t KiHandleRawWrite(uint64_t userBuffer, uint64_t length);
+static HO_NORETURN void KiPerformBootstrapExit(uint64_t exitCode, const char *successLog, const char *exitKind);
 static int64_t KiHandleRawExit(uint64_t exitCode);
+static int64_t KiHandleExit(uint64_t exitCode, uint64_t reserved0, uint64_t reserved1);
 static int64_t KiDispatchRawSyscall(uint64_t rawSyscallNumber, uint64_t arg0, uint64_t arg1, uint64_t arg2);
 static int64_t KiDispatchBootstrapSyscall(uint64_t syscallNumber, uint64_t arg0, uint64_t arg1, uint64_t arg2);
 static void KiHandleRawSyscallTrap(void *frame, void *context);
@@ -44,10 +47,15 @@ KiEncodeRawSyscallStatus(HO_STATUS status)
 }
 
 static HO_NORETURN void
-KiAbortRawExit(KTHREAD *thread, uint64_t exitCode, HO_STATUS status, const char *reason)
+KiAbortBootstrapExit(KTHREAD *thread,
+                     uint64_t exitCode,
+                     HO_STATUS status,
+                     const char *exitKind,
+                     const char *reason)
 {
     klog(KLOG_LEVEL_ERROR,
-         KE_USER_BOOTSTRAP_LOG_TEARDOWN_FAILED " raw=exit unrecoverable thread=%u code=%lu reason=%s status=%s (%d)\n",
+         KE_USER_BOOTSTRAP_LOG_TEARDOWN_FAILED " exit=%s unrecoverable thread=%u code=%lu reason=%s status=%s (%d)\n",
+         exitKind,
          thread ? thread->ThreadId : 0U,
          (unsigned long)exitCode,
          reason,
@@ -272,23 +280,39 @@ KiHandleRawWrite(uint64_t userBuffer, uint64_t length)
     return (int64_t)written;
 }
 
-static int64_t
-KiHandleRawExit(uint64_t exitCode)
+static HO_NORETURN void
+KiPerformBootstrapExit(uint64_t exitCode, const char *successLog, const char *exitKind)
 {
     KTHREAD *thread = KeGetCurrentThread();
     if (!thread || ExBootstrapAdapterQueryThreadStaging(thread) == NULL)
-        KiAbortRawExit(thread, exitCode, EC_INVALID_STATE, "Bootstrap raw exit missing staging");
+        KiAbortBootstrapExit(thread, exitCode, EC_INVALID_STATE, exitKind, "Bootstrap exit missing staging");
 
-    klog(KLOG_LEVEL_INFO,
-         KE_USER_BOOTSTRAP_LOG_SYS_RAW_EXIT " code=%lu thread=%u\n",
-         (unsigned long)exitCode,
-         thread->ThreadId);
+    klog(KLOG_LEVEL_INFO, "%s code=%lu thread=%u\n", successLog, (unsigned long)exitCode, thread->ThreadId);
 
-    HO_STATUS status = ExBootstrapAdapterHandleRawExit(thread);
+    HO_STATUS status = ExBootstrapAdapterHandleExit(thread);
     if (status != EC_SUCCESS)
-        KiAbortRawExit(thread, exitCode, status, "Bootstrap raw exit handoff validation failed after no-return transition");
+        KiAbortBootstrapExit(thread,
+                             exitCode,
+                             status,
+                             exitKind,
+                             "Bootstrap exit handoff validation failed after no-return transition");
 
     KeThreadExit();
+}
+
+static int64_t
+KiHandleRawExit(uint64_t exitCode)
+{
+    KiPerformBootstrapExit(exitCode, KE_USER_BOOTSTRAP_LOG_SYS_RAW_EXIT, "raw");
+}
+
+static int64_t
+KiHandleExit(uint64_t exitCode, uint64_t reserved0, uint64_t reserved1)
+{
+    if (reserved0 != 0 || reserved1 != 0)
+        return KiEncodeRawSyscallStatus(EC_ILLEGAL_ARGUMENT);
+
+    KiPerformBootstrapExit(exitCode, KE_USER_BOOTSTRAP_LOG_SYS_EXIT, "formal");
 }
 
 static int64_t
@@ -298,7 +322,7 @@ KiDispatchRawSyscall(uint64_t rawSyscallNumber, uint64_t arg0, uint64_t arg1, ui
     if (!thread || ExBootstrapAdapterQueryThreadStaging(thread) == NULL)
     {
         if (rawSyscallNumber == SYS_RAW_EXIT)
-            KiAbortRawExit(thread, arg0, EC_INVALID_STATE, "Bootstrap raw exit missing staging");
+            KiAbortBootstrapExit(thread, arg0, EC_INVALID_STATE, "raw", "Bootstrap raw exit missing staging");
 
         klog(KLOG_LEVEL_ERROR,
              KE_USER_BOOTSTRAP_LOG_INVALID_SYSCALL " nr=%lu thread=%u missing bootstrap staging\n",
@@ -331,7 +355,10 @@ KiDispatchBootstrapSyscall(uint64_t syscallNumber, uint64_t arg0, uint64_t arg1,
     if (syscallNumber < KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE)
         return KiDispatchRawSyscall(syscallNumber, arg0, arg1, arg2);
 
-    return ExBootstrapAdapterDispatchCapabilitySyscall(syscallNumber, arg0, arg1, arg2);
+    if (syscallNumber == SYS_EXIT)
+        return KiHandleExit(arg0, arg1, arg2);
+
+    return ExBootstrapAdapterDispatchSyscall(syscallNumber, arg0, arg1, arg2);
 }
 
 static void
