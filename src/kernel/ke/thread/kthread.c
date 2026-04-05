@@ -118,7 +118,7 @@ KiThreadCreateInternal(KTHREAD **outThread,
     thread->StackOwnedByKva = TRUE;
     thread->StackRange = stackRange;
 
-    thread->Priority = 0;
+    thread->Priority = KTHREAD_DEFAULT_PRIORITY;
     thread->Quantum = KE_DEFAULT_QUANTUM_NS;
     thread->OwnedMutexCount = 0;
     KeInitializeIrqlState(&thread->IrqlState);

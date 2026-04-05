@@ -65,7 +65,7 @@ KiSchedulerTimerISR(void *frame, void *context)
     BOOL needReschedule = FALSE;
 
     // If IdleThread is running and ready queue has threads, switch
-    if (gCurrentThread == gIdleThread && !LinkedListIsEmpty(&gReadyQueue))
+    if (gCurrentThread == gIdleThread && !LinkedListIsEmpty(KiGetDefaultReadyQueue()))
     {
         needReschedule = TRUE;
     }
@@ -73,7 +73,7 @@ KiSchedulerTimerISR(void *frame, void *context)
     else if (gCurrentThread != gIdleThread && nowNs >= gQuantumDeadlineNs)
     {
         gCurrentThread->State = KTHREAD_STATE_READY;
-        LinkedListInsertTail(&gReadyQueue, &gCurrentThread->ReadyLink);
+        LinkedListInsertTail(KiGetDefaultReadyQueue(), &gCurrentThread->ReadyLink);
         gStats.PreemptionCount++;
         needReschedule = TRUE;
     }

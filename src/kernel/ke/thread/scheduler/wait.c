@@ -129,7 +129,7 @@ KiCompleteWait(KWAIT_BLOCK *block, HO_STATUS status)
 
     KTHREAD *thread = CONTAINING_RECORD(block, KTHREAD, WaitBlock);
     thread->State = KTHREAD_STATE_READY;
-    LinkedListInsertTail(&gReadyQueue, &thread->ReadyLink);
+    LinkedListInsertTail(KiGetDefaultReadyQueue(), &thread->ReadyLink);
     if (status == EC_TIMEOUT)
         gStats.SleepWakeCount++;
 

@@ -15,7 +15,7 @@
 // Globals
 // ─────────────────────────────────────────────────────────────
 
-LINKED_LIST_TAG gReadyQueue;
+LINKED_LIST_TAG gReadyQueues[KTHREAD_PRIORITY_COUNT];
 LINKED_LIST_TAG gTimeoutQueue;
 LINKED_LIST_TAG gTerminatedList;
 
@@ -62,7 +62,7 @@ KiThreadTrampoline(void)
 HO_KERNEL_API HO_STATUS
 KeSchedulerInit(void)
 {
-    LinkedListInit(&gReadyQueue);
+    KiInitReadyQueues();
     LinkedListInit(&gTimeoutQueue);
     LinkedListInit(&gTerminatedList);
     memset(&gStats, 0, sizeof(gStats));
@@ -83,7 +83,7 @@ KeSchedulerInit(void)
     gIdleThread->StackGuardBase = 0;
     gIdleThread->StackOwnedByKva = FALSE;
     memset(&gIdleThread->StackRange, 0, sizeof(gIdleThread->StackRange));
-    gIdleThread->Priority = 0;
+    gIdleThread->Priority = KTHREAD_DEFAULT_PRIORITY;
     gIdleThread->Quantum = 0;
     gIdleThread->OwnedMutexCount = 0;
     KeInitializeIrqlState(&gIdleThread->IrqlState);
@@ -133,7 +133,7 @@ KeThreadStart(KTHREAD *thread)
     KeEnterCriticalSection(&criticalSection);
 
     thread->State = KTHREAD_STATE_READY;
-    LinkedListInsertTail(&gReadyQueue, &thread->ReadyLink);
+    LinkedListInsertTail(KiGetDefaultReadyQueue(), &thread->ReadyLink);
     gStats.TotalThreadsCreated++;
     gStats.ActiveThreadCount++;
 
@@ -167,7 +167,7 @@ KeYield(void)
 
     gStats.YieldCount++;
 
-    if (LinkedListIsEmpty(&gReadyQueue))
+    if (LinkedListIsEmpty(KiGetDefaultReadyQueue()))
     {
         KeLeaveCriticalSection(&criticalSection);
         KeReleaseIrqlGuard(&irqlGuard);
@@ -175,7 +175,7 @@ KeYield(void)
     }
 
     gCurrentThread->State = KTHREAD_STATE_READY;
-    LinkedListInsertTail(&gReadyQueue, &gCurrentThread->ReadyLink);
+    LinkedListInsertTail(KiGetDefaultReadyQueue(), &gCurrentThread->ReadyLink);
 
     KeLeaveCriticalSection(&criticalSection);
     KiSchedule();
@@ -586,9 +586,9 @@ KiSchedule(void)
     KTHREAD *prev = gCurrentThread;
     KTHREAD *next;
 
-    if (!LinkedListIsEmpty(&gReadyQueue))
+    if (!LinkedListIsEmpty(KiGetDefaultReadyQueue()))
     {
-        LINKED_LIST_TAG *entry = gReadyQueue.Flink;
+        LINKED_LIST_TAG *entry = KiGetDefaultReadyQueue()->Flink;
         LinkedListRemove(entry);
         next = CONTAINING_RECORD(entry, KTHREAD, ReadyLink);
     }

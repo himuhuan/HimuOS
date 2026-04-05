@@ -152,7 +152,7 @@ KeSetEvent(KEVENT *event)
     }
 
     // If CPU is idle and threads became ready, trigger immediate reschedule
-    BOOL needSchedule = (gCurrentThread == gIdleThread && !LinkedListIsEmpty(&gReadyQueue));
+    BOOL needSchedule = (gCurrentThread == gIdleThread && !LinkedListIsEmpty(KiGetDefaultReadyQueue()));
 
     klog(KLOG_LEVEL_DEBUG, "[EVENT] Set (released=%u)\n", releasedCount);
 
@@ -271,7 +271,7 @@ KeReleaseSemaphore(KSEMAPHORE *semaphore, int32_t releaseCount)
     semaphore->Header.SignalState += permitsToDispatch;
     KiAssertSemaphoreState(semaphore);
 
-    BOOL needSchedule = (gCurrentThread == gIdleThread && !LinkedListIsEmpty(&gReadyQueue));
+    BOOL needSchedule = (gCurrentThread == gIdleThread && !LinkedListIsEmpty(KiGetDefaultReadyQueue()));
 
     klog(KLOG_LEVEL_DEBUG, "[SEMAPHORE] Release(count=%ld, woke=%u, available=%ld)\n", (long)releaseCount,
          releasedWaiters, (long)semaphore->Header.SignalState);

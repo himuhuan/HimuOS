@@ -26,7 +26,7 @@
 #include <boot/boot_capsule.h>
 #include <libc/string.h>
 
-extern LINKED_LIST_TAG gReadyQueue;
+extern LINKED_LIST_TAG gReadyQueues[KTHREAD_PRIORITY_COUNT];
 extern LINKED_LIST_TAG gTimeoutQueue;
 extern LINKED_LIST_TAG gTerminatedList;
 
@@ -38,6 +38,86 @@ extern KE_SCHEDULER_STATS gStats;
 
 extern uint64_t gQuantumDeadlineNs;
 extern uint64_t gNextProgrammedDeadlineNs;
+
+static inline BOOL
+KiIsValidThreadPriority(uint8_t priority)
+{
+    return priority < (uint8_t)KTHREAD_PRIORITY_COUNT;
+}
+
+static inline LINKED_LIST_TAG *
+KiGetReadyQueueForPriority(uint8_t priority)
+{
+    HO_KASSERT(KiIsValidThreadPriority(priority), EC_ILLEGAL_ARGUMENT);
+    return &gReadyQueues[priority];
+}
+
+static inline LINKED_LIST_TAG *
+KiGetReadyQueueForThread(const KTHREAD *thread)
+{
+    HO_KASSERT(thread != NULL, EC_ILLEGAL_ARGUMENT);
+    return KiGetReadyQueueForPriority(thread->Priority);
+}
+
+static inline LINKED_LIST_TAG *
+KiGetDefaultReadyQueue(void)
+{
+    return KiGetReadyQueueForPriority(KTHREAD_DEFAULT_PRIORITY);
+}
+
+static inline void
+KiInitReadyQueues(void)
+{
+    uint32_t priority;
+
+    for (priority = 0; priority < (uint32_t)KTHREAD_PRIORITY_COUNT; priority++)
+    {
+        LinkedListInit(&gReadyQueues[priority]);
+    }
+}
+
+static inline BOOL
+KiHasAnyReadyThread(void)
+{
+    uint32_t priority;
+
+    for (priority = 0; priority < (uint32_t)KTHREAD_PRIORITY_COUNT; priority++)
+    {
+        if (!LinkedListIsEmpty(&gReadyQueues[priority]))
+            return TRUE;
+    }
+
+    return FALSE;
+}
+
+static inline LINKED_LIST_TAG *
+KiGetHighestPriorityReadyQueue(void)
+{
+    int priority;
+
+    for (priority = (int)KTHREAD_PRIORITY_HIGH; priority >= (int)KTHREAD_PRIORITY_LOW; priority--)
+    {
+        if (!LinkedListIsEmpty(&gReadyQueues[priority]))
+            return &gReadyQueues[priority];
+    }
+
+    return NULL;
+}
+
+static inline uint32_t
+KiCountAllReadyThreads(void)
+{
+    uint32_t count = 0;
+    uint32_t priority;
+
+    for (priority = 0; priority < (uint32_t)KTHREAD_PRIORITY_COUNT; priority++)
+    {
+        for (LINKED_LIST_TAG *entry = gReadyQueues[priority].Flink; entry != &gReadyQueues[priority]; entry = entry->Flink)
+            count++;
+    }
+
+    return count;
+}
 
 void KiSchedule(void);
 void KiSchedulerTimerISR(void *frame, void *context);
