@@ -49,6 +49,10 @@ KeQuerySchedulerInfo(KE_SYSINFO_SCHEDULER_DATA *out)
     out->CurrentThreadId = gCurrentThread ? gCurrentThread->ThreadId : 0;
     out->IdleThreadId = gIdleThread ? gIdleThread->ThreadId : 0;
     out->ReadyQueueDepth = KiCountAllReadyThreads();
+    for (uint32_t priority = 0; priority < (uint32_t)KTHREAD_PRIORITY_COUNT; ++priority)
+    {
+        out->ReadyQueueDepthByPriority[priority] = KiCountQueueDepth(&gReadyQueues[priority]);
+    }
     out->SleepQueueDepth = KiCountQueueDepth(&gTimeoutQueue);
 
     if (!LinkedListIsEmpty(&gTimeoutQueue))

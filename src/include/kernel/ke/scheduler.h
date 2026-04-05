@@ -44,6 +44,7 @@ typedef struct KE_SYSINFO_SCHEDULER_DATA
     uint32_t CurrentThreadId;
     uint32_t IdleThreadId;
     uint32_t ReadyQueueDepth;
+    uint32_t ReadyQueueDepthByPriority[KTHREAD_PRIORITY_COUNT];
     uint32_t SleepQueueDepth;
     uint32_t ActiveThreadCount;
     uint64_t EarliestWakeDeadline;

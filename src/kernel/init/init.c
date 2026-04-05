@@ -465,6 +465,7 @@ static HO_STATUS
 RunSchedulerObservabilitySelfTest(void)
 {
     KE_SYSINFO_SCHEDULER_DATA info = {0};
+    uint32_t priority;
     HO_STATUS status = KiQuerySchedulerInfo(&info);
     if (status != EC_SUCCESS)
         return status;
@@ -474,6 +475,12 @@ RunSchedulerObservabilitySelfTest(void)
         info.ActiveThreadCount != 1 || info.TotalThreadsCreated != 1)
     {
         return EC_INVALID_STATE;
+    }
+
+    for (priority = 0; priority < (uint32_t)KTHREAD_PRIORITY_COUNT; ++priority)
+    {
+        if (info.ReadyQueueDepthByPriority[priority] != 0)
+            return EC_INVALID_STATE;
     }
 
     return EC_SUCCESS;
