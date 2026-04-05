@@ -28,7 +28,7 @@ KiUserHelloArtifactLength(const uint8_t *start, const uint8_t *end)
 }
 
 void
-KiUserHelloGetEmbeddedArtifacts(KI_USER_HELLO_EMBEDDED_ARTIFACTS *artifacts)
+KiUserHelloGetEmbeddedArtifacts(KI_USER_EMBEDDED_ARTIFACTS *artifacts)
 {
     if (artifacts == NULL)
         HO_KPANIC(EC_ILLEGAL_ARGUMENT, "User hello artifact sink is required");

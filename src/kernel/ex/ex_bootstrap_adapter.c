@@ -33,7 +33,7 @@ static int64_t KiHandleCapabilityWaitOne(EX_PROCESS *process,
                                          EX_PRIVATE_HANDLE handle,
                                          uint64_t timeoutMsRaw,
                                          uint64_t reserved);
-static HO_STATUS KiDestroyBootstrapWrapperObjects(void);
+static HO_STATUS KiDestroyBootstrapWrapperObjects(KTHREAD *thread);
 
 static int64_t
 KiEncodeCapabilitySyscallStatus(HO_STATUS status)
@@ -352,7 +352,7 @@ ExBootstrapAdapterFinalizeThread(KTHREAD *thread)
 
     HO_STATUS status = ExBootstrapTeardownProcessPayload(process);
 
-    HO_STATUS releaseStatus = KiDestroyBootstrapWrapperObjects();
+    HO_STATUS releaseStatus = KiDestroyBootstrapWrapperObjects(thread);
     if (status == EC_SUCCESS)
         status = releaseStatus;
 
@@ -433,19 +433,19 @@ ExBootstrapAdapterHandleRawExit(KTHREAD *thread)
 
     HO_STATUS status = ExBootstrapTeardownProcessPayload(process);
     if (status != EC_SUCCESS)
-        (void)KiDestroyBootstrapWrapperObjects();
+        (void)KiDestroyBootstrapWrapperObjects(thread);
 
     return status;
 }
 
 static HO_STATUS
-KiDestroyBootstrapWrapperObjects(void)
+KiDestroyBootstrapWrapperObjects(KTHREAD *thread)
 {
     EX_THREAD *exThread = NULL;
     EX_PROCESS *process = NULL;
     HO_STATUS status = EC_SUCCESS;
 
-    ExBootstrapUnpublishRuntimeAlias(&exThread, &process);
+    ExBootstrapUnpublishRuntimeAlias(thread, &exThread, &process);
 
     if (exThread != NULL && process == NULL)
         process = exThread->Process;

@@ -11,18 +11,17 @@
 #include "ex_bootstrap_internal.h"
 
 #include <kernel/ex/ex_bootstrap_adapter.h>
+#include <kernel/ke/critical_section.h>
 #include <kernel/ke/kthread.h>
 #include <kernel/ke/mm.h>
 #include <kernel/ke/scheduler.h>
 #include <kernel/ke/user_bootstrap.h>
 #include <libc/string.h>
 
-EX_PROCESS *gExBootstrapProcess = NULL;
-EX_THREAD *gExBootstrapThread = NULL;
-
 #define EX_PRIVATE_HANDLE_INDEX_BITS       8u
 #define EX_PRIVATE_HANDLE_INDEX_MASK       ((EX_PRIVATE_HANDLE)0x000000FFu)
 #define EX_PRIVATE_HANDLE_GENERATION_MASK  ((uint32_t)0x00FFFFFFu)
+#define EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY 4u
 
 #if EX_PRIVATE_HANDLE_TABLE_CAPACITY > 0xFFu
 #error EX_PRIVATE_HANDLE_TABLE_CAPACITY exceeds the internal handle encoding range.
@@ -41,6 +40,21 @@ static HO_STATUS KiCleanupWaitableBacking(EX_WAITABLE_OBJECT *waitObject);
 static HO_STATUS KiCleanupPrivateHandleBacking(EX_OBJECT_HEADER *objectHeader);
 static HO_STATUS KiCreateWaitablePilotHandle(EX_PROCESS *process);
 static HO_STATUS KiDestroyNewThread(KTHREAD *thread);
+static BOOL KiIsRuntimeAliasSlotFree(uint32_t slotIndex);
+static BOOL KiIsRuntimeAliasSlotPopulated(uint32_t slotIndex);
+static uint32_t KiFindRuntimeAliasSlotByThreadKey(const KTHREAD *thread);
+static uint32_t KiFindRuntimeAliasSlotByProcess(const EX_PROCESS *process);
+static uint32_t KiFindRuntimeAliasSlotByThreadObject(const EX_THREAD *thread);
+static uint32_t KiFindFreeRuntimeAliasSlot(void);
+
+typedef struct EX_BOOTSTRAP_RUNTIME_ALIAS
+{
+    KTHREAD *ThreadKey;
+    EX_PROCESS *Process;
+    EX_THREAD *Thread;
+} EX_BOOTSTRAP_RUNTIME_ALIAS;
+
+static EX_BOOTSTRAP_RUNTIME_ALIAS gExBootstrapRuntimeAliases[EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY] = {0};
 
 static void
 KiInitializeObjectHeader(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE type)
@@ -203,20 +217,126 @@ KiReleaseHandleObject(EX_OBJECT_HEADER *objectHeader)
 }
 
 static BOOL
+KiIsRuntimeAliasSlotFree(uint32_t slotIndex)
+{
+    EX_BOOTSTRAP_RUNTIME_ALIAS *slot = NULL;
+
+    if (slotIndex >= EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY)
+        return FALSE;
+
+    slot = &gExBootstrapRuntimeAliases[slotIndex];
+    return slot->ThreadKey == NULL && slot->Process == NULL && slot->Thread == NULL;
+}
+
+static BOOL
+KiIsRuntimeAliasSlotPopulated(uint32_t slotIndex)
+{
+    return !KiIsRuntimeAliasSlotFree(slotIndex);
+}
+
+static uint32_t
+KiFindRuntimeAliasSlotByThreadKey(const KTHREAD *thread)
+{
+    uint32_t index = 0;
+
+    if (thread == NULL)
+        return EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY;
+
+    for (index = 0; index < EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY; ++index)
+    {
+        if (!KiIsRuntimeAliasSlotPopulated(index))
+            continue;
+
+        if (gExBootstrapRuntimeAliases[index].ThreadKey == thread)
+            return index;
+    }
+
+    return EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY;
+}
+
+static uint32_t
+KiFindRuntimeAliasSlotByProcess(const EX_PROCESS *process)
+{
+    uint32_t index = 0;
+
+    if (process == NULL)
+        return EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY;
+
+    for (index = 0; index < EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY; ++index)
+    {
+        if (!KiIsRuntimeAliasSlotPopulated(index))
+            continue;
+
+        if (gExBootstrapRuntimeAliases[index].Process == process)
+            return index;
+    }
+
+    return EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY;
+}
+
+static uint32_t
+KiFindRuntimeAliasSlotByThreadObject(const EX_THREAD *thread)
+{
+    uint32_t index = 0;
+
+    if (thread == NULL)
+        return EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY;
+
+    for (index = 0; index < EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY; ++index)
+    {
+        if (!KiIsRuntimeAliasSlotPopulated(index))
+            continue;
+
+        if (gExBootstrapRuntimeAliases[index].Thread == thread)
+            return index;
+    }
+
+    return EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY;
+}
+
+static uint32_t
+KiFindFreeRuntimeAliasSlot(void)
+{
+    uint32_t index = 0;
+
+    for (index = 0; index < EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY; ++index)
+    {
+        if (KiIsRuntimeAliasSlotFree(index))
+            return index;
+    }
+
+    return EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY;
+}
+
+static BOOL
 KiIsRuntimeAliasObject(const EX_OBJECT_HEADER *objectHeader)
 {
+    uint32_t slotIndex = 0;
+    BOOL isRuntimeAlias = FALSE;
+    KE_CRITICAL_SECTION guard = {0};
+
     if (objectHeader == NULL)
         return FALSE;
+
+    KeEnterCriticalSection(&guard);
 
     switch (objectHeader->Type)
     {
     case EX_OBJECT_TYPE_PROCESS:
-        return gExBootstrapProcess == CONTAINING_RECORD(objectHeader, EX_PROCESS, Header);
+        slotIndex = KiFindRuntimeAliasSlotByProcess(CONTAINING_RECORD(objectHeader, EX_PROCESS, Header));
+        isRuntimeAlias = slotIndex < EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY;
+        break;
     case EX_OBJECT_TYPE_THREAD:
-        return gExBootstrapThread == CONTAINING_RECORD(objectHeader, EX_THREAD, Header);
+        slotIndex = KiFindRuntimeAliasSlotByThreadObject(CONTAINING_RECORD(objectHeader, EX_THREAD, Header));
+        isRuntimeAlias = slotIndex < EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY;
+        break;
     default:
-        return FALSE;
+        isRuntimeAlias = FALSE;
+        break;
     }
+
+    KeLeaveCriticalSection(&guard);
+    return isRuntimeAlias;
 }
 
 static HO_STATUS
@@ -702,59 +822,136 @@ Exit:
 BOOL
 ExBootstrapHasRuntimeAlias(void)
 {
-    return gExBootstrapProcess != NULL || gExBootstrapThread != NULL;
+    uint32_t index = 0;
+    KE_CRITICAL_SECTION guard = {0};
+
+    KeEnterCriticalSection(&guard);
+
+    for (index = 0; index < EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY; ++index)
+    {
+        if (KiIsRuntimeAliasSlotPopulated(index))
+        {
+            KeLeaveCriticalSection(&guard);
+            return TRUE;
+        }
+    }
+
+    KeLeaveCriticalSection(&guard);
+    return FALSE;
 }
 
 BOOL
 ExBootstrapRuntimeAliasMatchesProcess(const EX_PROCESS *process)
 {
-    return process != NULL && gExBootstrapProcess == process;
+    BOOL matches = FALSE;
+    KE_CRITICAL_SECTION guard = {0};
+
+    KeEnterCriticalSection(&guard);
+    matches = KiFindRuntimeAliasSlotByProcess(process) < EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY;
+    KeLeaveCriticalSection(&guard);
+
+    return matches;
 }
 
 EX_THREAD *
 ExBootstrapLookupRuntimeThread(const KTHREAD *thread)
 {
-    if (thread == NULL || gExBootstrapThread == NULL || gExBootstrapThread->Thread != thread)
-        return NULL;
+    uint32_t slotIndex = 0;
+    EX_THREAD *runtimeThread = NULL;
+    KE_CRITICAL_SECTION guard = {0};
 
-    return gExBootstrapThread;
+    KeEnterCriticalSection(&guard);
+    slotIndex = KiFindRuntimeAliasSlotByThreadKey(thread);
+
+    if (slotIndex >= EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY)
+    {
+        KeLeaveCriticalSection(&guard);
+        return NULL;
+    }
+
+    runtimeThread = gExBootstrapRuntimeAliases[slotIndex].Thread;
+    KeLeaveCriticalSection(&guard);
+
+    return runtimeThread;
 }
 
 EX_PROCESS *
 ExBootstrapLookupRuntimeProcess(const KTHREAD *thread)
 {
-    EX_THREAD *runtimeThread = ExBootstrapLookupRuntimeThread(thread);
-    if (runtimeThread == NULL)
-        return NULL;
+    uint32_t slotIndex = 0;
+    EX_PROCESS *process = NULL;
+    KE_CRITICAL_SECTION guard = {0};
 
-    return runtimeThread->Process;
+    KeEnterCriticalSection(&guard);
+    slotIndex = KiFindRuntimeAliasSlotByThreadKey(thread);
+    if (slotIndex < EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY)
+        process = gExBootstrapRuntimeAliases[slotIndex].Process;
+    KeLeaveCriticalSection(&guard);
+
+    return process;
 }
 
 HO_STATUS
 ExBootstrapPublishRuntimeAlias(EX_PROCESS *process, EX_THREAD *thread)
 {
+    uint32_t slotIndex = 0;
+    HO_STATUS status = EC_SUCCESS;
+    KE_CRITICAL_SECTION guard = {0};
+
     if (process == NULL || thread == NULL || thread->Thread == NULL || thread->Process != process)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (ExBootstrapHasRuntimeAlias())
-        return EC_INVALID_STATE;
+    KeEnterCriticalSection(&guard);
 
-    gExBootstrapProcess = process;
-    gExBootstrapThread = thread;
-    return EC_SUCCESS;
+    if (KiFindRuntimeAliasSlotByThreadKey(thread->Thread) < EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY ||
+        KiFindRuntimeAliasSlotByProcess(process) < EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY ||
+        KiFindRuntimeAliasSlotByThreadObject(thread) < EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY)
+    {
+        status = EC_INVALID_STATE;
+        goto Exit;
+    }
+
+    slotIndex = KiFindFreeRuntimeAliasSlot();
+    if (slotIndex >= EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY)
+    {
+        status = EC_OUT_OF_RESOURCE;
+        goto Exit;
+    }
+
+    gExBootstrapRuntimeAliases[slotIndex].ThreadKey = thread->Thread;
+    gExBootstrapRuntimeAliases[slotIndex].Process = process;
+    gExBootstrapRuntimeAliases[slotIndex].Thread = thread;
+
+Exit:
+    KeLeaveCriticalSection(&guard);
+    return status;
 }
 
 void
-ExBootstrapUnpublishRuntimeAlias(EX_THREAD **outThread, EX_PROCESS **outProcess)
+ExBootstrapUnpublishRuntimeAlias(const KTHREAD *thread, EX_THREAD **outThread, EX_PROCESS **outProcess)
 {
-    EX_THREAD *thread = gExBootstrapThread;
-    EX_PROCESS *process = gExBootstrapProcess;
+    uint32_t slotIndex = 0;
+    EX_THREAD *runtimeThread = NULL;
+    EX_PROCESS *process = NULL;
+    KE_CRITICAL_SECTION guard = {0};
 
-    gExBootstrapThread = NULL;
-    gExBootstrapProcess = NULL;
+    KeEnterCriticalSection(&guard);
+    slotIndex = KiFindRuntimeAliasSlotByThreadKey(thread);
+
+    if (slotIndex < EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY)
+    {
+        runtimeThread = gExBootstrapRuntimeAliases[slotIndex].Thread;
+        process = gExBootstrapRuntimeAliases[slotIndex].Process;
+
+        gExBootstrapRuntimeAliases[slotIndex].ThreadKey = NULL;
+        gExBootstrapRuntimeAliases[slotIndex].Process = NULL;
+        gExBootstrapRuntimeAliases[slotIndex].Thread = NULL;
+    }
+
+    KeLeaveCriticalSection(&guard);
 
     if (outThread != NULL)
-        *outThread = thread;
+        *outThread = runtimeThread;
 
     if (outProcess != NULL)
         *outProcess = process;
@@ -1083,9 +1280,6 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
     if ((params->Flags & ~EX_BOOTSTRAP_THREAD_CREATE_FLAG_SEED_WAIT_OBJECT) != 0)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (ExBootstrapHasRuntimeAlias())
-        return EC_INVALID_STATE;
-
     thread = (EX_THREAD *)kzalloc(sizeof(*thread));
     if (thread == NULL)
         return EC_OUT_OF_RESOURCE;
@@ -1209,11 +1403,11 @@ ExBootstrapTeardownThread(EX_THREAD *thread)
 
     HO_STATUS firstError = ExBootstrapTeardownProcessPayload(process);
 
+    ExBootstrapUnpublishRuntimeAlias(thread->Thread, NULL, NULL);
+
     HO_STATUS threadStatus = KiDestroyNewThread(thread->Thread);
     if (firstError == EC_SUCCESS)
         firstError = threadStatus;
-
-    ExBootstrapUnpublishRuntimeAlias(NULL, NULL);
 
     HO_STATUS closeStatus = ExBootstrapCloseAllPrivateHandles(process);
     if (firstError == EC_SUCCESS)

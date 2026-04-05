@@ -39,7 +39,7 @@ KiUnexpectedUserHelloKernelEntry(void *arg)
 void
 RunUserHelloDemo(void)
 {
-    KI_USER_HELLO_EMBEDDED_ARTIFACTS artifacts = {0};
+    KI_USER_EMBEDDED_ARTIFACTS artifacts = {0};
     EX_BOOTSTRAP_PROCESS_CREATE_PARAMS createParams = {0};
     EX_BOOTSTRAP_THREAD_CREATE_PARAMS threadParams = {
         .EntryPoint = KiUnexpectedUserHelloKernelEntry,

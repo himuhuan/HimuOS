@@ -116,8 +116,4 @@ BOOL ExBootstrapRuntimeAliasMatchesProcess(const EX_PROCESS *process);
 HO_STATUS ExBootstrapPublishRuntimeAlias(EX_PROCESS *process, EX_THREAD *thread);
 EX_THREAD *ExBootstrapLookupRuntimeThread(const struct KTHREAD *thread);
 EX_PROCESS *ExBootstrapLookupRuntimeProcess(const struct KTHREAD *thread);
-void ExBootstrapUnpublishRuntimeAlias(EX_THREAD **outThread, EX_PROCESS **outProcess);
-
-/* Bootstrap runtime registry stores non-owning identity aliases only. */
-extern EX_PROCESS *gExBootstrapProcess;
-extern EX_THREAD *gExBootstrapThread;
+void ExBootstrapUnpublishRuntimeAlias(const struct KTHREAD *thread, EX_THREAD **outThread, EX_PROCESS **outProcess);

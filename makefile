@@ -95,7 +95,7 @@ USR_BUILDROOT := build/user$(if $(strip $(BUILD_FLAVOR)),/$(BUILD_FLAVOR),)
 USR_OBJDIR    := $(USR_BUILDROOT)/obj
 USR_BINDIR    := $(USR_BUILDROOT)/bin
 
-VALID_TEST_MODULES := schedule guard_wait owned_exit irql_wait irql_sleep irql_yield irql_exit pf_imported pf_guard pf_fixmap pf_heap kthread_pool_race user_hello user_caps list
+VALID_TEST_MODULES := schedule guard_wait owned_exit irql_wait irql_sleep irql_yield irql_exit pf_imported pf_guard pf_fixmap pf_heap kthread_pool_race user_hello user_caps user_dual list
 TEST_MODULE_GOALS  := $(filter-out test,$(MAKECMDGOALS))
 TEST_MODULE        := $(if $(strip $(TEST_MODULE_GOALS)),$(firstword $(TEST_MODULE_GOALS)),list)
 TEST_BUILD_FLAVOR  := test-$(TEST_MODULE)
@@ -114,14 +114,15 @@ TEST_DEFINE_pf_heap := HO_DEMO_TEST_PF_HEAP
 TEST_DEFINE_kthread_pool_race := HO_DEMO_TEST_KTHREAD_POOL_RACE
 TEST_DEFINE_user_hello := HO_DEMO_TEST_USER_HELLO
 TEST_DEFINE_user_caps := HO_DEMO_TEST_USER_CAPS
+TEST_DEFINE_user_dual := HO_DEMO_TEST_USER_DUAL
 
 ifneq ($(filter test,$(MAKECMDGOALS)),)
 ifneq ($(words $(TEST_MODULE_GOALS)),0)
 ifneq ($(words $(TEST_MODULE_GOALS)),1)
-$(error Usage: make test <module>. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap, kthread_pool_race, user_hello, user_caps. Use `make test` or `make test list` to inspect supported modules)
+$(error Usage: make test <module>. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap, kthread_pool_race, user_hello, user_caps, user_dual. Use `make test` or `make test list` to inspect supported modules)
 endif
 ifneq ($(filter $(TEST_MODULE),$(VALID_TEST_MODULES)), $(TEST_MODULE))
-$(error Unknown test module '$(TEST_MODULE)'. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap, kthread_pool_race, user_hello, user_caps. Use `make test list` to inspect supported modules)
+$(error Unknown test module '$(TEST_MODULE)'. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap, kthread_pool_race, user_hello, user_caps, user_dual. Use `make test list` to inspect supported modules)
 endif
 endif
 endif
@@ -200,8 +201,10 @@ SRCS_KERNEL_C := \
 	src/kernel/demo/kthread_pool_race.c                 \
     src/kernel/demo/semaphore.c                         \
     src/kernel/demo/thread.c                            \
+    src/kernel/demo/user_counter_artifact_bridge.c      \
     src/kernel/demo/user_hello_artifact_bridge.c        \
 	src/kernel/demo/user_hello.c                        \
+    src/kernel/demo/user_dual.c                         \
 	src/kernel/demo/user_caps.c                         \
     src/kernel/init/cpu.c                               \
     src/kernel/init/font.c                              \
@@ -278,29 +281,44 @@ TARGET_KERNEL := $(KRN_BINDIR)/kernel.bin
 SRCS_USER_HELLO_C := \
     src/user/user_hello/main.c
 
+SRCS_USER_COUNTER_C := \
+    src/user/user_counter/main.c
+
 SRCS_USER_COMMON_S := \
     src/user/crt0.S
 
 OBJS_USER_HELLO_C := $(patsubst src/%.c,$(USR_OBJDIR)/%.o,$(SRCS_USER_HELLO_C))
+OBJS_USER_COUNTER_C := $(patsubst src/%.c,$(USR_OBJDIR)/%.o,$(SRCS_USER_COUNTER_C))
 OBJS_USER_HELLO_S := $(patsubst src/%.S,$(USR_OBJDIR)/%.o,$(SRCS_USER_COMMON_S))
 OBJS_USER_HELLO   := $(OBJS_USER_HELLO_C) $(OBJS_USER_HELLO_S)
+OBJS_USER_COUNTER := $(OBJS_USER_COUNTER_C) $(OBJS_USER_HELLO_S)
 
 TARGET_USER_HELLO_ELF       := $(USR_BINDIR)/user_hello.elf
 TARGET_USER_HELLO_CODE_BIN  := $(USR_BINDIR)/user_hello.code.bin
 TARGET_USER_HELLO_CONST_BIN := $(USR_BINDIR)/user_hello.const.bin
 TARGET_USER_HELLO           := $(TARGET_USER_HELLO_ELF) $(TARGET_USER_HELLO_CODE_BIN) $(TARGET_USER_HELLO_CONST_BIN)
 
+TARGET_USER_COUNTER_ELF       := $(USR_BINDIR)/user_counter.elf
+TARGET_USER_COUNTER_CODE_BIN  := $(USR_BINDIR)/user_counter.code.bin
+TARGET_USER_COUNTER_CONST_BIN := $(USR_BINDIR)/user_counter.const.bin
+TARGET_USER_COUNTER           := $(TARGET_USER_COUNTER_ELF) $(TARGET_USER_COUNTER_CODE_BIN) $(TARGET_USER_COUNTER_CONST_BIN)
+
 path_to_symbol = $(subst -,_,$(subst .,_,$(subst /,_,$(1))))
 
 TARGET_USER_HELLO_CODE_OBJ  := $(KRN_OBJDIR)/demo/user_hello.code.bin.o
 TARGET_USER_HELLO_CONST_OBJ := $(KRN_OBJDIR)/demo/user_hello.const.bin.o
-OBJS_KERNEL_EMBEDDED        := $(TARGET_USER_HELLO_CODE_OBJ) $(TARGET_USER_HELLO_CONST_OBJ)
+TARGET_USER_COUNTER_CODE_OBJ  := $(KRN_OBJDIR)/demo/user_counter.code.bin.o
+TARGET_USER_COUNTER_CONST_OBJ := $(KRN_OBJDIR)/demo/user_counter.const.bin.o
+OBJS_KERNEL_EMBEDDED          := $(TARGET_USER_HELLO_CODE_OBJ) $(TARGET_USER_HELLO_CONST_OBJ) \
+                                 $(TARGET_USER_COUNTER_CODE_OBJ) $(TARGET_USER_COUNTER_CONST_OBJ)
 OBJS_KERNEL                 := $(OBJS_KERNEL_C) $(OBJS_KERNEL_ASM) $(OBJS_KERNEL_EMBEDDED)
 
 USER_HELLO_CODE_BIN_SYMBOL_BASE  := _binary_$(call path_to_symbol,$(TARGET_USER_HELLO_CODE_BIN))
 USER_HELLO_CONST_BIN_SYMBOL_BASE := _binary_$(call path_to_symbol,$(TARGET_USER_HELLO_CONST_BIN))
+USER_COUNTER_CODE_BIN_SYMBOL_BASE  := _binary_$(call path_to_symbol,$(TARGET_USER_COUNTER_CODE_BIN))
+USER_COUNTER_CONST_BIN_SYMBOL_BASE := _binary_$(call path_to_symbol,$(TARGET_USER_COUNTER_CONST_BIN))
 
-.PHONY: all clean copy run efi install clean_code vmware_img kernel user debug run_iso test schedule list
+.PHONY: all clean copy run efi install clean_code vmware_img kernel user debug run_iso test schedule user_hello user_caps user_dual list
 
 all: efi kernel user
 
@@ -335,8 +353,8 @@ $(KRN_OBJDIR)/%.o: src/%.asm
 	@echo "ASM $<"
 	@nasm $(ASFLAGS) -o $@ $<
 
-user: $(TARGET_USER_HELLO)
-	@echo "User build complete: $(TARGET_USER_HELLO_ELF)"
+user: $(TARGET_USER_HELLO) $(TARGET_USER_COUNTER)
+	@echo "User build complete: $(TARGET_USER_HELLO_ELF) $(TARGET_USER_COUNTER_ELF)"
 
 $(TARGET_USER_HELLO_ELF): $(OBJS_USER_HELLO) src/user/user.ld
 	@mkdir -p $(dir $@)
@@ -349,6 +367,21 @@ $(TARGET_USER_HELLO_CODE_BIN): $(TARGET_USER_HELLO_ELF)
 	@$(OBJCOPY) -O binary --only-section=.text $< $@
 
 $(TARGET_USER_HELLO_CONST_BIN): $(TARGET_USER_HELLO_ELF)
+	@mkdir -p $(dir $@)
+	@echo "USER OBJCOPY $@"
+	@$(OBJCOPY) -O binary --only-section=.rodata $< $@
+
+$(TARGET_USER_COUNTER_ELF): $(OBJS_USER_COUNTER) src/user/user.ld
+	@mkdir -p $(dir $@)
+	@echo "USER LD $@"
+	@$(LD) -o $@ $(OBJS_USER_COUNTER) $(USER_LDFLAGS) -T src/user/user.ld -Map=$(USR_BINDIR)/user_counter.map
+
+$(TARGET_USER_COUNTER_CODE_BIN): $(TARGET_USER_COUNTER_ELF)
+	@mkdir -p $(dir $@)
+	@echo "USER OBJCOPY $@"
+	@$(OBJCOPY) -O binary --only-section=.text $< $@
+
+$(TARGET_USER_COUNTER_CONST_BIN): $(TARGET_USER_COUNTER_ELF)
 	@mkdir -p $(dir $@)
 	@echo "USER OBJCOPY $@"
 	@$(OBJCOPY) -O binary --only-section=.rodata $< $@
@@ -369,6 +402,24 @@ $(TARGET_USER_HELLO_CONST_OBJ): $(TARGET_USER_HELLO_CONST_BIN)
 	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
 		--redefine-sym $(USER_HELLO_CONST_BIN_SYMBOL_BASE)_start=gKiUserHelloConstBytesStart \
 		--redefine-sym $(USER_HELLO_CONST_BIN_SYMBOL_BASE)_end=gKiUserHelloConstBytesEnd \
+		$@
+
+$(TARGET_USER_COUNTER_CODE_OBJ): $(TARGET_USER_COUNTER_CODE_BIN)
+	@mkdir -p $(dir $@)
+	@echo "BINOBJ $@"
+	@$(LD) -r -b binary -o $@ $<
+	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
+		--redefine-sym $(USER_COUNTER_CODE_BIN_SYMBOL_BASE)_start=gKiUserCounterCodeBytesStart \
+		--redefine-sym $(USER_COUNTER_CODE_BIN_SYMBOL_BASE)_end=gKiUserCounterCodeBytesEnd \
+		$@
+
+$(TARGET_USER_COUNTER_CONST_OBJ): $(TARGET_USER_COUNTER_CONST_BIN)
+	@mkdir -p $(dir $@)
+	@echo "BINOBJ $@"
+	@$(LD) -r -b binary -o $@ $<
+	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
+		--redefine-sym $(USER_COUNTER_CONST_BIN_SYMBOL_BASE)_start=gKiUserCounterConstBytesStart \
+		--redefine-sym $(USER_COUNTER_CONST_BIN_SYMBOL_BASE)_end=gKiUserCounterConstBytesEnd \
 		$@
 
 $(USR_OBJDIR)/%.o: src/%.c
@@ -427,6 +478,7 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  kthread_pool_race - regression suite for KTHREAD pool synchronization"
 	@echo "  user_hello  - compiled minimal userspace hello regression profile"
 	@echo "  user_caps   - staged bootstrap stdout capability pilot regression"
+	@echo "  user_dual   - launch compiled user_hello and user_counter together"
 	@echo "Recommended explicit workflow:"
 	@echo "  make clean"
 	@echo "  # schedule"
@@ -444,13 +496,14 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  make test kthread_pool_race # run the KTHREAD pool race regression suite"
 	@echo "  make test user_hello # select the compiled minimal userspace hello profile"
 	@echo "  make test user_caps  # select the staged bootstrap capability pilot profile"
+	@echo "  make test user_dual  # select the dual compiled-userspace bring-up profile"
 	@echo "  make test            # list available test modules"
 else
 	@echo "Starting test module: $(TEST_MODULE)"
 	@$(MAKE) run BUILD_FLAVOR=$(TEST_BUILD_FLAVOR) HO_DEMO_TEST_NAME=$(TEST_MODULE) HO_DEMO_TEST_DEFINE=$(TEST_DEFINE_$(TEST_MODULE))
 endif
 
-schedule user_hello user_caps list:
+schedule user_hello user_caps user_dual list:
 	@:
 		
 debug: copy
@@ -534,4 +587,5 @@ USER_CFLAGS += -MMD -MP
 -include $(OBJS_EFI_C:.o=.d)
 -include $(OBJS_KERNEL_C:.o=.d)
 -include $(OBJS_USER_HELLO_C:.o=.d)
+-include $(OBJS_USER_COUNTER_C:.o=.d)
 -include $(OBJS_USER_HELLO_S:.o=.d)
