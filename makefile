@@ -23,6 +23,7 @@ LDFLAGS_EFI := -nostdlib -Wl,--subsystem,10 -e efi_main
 # Kernel compiler and linker
 CC          := gcc
 LD          := ld
+OBJCOPY     := objcopy
 ASFLAGS     := -f elf64 -g -F dwarf
 
 BUILD_FLAVOR ?=
@@ -76,12 +77,23 @@ endif
 
 LDFLAGS = -T himuos.ld -nostdlib -static -e kmain -Map=$(KRN_BINDIR)/kernel.map
 
+USER_CFLAGS := -Wall -Wextra -Werror \
+               -fno-stack-protector -fno-builtin -fno-pie \
+               -fno-asynchronous-unwind-tables -fno-unwind-tables \
+               -nostdlib -nostartfiles -nodefaultlibs -nostdinc \
+               -ffreestanding -fdiagnostics-color -c -m64 -g \
+               -Isrc -Isrc/include -Isrc/include/libc -Isrc/user
+USER_LDFLAGS := -nostdlib -static --build-id=none -z max-page-size=0x1000
+
 # Output directories (explicit per-target)
 EFI_OBJDIR    := build/efi/obj
 EFI_BINDIR    := build/efi/bin
 KRN_BUILDROOT := build/kernel$(if $(strip $(BUILD_FLAVOR)),/$(BUILD_FLAVOR),)
 KRN_OBJDIR    := $(KRN_BUILDROOT)/obj
 KRN_BINDIR    := $(KRN_BUILDROOT)/bin
+USR_BUILDROOT := build/user$(if $(strip $(BUILD_FLAVOR)),/$(BUILD_FLAVOR),)
+USR_OBJDIR    := $(USR_BUILDROOT)/obj
+USR_BINDIR    := $(USR_BUILDROOT)/bin
 
 VALID_TEST_MODULES := schedule guard_wait owned_exit irql_wait irql_sleep irql_yield irql_exit pf_imported pf_guard pf_fixmap pf_heap kthread_pool_race user_hello user_caps list
 TEST_MODULE_GOALS  := $(filter-out test,$(MAKECMDGOALS))
@@ -260,9 +272,27 @@ OBJS_KERNEL     := $(OBJS_KERNEL_C) $(OBJS_KERNEL_ASM)
 
 TARGET_KERNEL := $(KRN_BINDIR)/kernel.bin
 
-.PHONY: all clean copy run efi install clean_code vmware_img kernel debug run_iso test schedule list
+# ------------------------------------------------------------------------------
+# Userspace bootstrap artifacts
+# ------------------------------------------------------------------------------
+SRCS_USER_HELLO_C := \
+    src/user/user_hello/main.c
 
-all: efi kernel
+SRCS_USER_COMMON_S := \
+    src/user/crt0.S
+
+OBJS_USER_HELLO_C := $(patsubst src/%.c,$(USR_OBJDIR)/%.o,$(SRCS_USER_HELLO_C))
+OBJS_USER_HELLO_S := $(patsubst src/%.S,$(USR_OBJDIR)/%.o,$(SRCS_USER_COMMON_S))
+OBJS_USER_HELLO   := $(OBJS_USER_HELLO_C) $(OBJS_USER_HELLO_S)
+
+TARGET_USER_HELLO_ELF       := $(USR_BINDIR)/user_hello.elf
+TARGET_USER_HELLO_CODE_BIN  := $(USR_BINDIR)/user_hello.code.bin
+TARGET_USER_HELLO_CONST_BIN := $(USR_BINDIR)/user_hello.const.bin
+TARGET_USER_HELLO           := $(TARGET_USER_HELLO_ELF) $(TARGET_USER_HELLO_CODE_BIN) $(TARGET_USER_HELLO_CONST_BIN)
+
+.PHONY: all clean copy run efi install clean_code vmware_img kernel user debug run_iso test schedule list
+
+all: efi kernel user
 
 efi: $(TARGET_EFI)
 	@echo "EFI build complete: $<"
@@ -294,6 +324,34 @@ $(KRN_OBJDIR)/%.o: src/%.asm
 	@mkdir -p $(dir $@)
 	@echo "ASM $<"
 	@nasm $(ASFLAGS) -o $@ $<
+
+user: $(TARGET_USER_HELLO)
+	@echo "User build complete: $(TARGET_USER_HELLO_ELF)"
+
+$(TARGET_USER_HELLO_ELF): $(OBJS_USER_HELLO) src/user/user.ld
+	@mkdir -p $(dir $@)
+	@echo "USER LD $@"
+	@$(LD) -o $@ $(OBJS_USER_HELLO) $(USER_LDFLAGS) -T src/user/user.ld -Map=$(USR_BINDIR)/user_hello.map
+
+$(TARGET_USER_HELLO_CODE_BIN): $(TARGET_USER_HELLO_ELF)
+	@mkdir -p $(dir $@)
+	@echo "USER OBJCOPY $@"
+	@$(OBJCOPY) -O binary --only-section=.text $< $@
+
+$(TARGET_USER_HELLO_CONST_BIN): $(TARGET_USER_HELLO_ELF)
+	@mkdir -p $(dir $@)
+	@echo "USER OBJCOPY $@"
+	@$(OBJCOPY) -O binary --only-section=.rodata $< $@
+
+$(USR_OBJDIR)/%.o: src/%.c
+	@mkdir -p $(dir $@)
+	@echo "USER CC $<"
+	@$(CC) $(USER_CFLAGS) -o $@ $<
+
+$(USR_OBJDIR)/%.o: src/%.S
+	@mkdir -p $(dir $@)
+	@echo "USER AS $<"
+	@$(CC) $(USER_CFLAGS) -o $@ $<
 
 # ------------------------------------------------------------------------------
 # Runtime artifacts for QEMU (vvfat): always sync the current build flavor
@@ -442,7 +500,10 @@ run_iso: $(ISO_NAME)
 # Enable depfile generation for both EFI and Kernel C compilations
 CFLAGS_EFI += -MMD -MP
 CFLAGS     += -MMD -MP
+USER_CFLAGS += -MMD -MP
 
 # Include auto-generated dependency files (if they exist)
 -include $(OBJS_EFI_C:.o=.d)
 -include $(OBJS_KERNEL_C:.o=.d)
+-include $(OBJS_USER_HELLO_C:.o=.d)
+-include $(OBJS_USER_HELLO_S:.o=.d)
