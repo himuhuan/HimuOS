@@ -378,6 +378,7 @@ ShowKernelPanicInfo(HO_STATUS code, HO_PANIC_CONTEXT *ctx)
 HO_PUBLIC_API HO_NORETURN void
 KernelHalt(int64_t ec, void *dump)
 {
+    ConsoleFlush();
     ConsoleClearScreen(COLOR_BLUE);
 
     if (ec <= 0)
@@ -389,5 +390,6 @@ KernelHalt(int64_t ec, void *dump)
         ShowKernelPanicInfo(ec, dump);
     }
 
+    ConsoleFlush();
     Halt();
 }

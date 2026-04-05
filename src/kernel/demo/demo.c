@@ -16,6 +16,8 @@ KEVENT gCriticalSectionGuardEvent;
 KEVENT gDispatchGuardEvent;
 KMUTEX gOwnedExitMutex;
 
+static void ScheduleDemoControllerThread(void *arg);
+
 void
 RunKernelDemos(void)
 {
@@ -129,7 +131,24 @@ RunKernelDemos(void)
 void
 RunScheduleDemo(void)
 {
+    KTHREAD *controller = NULL;
+
+    HO_STATUS status = KeThreadCreate(&controller, ScheduleDemoControllerThread, NULL);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to create schedule demo controller");
+
+    status = KeThreadStart(controller);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to start schedule demo controller");
+}
+
+static void
+ScheduleDemoControllerThread(void *arg)
+{
+    (void)arg;
+
     RunIrqlSelfTest();
+    RunPriorityReadyQueueSmokeDemo();
     RunThreadDemo();
     RunEventDemo();
     RunSemaphoreDemo();

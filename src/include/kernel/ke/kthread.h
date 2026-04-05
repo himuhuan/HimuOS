@@ -49,6 +49,16 @@ typedef enum KTHREAD_TERMINATION_CLAIM_STATE
     KTHREAD_TERMINATION_CLAIM_STATE_CONSUMED
 } KTHREAD_TERMINATION_CLAIM_STATE;
 
+typedef enum KTHREAD_PRIORITY
+{
+    KTHREAD_PRIORITY_LOW = 0,
+    KTHREAD_PRIORITY_NORMAL,
+    KTHREAD_PRIORITY_HIGH,
+    KTHREAD_PRIORITY_COUNT
+} KTHREAD_PRIORITY;
+
+#define KTHREAD_DEFAULT_PRIORITY KTHREAD_PRIORITY_NORMAL
+
 // ─────────────────────────────────────────────────────────────
 // Context switch structure (callee-saved registers only)
 // ─────────────────────────────────────────────────────────────
@@ -83,7 +93,7 @@ typedef struct KTHREAD
     BOOL StackOwnedByKva;
     KE_KVA_RANGE StackRange;
 
-    uint8_t Priority; // Reserved for multi-priority extension
+    uint8_t Priority; // KTHREAD_PRIORITY value
     uint64_t Quantum; // Time slice remaining (nanoseconds)
     uint32_t OwnedMutexCount;
     KE_IRQL_STATE IrqlState;

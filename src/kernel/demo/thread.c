@@ -13,6 +13,8 @@
 #define THREAD_DEMO_JOIN_TIMEOUT_NS 20000000ULL
 #define THREAD_DEMO_POLL_RETRIES    128U
 #define THREAD_DEMO_POLL_SLEEP_NS   1000000ULL
+#define PRIO_SMOKE_RR_ROUNDS        3U
+#define PRIO_SMOKE_MAX_SEQUENCE     16U
 
 typedef struct KI_THREAD_DEMO_WORKER_CONTEXT
 {
@@ -37,9 +39,32 @@ typedef struct KI_THREAD_DEMO_STATUS_CONTEXT
     HO_STATUS Status;
 } KI_THREAD_DEMO_STATUS_CONTEXT;
 
+typedef struct KI_PRIORITY_SMOKE_SEQUENCE
+{
+    char Tokens[PRIO_SMOKE_MAX_SEQUENCE + 1];
+    uint32_t Length;
+} KI_PRIORITY_SMOKE_SEQUENCE;
+
+typedef struct KI_PRIORITY_SMOKE_WORKER_CONTEXT
+{
+    KI_PRIORITY_SMOKE_SEQUENCE *Sequence;
+    const char *ScenarioName;
+    char Token;
+    uint32_t IterationCount;
+    BOOL YieldBetweenIterations;
+} KI_PRIORITY_SMOKE_WORKER_CONTEXT;
+
 void KiFinalizeThread(KTHREAD *thread);
 
 static void KiAssertThreadDemoStatus(HO_STATUS actual, HO_STATUS expected, const char *reason);
+static void KiPrioritySmokeWorkerThread(void *arg);
+static void KiPrioritySmokeAppendToken(KI_PRIORITY_SMOKE_SEQUENCE *sequence, char token, const char *scenarioName,
+                                       uint32_t stepIndex);
+static void KiAssertPrioritySmokeSequence(const KI_PRIORITY_SMOKE_SEQUENCE *sequence, const char *expected,
+                                          const char *scenarioName);
+static void KiStartPrioritySmokeThreadPair(KTHREAD *firstThread, KTHREAD *secondThread);
+static void KiRunPriorityOrderingScenario(void);
+static void KiRunPriorityRoundRobinScenario(void);
 static void KiWaitForThreadDemoSemaphore(KSEMAPHORE *semaphore, const char *reason);
 static KTHREAD_STATE KiReadThreadDemoState(const KTHREAD *thread);
 static KTHREAD_TERMINATION_CLAIM_STATE KiReadThreadDemoClaimState(const KTHREAD *thread);
@@ -97,6 +122,15 @@ RunThreadDemo(void)
         HO_KPANIC(status, "Failed to start thread demo controller");
 }
 
+void
+RunPriorityReadyQueueSmokeDemo(void)
+{
+    klog(KLOG_LEVEL_INFO, "[PRIO] smoke start\n");
+    KiRunPriorityOrderingScenario();
+    KiRunPriorityRoundRobinScenario();
+    klog(KLOG_LEVEL_INFO, "[PRIO] smoke passed\n");
+}
+
 static void
 KiAssertThreadDemoStatus(HO_STATUS actual, HO_STATUS expected, const char *reason)
 {
@@ -107,6 +141,170 @@ KiAssertThreadDemoStatus(HO_STATUS actual, HO_STATUS expected, const char *reaso
 
     klog(KLOG_LEVEL_ERROR, "[TEST] %s failed (expected=%d actual=%d)\n", reason, expected, actual);
     HO_KPANIC(actual, "Thread demo regression assertion failed");
+}
+
+static void
+KiPrioritySmokeAppendToken(KI_PRIORITY_SMOKE_SEQUENCE *sequence, char token, const char *scenarioName, uint32_t stepIndex)
+{
+    KE_CRITICAL_SECTION criticalSection = {0};
+    uint32_t slot;
+    KTHREAD *thread;
+
+    HO_KASSERT(sequence != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(scenarioName != NULL, EC_ILLEGAL_ARGUMENT);
+
+    KeEnterCriticalSection(&criticalSection);
+
+    if (sequence->Length >= PRIO_SMOKE_MAX_SEQUENCE)
+    {
+        KeLeaveCriticalSection(&criticalSection);
+        HO_KPANIC(EC_OUT_OF_RESOURCE, "Priority smoke sequence overflow");
+    }
+
+    slot = sequence->Length;
+    sequence->Tokens[slot] = token;
+    sequence->Length++;
+    sequence->Tokens[sequence->Length] = '\0';
+
+    KeLeaveCriticalSection(&criticalSection);
+
+    thread = KeGetCurrentThread();
+    klog(KLOG_LEVEL_INFO, "[PRIO] %s slot=%u token=%c step=%u thread=%u priority=%u\n", scenarioName, slot, token,
+         stepIndex, thread->ThreadId, thread->Priority);
+}
+
+static void
+KiAssertPrioritySmokeSequence(const KI_PRIORITY_SMOKE_SEQUENCE *sequence, const char *expected, const char *scenarioName)
+{
+    uint32_t index = 0;
+
+    HO_KASSERT(sequence != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(expected != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(scenarioName != NULL, EC_ILLEGAL_ARGUMENT);
+
+    while (expected[index] != '\0')
+    {
+        if (index >= sequence->Length || sequence->Tokens[index] != expected[index])
+        {
+            klog(KLOG_LEVEL_ERROR, "[PRIO] %s mismatch observed=%s expected=%s\n", scenarioName, sequence->Tokens,
+                 expected);
+            HO_KPANIC(EC_INVALID_STATE, "Priority smoke mismatch");
+        }
+
+        index++;
+    }
+
+    if (index != sequence->Length)
+    {
+        klog(KLOG_LEVEL_ERROR, "[PRIO] %s length mismatch observed=%s expected=%s\n", scenarioName, sequence->Tokens,
+             expected);
+        HO_KPANIC(EC_INVALID_STATE, "Priority smoke length mismatch");
+    }
+
+    klog(KLOG_LEVEL_INFO, "[PRIO] %s observed=%s expected=%s\n", scenarioName, sequence->Tokens, expected);
+}
+
+static void
+KiStartPrioritySmokeThreadPair(KTHREAD *firstThread, KTHREAD *secondThread)
+{
+    KE_CRITICAL_SECTION criticalSection = {0};
+
+    HO_KASSERT(firstThread != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(secondThread != NULL, EC_ILLEGAL_ARGUMENT);
+
+    KeEnterCriticalSection(&criticalSection);
+
+    HO_STATUS status = KeThreadStart(firstThread);
+    KiAssertThreadDemoStatus(status, EC_SUCCESS, "start first priority smoke worker");
+
+    status = KeThreadStart(secondThread);
+    KiAssertThreadDemoStatus(status, EC_SUCCESS, "start second priority smoke worker");
+
+    KeLeaveCriticalSection(&criticalSection);
+}
+
+static void
+KiRunPriorityOrderingScenario(void)
+{
+    KI_PRIORITY_SMOKE_SEQUENCE sequence = {0};
+    KI_PRIORITY_SMOKE_WORKER_CONTEXT lowContext = {0};
+    KI_PRIORITY_SMOKE_WORKER_CONTEXT highContext = {0};
+    KTHREAD *lowThread = NULL;
+    KTHREAD *highThread = NULL;
+
+    klog(KLOG_LEVEL_INFO, "[PRIO] order start\n");
+
+    lowContext.Sequence = &sequence;
+    lowContext.ScenarioName = "order";
+    lowContext.Token = 'L';
+    lowContext.IterationCount = 1;
+
+    highContext.Sequence = &sequence;
+    highContext.ScenarioName = "order";
+    highContext.Token = 'H';
+    highContext.IterationCount = 1;
+
+    HO_STATUS status = KeThreadCreateJoinable(&lowThread, KiPrioritySmokeWorkerThread, &lowContext);
+    KiAssertThreadDemoStatus(status, EC_SUCCESS, "create low-priority smoke worker");
+    lowThread->Priority = KTHREAD_PRIORITY_LOW;
+
+    status = KeThreadCreateJoinable(&highThread, KiPrioritySmokeWorkerThread, &highContext);
+    KiAssertThreadDemoStatus(status, EC_SUCCESS, "create high-priority smoke worker");
+    highThread->Priority = KTHREAD_PRIORITY_HIGH;
+
+    KiStartPrioritySmokeThreadPair(lowThread, highThread);
+
+    status = KeThreadJoin(lowThread, KE_WAIT_INFINITE);
+    KiAssertThreadDemoStatus(status, EC_SUCCESS, "join low-priority smoke worker");
+
+    status = KeThreadJoin(highThread, KE_WAIT_INFINITE);
+    KiAssertThreadDemoStatus(status, EC_SUCCESS, "join high-priority smoke worker");
+
+    KiAssertPrioritySmokeSequence(&sequence, "HL", "order");
+    klog(KLOG_LEVEL_INFO, "[PRIO] order passed\n");
+}
+
+static void
+KiRunPriorityRoundRobinScenario(void)
+{
+    KI_PRIORITY_SMOKE_SEQUENCE sequence = {0};
+    KI_PRIORITY_SMOKE_WORKER_CONTEXT workerAContext = {0};
+    KI_PRIORITY_SMOKE_WORKER_CONTEXT workerBContext = {0};
+    KTHREAD *workerA = NULL;
+    KTHREAD *workerB = NULL;
+
+    klog(KLOG_LEVEL_INFO, "[PRIO] rr start\n");
+
+    workerAContext.Sequence = &sequence;
+    workerAContext.ScenarioName = "rr";
+    workerAContext.Token = 'A';
+    workerAContext.IterationCount = PRIO_SMOKE_RR_ROUNDS;
+    workerAContext.YieldBetweenIterations = TRUE;
+
+    workerBContext.Sequence = &sequence;
+    workerBContext.ScenarioName = "rr";
+    workerBContext.Token = 'B';
+    workerBContext.IterationCount = PRIO_SMOKE_RR_ROUNDS;
+    workerBContext.YieldBetweenIterations = TRUE;
+
+    HO_STATUS status = KeThreadCreateJoinable(&workerA, KiPrioritySmokeWorkerThread, &workerAContext);
+    KiAssertThreadDemoStatus(status, EC_SUCCESS, "create rr worker A");
+    workerA->Priority = KTHREAD_PRIORITY_HIGH;
+
+    status = KeThreadCreateJoinable(&workerB, KiPrioritySmokeWorkerThread, &workerBContext);
+    KiAssertThreadDemoStatus(status, EC_SUCCESS, "create rr worker B");
+    workerB->Priority = KTHREAD_PRIORITY_HIGH;
+
+    KiStartPrioritySmokeThreadPair(workerA, workerB);
+
+    status = KeThreadJoin(workerA, KE_WAIT_INFINITE);
+    KiAssertThreadDemoStatus(status, EC_SUCCESS, "join rr worker A");
+
+    status = KeThreadJoin(workerB, KE_WAIT_INFINITE);
+    KiAssertThreadDemoStatus(status, EC_SUCCESS, "join rr worker B");
+
+    KiAssertPrioritySmokeSequence(&sequence, "ABABAB", "rr");
+    klog(KLOG_LEVEL_INFO, "[PRIO] rr passed\n");
 }
 
 static void
@@ -593,6 +791,27 @@ ThreadDemoSelfJoinThread(void *arg)
 
     HO_STATUS status = KeReleaseSemaphore(context->DoneSemaphore, 1);
     HO_KASSERT(status == EC_SUCCESS, status);
+}
+
+static void
+KiPrioritySmokeWorkerThread(void *arg)
+{
+    KI_PRIORITY_SMOKE_WORKER_CONTEXT *context = (KI_PRIORITY_SMOKE_WORKER_CONTEXT *)arg;
+
+    HO_KASSERT(context != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(context->Sequence != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(context->ScenarioName != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(context->IterationCount != 0, EC_ILLEGAL_ARGUMENT);
+
+    for (uint32_t step = 0; step < context->IterationCount; step++)
+    {
+        KiPrioritySmokeAppendToken(context->Sequence, context->Token, context->ScenarioName, step);
+
+        if (context->YieldBetweenIterations && (step + 1U) < context->IterationCount)
+        {
+            KeYield();
+        }
+    }
 }
 
 void

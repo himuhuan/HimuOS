@@ -3,7 +3,7 @@
  *
  * File: ke/thread/scheduler/scheduler.c
  * Description:
- * Ke Layer - Minimal Round-Robin tickless scheduler.
+ * Ke Layer - Minimal priority-aware tickless scheduler.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
@@ -15,7 +15,7 @@
 // Globals
 // ─────────────────────────────────────────────────────────────
 
-LINKED_LIST_TAG gReadyQueue;
+LINKED_LIST_TAG gReadyQueues[KTHREAD_PRIORITY_COUNT];
 LINKED_LIST_TAG gTimeoutQueue;
 LINKED_LIST_TAG gTerminatedList;
 
@@ -62,7 +62,7 @@ KiThreadTrampoline(void)
 HO_KERNEL_API HO_STATUS
 KeSchedulerInit(void)
 {
-    LinkedListInit(&gReadyQueue);
+    KiInitReadyQueues();
     LinkedListInit(&gTimeoutQueue);
     LinkedListInit(&gTerminatedList);
     memset(&gStats, 0, sizeof(gStats));
@@ -83,7 +83,7 @@ KeSchedulerInit(void)
     gIdleThread->StackGuardBase = 0;
     gIdleThread->StackOwnedByKva = FALSE;
     memset(&gIdleThread->StackRange, 0, sizeof(gIdleThread->StackRange));
-    gIdleThread->Priority = 0;
+    gIdleThread->Priority = KTHREAD_DEFAULT_PRIORITY;
     gIdleThread->Quantum = 0;
     gIdleThread->OwnedMutexCount = 0;
     KeInitializeIrqlState(&gIdleThread->IrqlState);
@@ -133,7 +133,7 @@ KeThreadStart(KTHREAD *thread)
     KeEnterCriticalSection(&criticalSection);
 
     thread->State = KTHREAD_STATE_READY;
-    LinkedListInsertTail(&gReadyQueue, &thread->ReadyLink);
+    LinkedListInsertTail(KiGetReadyQueueForThread(thread), &thread->ReadyLink);
     gStats.TotalThreadsCreated++;
     gStats.ActiveThreadCount++;
 
@@ -167,7 +167,7 @@ KeYield(void)
 
     gStats.YieldCount++;
 
-    if (LinkedListIsEmpty(&gReadyQueue))
+    if (!KiHasAnyReadyThread())
     {
         KeLeaveCriticalSection(&criticalSection);
         KeReleaseIrqlGuard(&irqlGuard);
@@ -175,7 +175,7 @@ KeYield(void)
     }
 
     gCurrentThread->State = KTHREAD_STATE_READY;
-    LinkedListInsertTail(&gReadyQueue, &gCurrentThread->ReadyLink);
+    LinkedListInsertTail(KiGetReadyQueueForThread(gCurrentThread), &gCurrentThread->ReadyLink);
 
     KeLeaveCriticalSection(&criticalSection);
     KiSchedule();
@@ -586,9 +586,12 @@ KiSchedule(void)
     KTHREAD *prev = gCurrentThread;
     KTHREAD *next;
 
-    if (!LinkedListIsEmpty(&gReadyQueue))
+    LINKED_LIST_TAG *readyQueue = KiGetHighestPriorityReadyQueue();
+
+    if (readyQueue != NULL)
     {
-        LINKED_LIST_TAG *entry = gReadyQueue.Flink;
+        HO_KASSERT(!LinkedListIsEmpty(readyQueue), EC_INVALID_STATE);
+        LINKED_LIST_TAG *entry = readyQueue->Flink;
         LinkedListRemove(entry);
         next = CONTAINING_RECORD(entry, KTHREAD, ReadyLink);
     }

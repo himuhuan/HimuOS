@@ -405,3 +405,17 @@ ConsoleClearScreen(COLOR32 color)
     KeConDevClearScreen(&gConsoleDevice, color);
     KeLeaveCriticalSection(&criticalSection);
 }
+
+HO_PUBLIC_API void
+ConsoleFlush(void)
+{
+    if (!gConsoleInitialized)
+        return;
+
+    KE_CRITICAL_SECTION criticalSection = {0};
+    KeEnterCriticalSection(&criticalSection);
+#if __HO_DEBUG_BUILD__
+    KeSerialConSinkFlushPendingCursor(&gSerialConsoleSink, gConsoleDevice.CursorX, gConsoleDevice.CursorY);
+#endif
+    KeLeaveCriticalSection(&criticalSection);
+}
