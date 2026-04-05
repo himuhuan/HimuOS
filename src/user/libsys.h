@@ -52,6 +52,26 @@ HoUserRawWrite(const void *buffer, uint64_t length)
     return HoUserRawSyscall3(SYS_RAW_WRITE, (uint64_t)(const void *)buffer, length, 0);
 }
 
+static inline const KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK *
+HoUserCapabilitySeedBlock(void)
+{
+    return (const KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK *)(uint64_t)KE_USER_BOOTSTRAP_CONST_BASE;
+}
+
+static inline uint32_t
+HoUserStdoutHandle(void)
+{
+    const KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK *seed = HoUserCapabilitySeedBlock();
+
+    return seed->Stdout;
+}
+
+static inline int64_t
+HoUserWrite(uint32_t handle, const void *buffer, uint64_t length)
+{
+    return HoUserRawSyscall3(SYS_WRITE, handle, (uint64_t)(const void *)buffer, length);
+}
+
 static inline HO_NORETURN void
 HoUserRawExit(uint64_t exitCode)
 {

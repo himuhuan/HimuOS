@@ -55,13 +55,13 @@ extern KEVENT gCriticalSectionGuardEvent;
 extern KEVENT gDispatchGuardEvent;
 extern KMUTEX gOwnedExitMutex;
 
-typedef struct _KI_USER_HELLO_EMBEDDED_ARTIFACTS
+typedef struct _KI_USER_EMBEDDED_ARTIFACTS
 {
     const uint8_t *CodeBytes;
     uint64_t CodeLength;
     const uint8_t *ConstBytes;
     uint64_t ConstLength;
-} KI_USER_HELLO_EMBEDDED_ARTIFACTS;
+} KI_USER_EMBEDDED_ARTIFACTS;
 
 void TestThreadA(void *arg);
 void TestThreadB(void *arg);
@@ -108,6 +108,7 @@ void RunPageFaultGuardDemo(void);
 void RunPageFaultFixmapDemo(void);
 void RunPageFaultHeapDemo(void);
 void RunKthreadPoolRaceDemo(void);
-void KiUserHelloGetEmbeddedArtifacts(KI_USER_HELLO_EMBEDDED_ARTIFACTS *artifacts);
+void KiUserHelloGetEmbeddedArtifacts(KI_USER_EMBEDDED_ARTIFACTS *artifacts);
+void KiUserCounterGetEmbeddedArtifacts(KI_USER_EMBEDDED_ARTIFACTS *artifacts);
 void RunUserHelloDemo(void);
 void RunUserCapsDemo(void);

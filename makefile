@@ -200,6 +200,7 @@ SRCS_KERNEL_C := \
 	src/kernel/demo/kthread_pool_race.c                 \
     src/kernel/demo/semaphore.c                         \
     src/kernel/demo/thread.c                            \
+    src/kernel/demo/user_counter_artifact_bridge.c      \
     src/kernel/demo/user_hello_artifact_bridge.c        \
 	src/kernel/demo/user_hello.c                        \
 	src/kernel/demo/user_caps.c                         \
@@ -278,27 +279,42 @@ TARGET_KERNEL := $(KRN_BINDIR)/kernel.bin
 SRCS_USER_HELLO_C := \
     src/user/user_hello/main.c
 
+SRCS_USER_COUNTER_C := \
+    src/user/user_counter/main.c
+
 SRCS_USER_COMMON_S := \
     src/user/crt0.S
 
 OBJS_USER_HELLO_C := $(patsubst src/%.c,$(USR_OBJDIR)/%.o,$(SRCS_USER_HELLO_C))
+OBJS_USER_COUNTER_C := $(patsubst src/%.c,$(USR_OBJDIR)/%.o,$(SRCS_USER_COUNTER_C))
 OBJS_USER_HELLO_S := $(patsubst src/%.S,$(USR_OBJDIR)/%.o,$(SRCS_USER_COMMON_S))
 OBJS_USER_HELLO   := $(OBJS_USER_HELLO_C) $(OBJS_USER_HELLO_S)
+OBJS_USER_COUNTER := $(OBJS_USER_COUNTER_C) $(OBJS_USER_HELLO_S)
 
 TARGET_USER_HELLO_ELF       := $(USR_BINDIR)/user_hello.elf
 TARGET_USER_HELLO_CODE_BIN  := $(USR_BINDIR)/user_hello.code.bin
 TARGET_USER_HELLO_CONST_BIN := $(USR_BINDIR)/user_hello.const.bin
 TARGET_USER_HELLO           := $(TARGET_USER_HELLO_ELF) $(TARGET_USER_HELLO_CODE_BIN) $(TARGET_USER_HELLO_CONST_BIN)
 
+TARGET_USER_COUNTER_ELF       := $(USR_BINDIR)/user_counter.elf
+TARGET_USER_COUNTER_CODE_BIN  := $(USR_BINDIR)/user_counter.code.bin
+TARGET_USER_COUNTER_CONST_BIN := $(USR_BINDIR)/user_counter.const.bin
+TARGET_USER_COUNTER           := $(TARGET_USER_COUNTER_ELF) $(TARGET_USER_COUNTER_CODE_BIN) $(TARGET_USER_COUNTER_CONST_BIN)
+
 path_to_symbol = $(subst -,_,$(subst .,_,$(subst /,_,$(1))))
 
 TARGET_USER_HELLO_CODE_OBJ  := $(KRN_OBJDIR)/demo/user_hello.code.bin.o
 TARGET_USER_HELLO_CONST_OBJ := $(KRN_OBJDIR)/demo/user_hello.const.bin.o
-OBJS_KERNEL_EMBEDDED        := $(TARGET_USER_HELLO_CODE_OBJ) $(TARGET_USER_HELLO_CONST_OBJ)
+TARGET_USER_COUNTER_CODE_OBJ  := $(KRN_OBJDIR)/demo/user_counter.code.bin.o
+TARGET_USER_COUNTER_CONST_OBJ := $(KRN_OBJDIR)/demo/user_counter.const.bin.o
+OBJS_KERNEL_EMBEDDED          := $(TARGET_USER_HELLO_CODE_OBJ) $(TARGET_USER_HELLO_CONST_OBJ) \
+                                 $(TARGET_USER_COUNTER_CODE_OBJ) $(TARGET_USER_COUNTER_CONST_OBJ)
 OBJS_KERNEL                 := $(OBJS_KERNEL_C) $(OBJS_KERNEL_ASM) $(OBJS_KERNEL_EMBEDDED)
 
 USER_HELLO_CODE_BIN_SYMBOL_BASE  := _binary_$(call path_to_symbol,$(TARGET_USER_HELLO_CODE_BIN))
 USER_HELLO_CONST_BIN_SYMBOL_BASE := _binary_$(call path_to_symbol,$(TARGET_USER_HELLO_CONST_BIN))
+USER_COUNTER_CODE_BIN_SYMBOL_BASE  := _binary_$(call path_to_symbol,$(TARGET_USER_COUNTER_CODE_BIN))
+USER_COUNTER_CONST_BIN_SYMBOL_BASE := _binary_$(call path_to_symbol,$(TARGET_USER_COUNTER_CONST_BIN))
 
 .PHONY: all clean copy run efi install clean_code vmware_img kernel user debug run_iso test schedule list
 
@@ -335,8 +351,8 @@ $(KRN_OBJDIR)/%.o: src/%.asm
 	@echo "ASM $<"
 	@nasm $(ASFLAGS) -o $@ $<
 
-user: $(TARGET_USER_HELLO)
-	@echo "User build complete: $(TARGET_USER_HELLO_ELF)"
+user: $(TARGET_USER_HELLO) $(TARGET_USER_COUNTER)
+	@echo "User build complete: $(TARGET_USER_HELLO_ELF) $(TARGET_USER_COUNTER_ELF)"
 
 $(TARGET_USER_HELLO_ELF): $(OBJS_USER_HELLO) src/user/user.ld
 	@mkdir -p $(dir $@)
@@ -349,6 +365,21 @@ $(TARGET_USER_HELLO_CODE_BIN): $(TARGET_USER_HELLO_ELF)
 	@$(OBJCOPY) -O binary --only-section=.text $< $@
 
 $(TARGET_USER_HELLO_CONST_BIN): $(TARGET_USER_HELLO_ELF)
+	@mkdir -p $(dir $@)
+	@echo "USER OBJCOPY $@"
+	@$(OBJCOPY) -O binary --only-section=.rodata $< $@
+
+$(TARGET_USER_COUNTER_ELF): $(OBJS_USER_COUNTER) src/user/user.ld
+	@mkdir -p $(dir $@)
+	@echo "USER LD $@"
+	@$(LD) -o $@ $(OBJS_USER_COUNTER) $(USER_LDFLAGS) -T src/user/user.ld -Map=$(USR_BINDIR)/user_counter.map
+
+$(TARGET_USER_COUNTER_CODE_BIN): $(TARGET_USER_COUNTER_ELF)
+	@mkdir -p $(dir $@)
+	@echo "USER OBJCOPY $@"
+	@$(OBJCOPY) -O binary --only-section=.text $< $@
+
+$(TARGET_USER_COUNTER_CONST_BIN): $(TARGET_USER_COUNTER_ELF)
 	@mkdir -p $(dir $@)
 	@echo "USER OBJCOPY $@"
 	@$(OBJCOPY) -O binary --only-section=.rodata $< $@
@@ -369,6 +400,24 @@ $(TARGET_USER_HELLO_CONST_OBJ): $(TARGET_USER_HELLO_CONST_BIN)
 	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
 		--redefine-sym $(USER_HELLO_CONST_BIN_SYMBOL_BASE)_start=gKiUserHelloConstBytesStart \
 		--redefine-sym $(USER_HELLO_CONST_BIN_SYMBOL_BASE)_end=gKiUserHelloConstBytesEnd \
+		$@
+
+$(TARGET_USER_COUNTER_CODE_OBJ): $(TARGET_USER_COUNTER_CODE_BIN)
+	@mkdir -p $(dir $@)
+	@echo "BINOBJ $@"
+	@$(LD) -r -b binary -o $@ $<
+	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
+		--redefine-sym $(USER_COUNTER_CODE_BIN_SYMBOL_BASE)_start=gKiUserCounterCodeBytesStart \
+		--redefine-sym $(USER_COUNTER_CODE_BIN_SYMBOL_BASE)_end=gKiUserCounterCodeBytesEnd \
+		$@
+
+$(TARGET_USER_COUNTER_CONST_OBJ): $(TARGET_USER_COUNTER_CONST_BIN)
+	@mkdir -p $(dir $@)
+	@echo "BINOBJ $@"
+	@$(LD) -r -b binary -o $@ $<
+	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
+		--redefine-sym $(USER_COUNTER_CONST_BIN_SYMBOL_BASE)_start=gKiUserCounterConstBytesStart \
+		--redefine-sym $(USER_COUNTER_CONST_BIN_SYMBOL_BASE)_end=gKiUserCounterConstBytesEnd \
 		$@
 
 $(USR_OBJDIR)/%.o: src/%.c
@@ -534,4 +583,5 @@ USER_CFLAGS += -MMD -MP
 -include $(OBJS_EFI_C:.o=.d)
 -include $(OBJS_KERNEL_C:.o=.d)
 -include $(OBJS_USER_HELLO_C:.o=.d)
+-include $(OBJS_USER_COUNTER_C:.o=.d)
 -include $(OBJS_USER_HELLO_S:.o=.d)
