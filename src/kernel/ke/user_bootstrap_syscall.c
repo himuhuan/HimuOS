@@ -286,12 +286,7 @@ KiHandleRawExit(uint64_t exitCode)
 
     HO_STATUS status = ExBootstrapAdapterHandleRawExit(thread);
     if (status != EC_SUCCESS)
-        KiAbortRawExit(thread, exitCode, status, "Bootstrap raw exit teardown failed after no-return transition");
-
-    klog(KLOG_LEVEL_INFO,
-         KE_USER_BOOTSTRAP_LOG_TEARDOWN_COMPLETE " code=%lu thread=%u\n",
-         (unsigned long)exitCode,
-         thread->ThreadId);
+        KiAbortRawExit(thread, exitCode, status, "Bootstrap raw exit handoff validation failed after no-return transition");
 
     KeThreadExit();
 }

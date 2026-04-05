@@ -663,13 +663,14 @@ KiReapTerminatedThreads(void)
         if (!thread)
             return;
 
-        if (KiIsBootstrapOwnedThread(thread))
-        {
-            klog(KLOG_LEVEL_INFO, "[USERBOOT] idle/reaper reclaimed user_hello thread thread=%u\n",
-                 thread->ThreadId);
-        }
-
+        BOOL bootstrapOwned = KiIsBootstrapOwnedThread(thread);
+        uint32_t threadId = thread->ThreadId;
         KiFinalizeThread(thread);
+
+        if (bootstrapOwned)
+        {
+            klog(KLOG_LEVEL_INFO, "[USERBOOT] idle/reaper reclaimed user_hello thread thread=%u\n", threadId);
+        }
     }
 }
 
