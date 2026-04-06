@@ -21,17 +21,20 @@ enum
 typedef struct HO_HSH_JOB
 {
     uint32_t Pid;
-    uint32_t ProgramId;
+    const char *Name;
     BOOL Background;
     BOOL Alive;
 } HO_HSH_JOB;
 
 static const char gHelpText[] = "help\nexit\ncalc\n& tick1s\n";
+static const char gTick1sName[] = "tick1s";
 static const char gStartedPrefix[] = "[HSH] started pid=";
-static const char gStartedSuffix[] = " name=tick1s bg=1\n";
+static const char gStartedNamePrefix[] = " name=";
+static const char gStartedBackgroundPrefix[] = " bg=";
 static const char gUnknownCommand[] = "[HSH] unknown command\n";
 static const char gSpawnFailed[] = "[HSH] spawn failed\n";
 static const char gJobTableFull[] = "[HSH] job table full\n";
+static const char gExitRefused[] = "[HSH] exit refused: live background job\n";
 static const char gExitInfo[] = "[HSH] HSH exited\n";
 
 static uint64_t
@@ -59,7 +62,7 @@ HoHshMustWriteLiteral(const char *literal)
 }
 
 static void
-HoHshMustWritePid(uint32_t pid)
+HoHshAppendPid(char *buffer, uint64_t *offset, uint64_t capacity, uint32_t pid)
 {
     char digits[10];
     uint32_t value = pid;
@@ -71,11 +74,40 @@ HoHshMustWritePid(uint32_t pid)
         value /= 10U;
     } while (value != 0U);
 
+    if ((*offset + digitCount) > capacity)
+        HoUserAbort();
+
     while (digitCount != 0U)
     {
         --digitCount;
-        HoHshMustWrite(&digits[digitCount], 1U);
+        buffer[*offset] = digits[digitCount];
+        *offset += 1U;
     }
+}
+
+static void
+HoHshAppendLiteral(char *buffer, uint64_t *offset, uint64_t capacity, const char *literal)
+{
+    uint64_t literalLength = HoHshStringLength(literal);
+
+    if ((*offset + literalLength) > capacity)
+        HoUserAbort();
+
+    for (uint64_t index = 0; index < literalLength; ++index)
+    {
+        buffer[*offset] = literal[index];
+        *offset += 1U;
+    }
+}
+
+static void
+HoHshAppendBoolean(char *buffer, uint64_t *offset, uint64_t capacity, BOOL value)
+{
+    if ((*offset + 1U) > capacity)
+        HoUserAbort();
+
+    buffer[*offset] = value ? '1' : '0';
+    *offset += 1U;
 }
 
 static BOOL
@@ -92,6 +124,43 @@ HoHshLineEquals(const char *line, uint64_t length, const char *literal)
     }
 
     return TRUE;
+}
+
+static void
+HoHshRecordJob(HO_HSH_JOB *job, uint32_t pid, const char *name, BOOL background)
+{
+    job->Pid = pid;
+    job->Name = name;
+    job->Background = background;
+    job->Alive = TRUE;
+}
+
+static void
+HoHshWriteJobStarted(const HO_HSH_JOB *job)
+{
+    char line[64];
+    uint64_t length = 0;
+
+    HoHshAppendLiteral(line, &length, sizeof(line), gStartedPrefix);
+    HoHshAppendPid(line, &length, sizeof(line), job->Pid);
+    HoHshAppendLiteral(line, &length, sizeof(line), gStartedNamePrefix);
+    HoHshAppendLiteral(line, &length, sizeof(line), job->Name);
+    HoHshAppendLiteral(line, &length, sizeof(line), gStartedBackgroundPrefix);
+    HoHshAppendBoolean(line, &length, sizeof(line), job->Background);
+    HoHshAppendLiteral(line, &length, sizeof(line), "\n");
+    HoHshMustWrite(line, length);
+}
+
+static BOOL
+HoHshHasLiveBackgroundJobs(const HO_HSH_JOB *jobs)
+{
+    for (uint32_t index = 0; index < HO_HSH_MAX_JOBS; ++index)
+    {
+        if (jobs[index].Alive && jobs[index].Background)
+            return TRUE;
+    }
+
+    return FALSE;
 }
 
 static int32_t
@@ -133,16 +202,12 @@ main(void)
 
         if (HoHshLineEquals(line, (uint64_t)status, "exit"))
         {
-            for (uint32_t index = 0; index < HO_HSH_MAX_JOBS; ++index)
+            if (HoHshHasLiveBackgroundJobs(jobs))
             {
-                if (!jobs[index].Alive)
-                    continue;
-
-                if (HoUserWaitPid(jobs[index].Pid) < 0)
-                    HoUserAbort();
-
-                jobs[index].Alive = FALSE;
+                HoHshMustWriteLiteral(gExitRefused);
+                continue;
             }
+
             HoHshMustWriteLiteral(gExitInfo);
             return 0;
         }
@@ -180,14 +245,8 @@ main(void)
                 continue;
             }
 
-            jobs[slotIndex].Pid = (uint32_t)pid;
-            jobs[slotIndex].ProgramId = KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_TICK1S;
-            jobs[slotIndex].Background = TRUE;
-            jobs[slotIndex].Alive = TRUE;
-
-            HoHshMustWriteLiteral(gStartedPrefix);
-            HoHshMustWritePid((uint32_t)pid);
-            HoHshMustWriteLiteral(gStartedSuffix);
+            HoHshRecordJob(&jobs[slotIndex], (uint32_t)pid, gTick1sName, TRUE);
+            HoHshWriteJobStarted(&jobs[slotIndex]);
             continue;
         }
 
