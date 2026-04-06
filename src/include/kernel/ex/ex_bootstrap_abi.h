@@ -48,6 +48,7 @@
  */
 #define KE_USER_BOOTSTRAP_SYSCALL_VECTOR             0x80U
 #define KE_USER_BOOTSTRAP_SYS_RAW_WRITE_MAX_LENGTH   256U
+#define KE_USER_BOOTSTRAP_READLINE_MAX_LENGTH        128U
 
 /*
  * Raw bootstrap-only syscall ABI.
@@ -73,6 +74,7 @@
 #define SYS_CLOSE                                          (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 1U)
 #define SYS_WAIT_ONE                                       (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 2U)
 #define SYS_EXIT                                           (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 3U)
+#define SYS_READLINE                                       (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 4U)
 
 #define KE_USER_BOOTSTRAP_WAIT_ONE_TIMEOUT_MAX_MS          0xFFFFFFFFULL
 #define KE_USER_BOOTSTRAP_WAIT_ONE_TIMEOUT_NS_PER_MS       1000000ULL
@@ -128,6 +130,8 @@ typedef struct __attribute__((packed)) KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK
 #define KE_USER_BOOTSTRAP_LOG_CAP_CLOSE_SUCCEEDED      "[USERCAP] SYS_CLOSE succeeded"
 #define KE_USER_BOOTSTRAP_LOG_CAP_WAIT_SUCCEEDED       "[USERCAP] SYS_WAIT_ONE succeeded"
 #define KE_USER_BOOTSTRAP_LOG_CAP_REJECTED             "[USERCAP] capability syscall rejected"
+#define KE_USER_BOOTSTRAP_LOG_READLINE_SUCCEEDED       "[USERINPUT] SYS_READLINE succeeded"
+#define KE_USER_BOOTSTRAP_LOG_READLINE_REJECTED        "[USERINPUT] SYS_READLINE rejected"
 #define KE_USER_BOOTSTRAP_LOG_INVALID_USER_BUFFER      "[USERBOOT] invalid user buffer"
 #define KE_USER_BOOTSTRAP_LOG_TEARDOWN_FAILED          "[USERBOOT] bootstrap teardown failed"
 #define KE_USER_BOOTSTRAP_LOG_TEARDOWN_COMPLETE        "[USERBOOT] bootstrap teardown complete"

@@ -1277,7 +1277,8 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
     if (process == NULL || params == NULL || params->EntryPoint == NULL || process->Staging == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    if ((params->Flags & ~EX_BOOTSTRAP_THREAD_CREATE_FLAG_SEED_WAIT_OBJECT) != 0)
+    if ((params->Flags & ~(EX_BOOTSTRAP_THREAD_CREATE_FLAG_SEED_WAIT_OBJECT |
+                           EX_BOOTSTRAP_THREAD_CREATE_FLAG_JOINABLE)) != 0)
         return EC_ILLEGAL_ARGUMENT;
 
     thread = (EX_THREAD *)kzalloc(sizeof(*thread));
@@ -1286,7 +1287,9 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
 
     ExBootstrapInitializeThreadObject(thread);
 
-    HO_STATUS status = KeThreadCreate(&kernelThread, (KTHREAD_ENTRY)params->EntryPoint, params->EntryArg);
+    HO_STATUS status = (params->Flags & EX_BOOTSTRAP_THREAD_CREATE_FLAG_JOINABLE) != 0 ?
+                           KeThreadCreateJoinable(&kernelThread, (KTHREAD_ENTRY)params->EntryPoint, params->EntryArg) :
+                           KeThreadCreate(&kernelThread, (KTHREAD_ENTRY)params->EntryPoint, params->EntryArg);
     if (status != EC_SUCCESS)
     {
         HO_STATUS releaseStatus = ExBootstrapReleaseThread(thread);
@@ -1382,6 +1385,32 @@ ExBootstrapStartThread(EX_THREAD **threadHandle)
         return status;
 
     *threadHandle = NULL;
+    return EC_SUCCESS;
+}
+
+HO_STATUS
+ExBootstrapQueryThreadId(const EX_THREAD *thread, uint32_t *outThreadId)
+{
+    if (thread == NULL || outThreadId == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (thread->Thread == NULL)
+        return EC_INVALID_STATE;
+
+    *outThreadId = thread->Thread->ThreadId;
+    return EC_SUCCESS;
+}
+
+HO_STATUS
+ExBootstrapBorrowKernelThread(EX_THREAD *thread, KTHREAD **outThread)
+{
+    if (thread == NULL || outThread == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (thread->Thread == NULL)
+        return EC_INVALID_STATE;
+
+    *outThread = thread->Thread;
     return EC_SUCCESS;
 }
 

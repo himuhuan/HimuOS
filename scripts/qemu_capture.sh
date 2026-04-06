@@ -13,13 +13,17 @@ HO_DEMO_TEST_NAME=${HO_DEMO_TEST_NAME:-}
 HO_DEMO_TEST_DEFINE=${HO_DEMO_TEST_DEFINE:-}
 QEMU_DISPLAY=${QEMU_DISPLAY:-none}
 QEMU_CAPTURE_MODE=${QEMU_CAPTURE_MODE:-host}
+QEMU_SENDKEY_PLAN=${QEMU_SENDKEY_PLAN:-}
 TMP_DIR=$(mktemp -d /tmp/qemu_capture.XXXXXX)
 FIFO_PATH="${TMP_DIR}/output.fifo"
+MONITOR_SOCKET=""
 RUNNER_PID=""
 RUNNER_PGID=""
 TEE_PID=""
 WATCHDOG_PID=""
+SENDKEY_PID=""
 TIMED_OUT=0
+SENDKEY_STATUS=0
 UNSET_SENTINEL="__HIMUOS_UNSET__"
 RUN_QEMU_ACCEL_MODE="$QEMU_CAPTURE_MODE"
 RUN_QEMU_ACCEL_ARGS="$UNSET_SENTINEL"
@@ -44,6 +48,9 @@ esac
 
 cleanup() {
 	rm -f "$FIFO_PATH"
+	if [ -n "$MONITOR_SOCKET" ]; then
+		rm -f "$MONITOR_SOCKET"
+	fi
 	rmdir "$TMP_DIR" 2>/dev/null || true
 }
 
@@ -80,6 +87,10 @@ if [ "$QEMU_CAPTURE_MODE" = "custom" ]; then
 		echo "Using custom QEMU_CPU_FLAGS=<makefile default>"
 	fi
 fi
+if [ -n "$QEMU_SENDKEY_PLAN" ]; then
+	echo "Using QEMU_SENDKEY_PLAN=${QEMU_SENDKEY_PLAN}"
+	MONITOR_SOCKET="${TMP_DIR}/monitor.sock"
+fi
 
 mkfifo "$FIFO_PATH"
 tee "$OUTPUT_FILE" <"$FIFO_PATH" &
@@ -96,6 +107,7 @@ make_args=(
 	HO_DEMO_TEST_DEFINE="$4"
 	QEMU_DISPLAY="$5"
 	QEMU_ACCEL_MODE="$6"
+	QEMU_MONITOR_SOCKET="$9"
 )
 if [ "$7" != "__HIMUOS_UNSET__" ]; then
 	make_args+=(QEMU_ACCEL_ARGS="$7")
@@ -104,9 +116,24 @@ if [ "$8" != "__HIMUOS_UNSET__" ]; then
 	make_args+=(QEMU_CPU_FLAGS="$8")
 fi
 exec make "${make_args[@]}"
-' _ "$SUDO_PASS" "$BUILD_FLAVOR" "$HO_DEMO_TEST_NAME" "$HO_DEMO_TEST_DEFINE" "$QEMU_DISPLAY" "$RUN_QEMU_ACCEL_MODE" "$RUN_QEMU_ACCEL_ARGS" "$RUN_QEMU_CPU_FLAGS" >"$FIFO_PATH" 2>&1 &
+' _ "$SUDO_PASS" "$BUILD_FLAVOR" "$HO_DEMO_TEST_NAME" "$HO_DEMO_TEST_DEFINE" "$QEMU_DISPLAY" "$RUN_QEMU_ACCEL_MODE" "$RUN_QEMU_ACCEL_ARGS" "$RUN_QEMU_CPU_FLAGS" "$MONITOR_SOCKET" >"$FIFO_PATH" 2>&1 &
 RUNNER_PID=$!
 RUNNER_PGID=$(ps -o pgid= -p "$RUNNER_PID" | tr -d '[:space:]')
+
+if [ -n "$QEMU_SENDKEY_PLAN" ]; then
+	if [ -n "$SUDO_PASS" ]; then
+		printf '%s\n' "$SUDO_PASS" | sudo -S -p '' python3 scripts/qemu_sendkeys.py \
+			--socket "$MONITOR_SOCKET" \
+			--log "$OUTPUT_FILE" \
+			--plan "$QEMU_SENDKEY_PLAN" &
+	else
+		sudo -p '' python3 scripts/qemu_sendkeys.py \
+			--socket "$MONITOR_SOCKET" \
+			--log "$OUTPUT_FILE" \
+			--plan "$QEMU_SENDKEY_PLAN" &
+	fi
+	SENDKEY_PID=$!
+fi
 
 (
 	sleep "$TIMEOUT"
@@ -128,6 +155,11 @@ kill "$WATCHDOG_PID" 2>/dev/null || true
 wait "$WATCHDOG_PID" 2>/dev/null || true
 wait "$TEE_PID"
 
+if [ -n "$SENDKEY_PID" ]; then
+	wait "$SENDKEY_PID"
+	SENDKEY_STATUS=$?
+fi
+
 if [ "$RUN_STATUS" -eq 143 ] || [ "$RUN_STATUS" -eq 137 ]; then
 	TIMED_OUT=1
 fi
@@ -135,6 +167,10 @@ fi
 echo ""
 echo "=== QEMU Output Captured ==="
 cat "$OUTPUT_FILE"
+
+if [ "$SENDKEY_STATUS" -ne 0 ]; then
+	exit "$SENDKEY_STATUS"
+fi
 
 if [ "$TIMED_OUT" -eq 1 ]; then
 	exit 124

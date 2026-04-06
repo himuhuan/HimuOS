@@ -11,6 +11,7 @@
 #include <kernel/ex/ex_bootstrap_adapter.h>
 #include <kernel/hodbg.h>
 #include <kernel/ke/console.h>
+#include <kernel/ke/input.h>
 #include <kernel/ke/mm.h>
 #include <kernel/ke/scheduler.h>
 #include <kernel/ke/user_bootstrap.h>
@@ -28,11 +29,13 @@ static HO_STATUS KiValidateBootstrapUserRange(const KE_USER_BOOTSTRAP_LAYOUT *la
                                               HO_VIRTUAL_ADDRESS userBase,
                                               uint64_t length,
                                               HO_VIRTUAL_ADDRESS *outEndExclusive);
-static HO_STATUS KiValidateBootstrapUserReadablePages(const KE_KERNEL_ADDRESS_SPACE *space,
-                                                      HO_VIRTUAL_ADDRESS userBase,
-                                                      HO_VIRTUAL_ADDRESS endExclusive);
+static HO_STATUS KiValidateBootstrapUserPages(const KE_KERNEL_ADDRESS_SPACE *space,
+                                              HO_VIRTUAL_ADDRESS userBase,
+                                              HO_VIRTUAL_ADDRESS endExclusive,
+                                              BOOL requireWritable);
 static int64_t KiRejectRawWrite(uint64_t userBuffer, uint64_t length, HO_STATUS status);
 static int64_t KiHandleRawWrite(uint64_t userBuffer, uint64_t length);
+static int64_t KiHandleReadLine(uint64_t userBuffer, uint64_t capacity, uint64_t reserved);
 static HO_NORETURN void KiPerformBootstrapExit(uint64_t exitCode, const char *successLog, const char *exitKind);
 static int64_t KiHandleRawExit(uint64_t exitCode);
 static int64_t KiHandleExit(uint64_t exitCode, uint64_t reserved0, uint64_t reserved1);
@@ -100,9 +103,10 @@ KiValidateBootstrapUserRange(const KE_USER_BOOTSTRAP_LAYOUT *layout,
 }
 
 static HO_STATUS
-KiValidateBootstrapUserReadablePages(const KE_KERNEL_ADDRESS_SPACE *space,
-                                     HO_VIRTUAL_ADDRESS userBase,
-                                     HO_VIRTUAL_ADDRESS endExclusive)
+KiValidateBootstrapUserPages(const KE_KERNEL_ADDRESS_SPACE *space,
+                             HO_VIRTUAL_ADDRESS userBase,
+                             HO_VIRTUAL_ADDRESS endExclusive,
+                             BOOL requireWritable)
 {
     if (!space || !space->Initialized)
         return EC_INVALID_STATE;
@@ -134,6 +138,15 @@ KiValidateBootstrapUserReadablePages(const KE_KERNEL_ADDRESS_SPACE *space,
                  (void *)(uint64_t)pageBase,
                  mapping.Present,
                  mapping.UserAccessible,
+                 (void *)(uint64_t)mapping.Attributes);
+            return EC_ILLEGAL_ARGUMENT;
+        }
+
+        if (requireWritable && (mapping.Attributes & PTE_WRITABLE) == 0)
+        {
+            klog(KLOG_LEVEL_WARNING,
+                 KE_USER_BOOTSTRAP_LOG_INVALID_USER_BUFFER " addr=%p missing-writable attrs=%p\n",
+                 (void *)(uint64_t)pageBase,
                  (void *)(uint64_t)mapping.Attributes);
             return EC_ILLEGAL_ARGUMENT;
         }
@@ -194,11 +207,59 @@ KeUserBootstrapCopyInBytes(void *kernelDestination, HO_VIRTUAL_ADDRESS userSourc
     ownerView.RootPageTablePhys = layout.OwnerRootPageTablePhys;
     ownerView.Initialized = TRUE;
 
-    status = KiValidateBootstrapUserReadablePages(&ownerView, userSource, endExclusive);
+    status = KiValidateBootstrapUserPages(&ownerView, userSource, endExclusive, FALSE);
     if (status != EC_SUCCESS)
         return status;
 
     memcpy(kernelDestination, (const void *)(uint64_t)userSource, (size_t)length);
+    return EC_SUCCESS;
+}
+
+HO_KERNEL_API HO_NODISCARD HO_STATUS
+KeUserBootstrapCopyOutBytes(HO_VIRTUAL_ADDRESS userDestination, const void *kernelSource, uint64_t length)
+{
+    if (kernelSource == NULL && length != 0)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (length == 0)
+        return EC_SUCCESS;
+
+    KE_USER_BOOTSTRAP_LAYOUT layout = {0};
+    HO_STATUS status = KeUserBootstrapQueryCurrentThreadLayout(&layout);
+    if (status != EC_SUCCESS)
+        return status;
+
+    HO_VIRTUAL_ADDRESS endExclusive = 0;
+    status = KiValidateBootstrapUserRange(&layout, userDestination, length, &endExclusive);
+    if (status != EC_SUCCESS)
+    {
+        klog(KLOG_LEVEL_WARNING,
+             KE_USER_BOOTSTRAP_LOG_INVALID_USER_BUFFER " copyout range addr=%p len=%lu status=%s (%d)\n",
+             (void *)(uint64_t)userDestination,
+             (unsigned long)length,
+             KrGetStatusMessage(status),
+             status);
+        return status;
+    }
+
+    HO_PHYSICAL_ADDRESS activeRoot = 0;
+    status = KeQueryActiveRootPageTable(&activeRoot);
+    if (status != EC_SUCCESS)
+        return status;
+
+    if (activeRoot != layout.OwnerRootPageTablePhys)
+        return EC_INVALID_STATE;
+
+    KE_KERNEL_ADDRESS_SPACE ownerView = {
+        .RootPageTablePhys = layout.OwnerRootPageTablePhys,
+        .Initialized = TRUE,
+    };
+
+    status = KiValidateBootstrapUserPages(&ownerView, userDestination, endExclusive, TRUE);
+    if (status != EC_SUCCESS)
+        return status;
+
+    memcpy((void *)(uint64_t)userDestination, kernelSource, (size_t)length);
     return EC_SUCCESS;
 }
 
@@ -280,6 +341,76 @@ KiHandleRawWrite(uint64_t userBuffer, uint64_t length)
     return (int64_t)written;
 }
 
+static int64_t
+KiHandleReadLine(uint64_t userBuffer, uint64_t capacity, uint64_t reserved)
+{
+    KTHREAD *thread = KeGetCurrentThread();
+    char scratch[KE_INPUT_LINE_CAPACITY];
+    uint32_t copiedLength = 0;
+
+    if (reserved != 0 || capacity == 0 || capacity > KE_INPUT_LINE_CAPACITY)
+    {
+        klog(KLOG_LEVEL_WARNING,
+             KE_USER_BOOTSTRAP_LOG_READLINE_REJECTED " thread=%u addr=%p cap=%lu reserved=%lu status=%s (%d)\n",
+             thread ? thread->ThreadId : 0U,
+             (void *)(uint64_t)userBuffer,
+             (unsigned long)capacity,
+             (unsigned long)reserved,
+             KrGetStatusMessage(EC_ILLEGAL_ARGUMENT),
+             EC_ILLEGAL_ARGUMENT);
+        return KiEncodeRawSyscallStatus(EC_ILLEGAL_ARGUMENT);
+    }
+
+    HO_STATUS status = KeInputWaitForForegroundLine();
+    if (status != EC_SUCCESS)
+    {
+        klog(KLOG_LEVEL_WARNING,
+             KE_USER_BOOTSTRAP_LOG_READLINE_REJECTED " thread=%u addr=%p cap=%lu status=%s (%d)\n",
+             thread ? thread->ThreadId : 0U,
+             (void *)(uint64_t)userBuffer,
+             (unsigned long)capacity,
+             KrGetStatusMessage(status),
+             status);
+        return KiEncodeRawSyscallStatus(status);
+    }
+
+    status = KeInputCopyCompletedLineForCurrentThread(scratch, (uint32_t)capacity, &copiedLength);
+    if (status != EC_SUCCESS)
+    {
+        klog(KLOG_LEVEL_WARNING,
+             KE_USER_BOOTSTRAP_LOG_READLINE_REJECTED " thread=%u addr=%p cap=%lu status=%s (%d)\n",
+             thread ? thread->ThreadId : 0U,
+             (void *)(uint64_t)userBuffer,
+             (unsigned long)capacity,
+             KrGetStatusMessage(status),
+             status);
+        return KiEncodeRawSyscallStatus(status);
+    }
+
+    status = KeUserBootstrapCopyOutBytes((HO_VIRTUAL_ADDRESS)userBuffer, scratch, copiedLength);
+    if (status != EC_SUCCESS)
+    {
+        klog(KLOG_LEVEL_WARNING,
+             KE_USER_BOOTSTRAP_LOG_READLINE_REJECTED " thread=%u addr=%p cap=%lu status=%s (%d)\n",
+             thread ? thread->ThreadId : 0U,
+             (void *)(uint64_t)userBuffer,
+             (unsigned long)capacity,
+             KrGetStatusMessage(status),
+             status);
+        return KiEncodeRawSyscallStatus(status);
+    }
+
+    status = KeInputConsumeCompletedLineForCurrentThread();
+    if (status != EC_SUCCESS)
+        return KiEncodeRawSyscallStatus(status);
+
+    klog(KLOG_LEVEL_INFO,
+         KE_USER_BOOTSTRAP_LOG_READLINE_SUCCEEDED " bytes=%u thread=%u\n",
+         copiedLength,
+         thread ? thread->ThreadId : 0U);
+    return (int64_t)copiedLength;
+}
+
 static HO_NORETURN void
 KiPerformBootstrapExit(uint64_t exitCode, const char *successLog, const char *exitKind)
 {
@@ -357,6 +488,9 @@ KiDispatchBootstrapSyscall(uint64_t syscallNumber, uint64_t arg0, uint64_t arg1,
 
     if (syscallNumber == SYS_EXIT)
         return KiHandleExit(arg0, arg1, arg2);
+
+    if (syscallNumber == SYS_READLINE)
+        return KiHandleReadLine(arg0, arg1, arg2);
 
     return ExBootstrapAdapterDispatchSyscall(syscallNumber, arg0, arg1, arg2);
 }

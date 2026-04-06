@@ -13,6 +13,8 @@
 #include <kernel/ex/ex_process.h>
 #include <kernel/ex/ex_thread.h>
 
+struct KTHREAD;
+
 HO_KERNEL_API HO_NODISCARD HO_STATUS ExBootstrapInit(void);
 
 /**
@@ -50,6 +52,20 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS ExBootstrapCreateThread(EX_PROCESS **proces
  * On failure *threadHandle remains owned by the caller.
  */
 HO_KERNEL_API HO_NODISCARD HO_STATUS ExBootstrapStartThread(EX_THREAD **threadHandle);
+
+/**
+ * Query the kernel-visible ThreadId for a not-yet-consumed bootstrap thread
+ * handle. This keeps demo/profile code off Ex internals while still allowing
+ * narrow foreground-owner setup.
+ */
+HO_KERNEL_API HO_NODISCARD HO_STATUS ExBootstrapQueryThreadId(const EX_THREAD *thread, uint32_t *outThreadId);
+
+/**
+ * Borrow the underlying KTHREAD for a bootstrap thread before runtime
+ * ownership is transferred. Intended for narrow kernel-side coordination such
+ * as waiting on a joinable bootstrap demo thread.
+ */
+HO_KERNEL_API HO_NODISCARD HO_STATUS ExBootstrapBorrowKernelThread(EX_THREAD *thread, struct KTHREAD **outThread);
 
 /**
  * Cancel a bootstrap thread before it has been started.

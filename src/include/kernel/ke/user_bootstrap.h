@@ -66,6 +66,10 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserBootstrapCopyInBytes(void *kernelDest
                                                                 HO_VIRTUAL_ADDRESS userSource,
                                                                 uint64_t length);
 
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserBootstrapCopyOutBytes(HO_VIRTUAL_ADDRESS userDestination,
+                                                                 const void *kernelSource,
+                                                                 uint64_t length);
+
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserBootstrapWriteConsoleBytes(const char *bytes,
                                                                       uint64_t length,
                                                                       uint64_t *outWritten);

@@ -129,6 +129,12 @@ HoUserExit(uint64_t exitCode)
     __builtin_unreachable();
 }
 
+static inline int64_t
+HoUserReadLine(void *buffer, uint64_t capacity)
+{
+    return HoUserSyscall3(SYS_READLINE, (uint64_t)(void *)buffer, capacity, 0);
+}
+
 /*
  * Raw bootstrap-only helpers kept for the user_hello sentinel. They are not
  * part of the stable Ex-facing userspace ABI surface.

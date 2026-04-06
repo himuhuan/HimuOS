@@ -1,0 +1,9 @@
+# Drive the P1 profile off explicit prompt visibility rather than fixed sleeps,
+# so the same plan can run on both host and tcg without racing the prompt.
+wait_for hsh> 
+text & tick1s
+key ret
+
+wait_for [HSH] handoff
+text 3 4 +
+key ret

@@ -1,6 +1,7 @@
 #include "init_internal.h"
 
 #include <kernel/ex/ex_bootstrap.h>
+#include <kernel/ke/input.h>
 #include <kernel/ke/sysinfo.h>
 
 //
@@ -712,6 +713,12 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
     if (initStatus != EC_SUCCESS)
     {
         HO_KPANIC(initStatus, "Failed to initialize Ex bootstrap runtime");
+    }
+
+    initStatus = KeInputInit();
+    if (initStatus != EC_SUCCESS)
+    {
+        HO_KPANIC(initStatus, "Failed to initialize runtime keyboard input");
     }
 }
 
