@@ -7,6 +7,7 @@
  */
 
 #include <arch/amd64/idt.h>
+#include <kernel/demo_shell.h>
 #include <arch/amd64/pm.h>
 #include <kernel/ex/ex_bootstrap_adapter.h>
 #include <kernel/hodbg.h>
@@ -36,6 +37,9 @@ static HO_STATUS KiValidateBootstrapUserPages(const KE_KERNEL_ADDRESS_SPACE *spa
 static int64_t KiRejectRawWrite(uint64_t userBuffer, uint64_t length, HO_STATUS status);
 static int64_t KiHandleRawWrite(uint64_t userBuffer, uint64_t length);
 static int64_t KiHandleReadLine(uint64_t userBuffer, uint64_t capacity, uint64_t reserved);
+static int64_t KiHandleSpawnBuiltin(uint64_t programId, uint64_t flags, uint64_t reserved);
+static int64_t KiHandleWaitPid(uint64_t pid, uint64_t reserved0, uint64_t reserved1);
+static int64_t KiHandleSleepMs(uint64_t milliseconds, uint64_t reserved0, uint64_t reserved1);
 static HO_NORETURN void KiPerformBootstrapExit(uint64_t exitCode, const char *successLog, const char *exitKind);
 static int64_t KiHandleRawExit(uint64_t exitCode);
 static int64_t KiHandleExit(uint64_t exitCode, uint64_t reserved0, uint64_t reserved1);
@@ -411,6 +415,105 @@ KiHandleReadLine(uint64_t userBuffer, uint64_t capacity, uint64_t reserved)
     return (int64_t)copiedLength;
 }
 
+static int64_t
+KiHandleSpawnBuiltin(uint64_t programId, uint64_t flags, uint64_t reserved)
+{
+    KTHREAD *thread = KeGetCurrentThread();
+    uint32_t pid = 0;
+
+    if (reserved != 0 || programId > 0xFFFFFFFFULL || flags > 0xFFFFFFFFULL)
+    {
+        klog(KLOG_LEVEL_WARNING,
+             KE_USER_BOOTSTRAP_LOG_SPAWN_BUILTIN_REJECTED " thread=%u program=%lu flags=%lu status=%s (%d)\n",
+             thread ? thread->ThreadId : 0U,
+             (unsigned long)programId,
+             (unsigned long)flags,
+             KrGetStatusMessage(EC_ILLEGAL_ARGUMENT),
+             EC_ILLEGAL_ARGUMENT);
+        return KiEncodeRawSyscallStatus(EC_ILLEGAL_ARGUMENT);
+    }
+
+    HO_STATUS status = KeDemoShellSpawnBuiltin((uint32_t)programId, (uint32_t)flags, &pid);
+    if (status != EC_SUCCESS)
+    {
+        klog(KLOG_LEVEL_WARNING,
+             KE_USER_BOOTSTRAP_LOG_SPAWN_BUILTIN_REJECTED " thread=%u program=%lu flags=%lu status=%s (%d)\n",
+             thread ? thread->ThreadId : 0U,
+             (unsigned long)programId,
+             (unsigned long)flags,
+             KrGetStatusMessage(status),
+             status);
+        return KiEncodeRawSyscallStatus(status);
+    }
+
+    klog(KLOG_LEVEL_INFO,
+         KE_USER_BOOTSTRAP_LOG_SPAWN_BUILTIN_SUCCEEDED " thread=%u program=%lu flags=%lu pid=%u\n",
+         thread ? thread->ThreadId : 0U,
+         (unsigned long)programId,
+         (unsigned long)flags,
+         pid);
+    return (int64_t)pid;
+}
+
+static int64_t
+KiHandleWaitPid(uint64_t pid, uint64_t reserved0, uint64_t reserved1)
+{
+    KTHREAD *thread = KeGetCurrentThread();
+
+    if (reserved0 != 0 || reserved1 != 0 || pid == 0 || pid > 0xFFFFFFFFULL)
+    {
+        klog(KLOG_LEVEL_WARNING,
+             KE_USER_BOOTSTRAP_LOG_WAIT_PID_REJECTED " thread=%u pid=%lu status=%s (%d)\n",
+             thread ? thread->ThreadId : 0U,
+             (unsigned long)pid,
+             KrGetStatusMessage(EC_ILLEGAL_ARGUMENT),
+             EC_ILLEGAL_ARGUMENT);
+        return KiEncodeRawSyscallStatus(EC_ILLEGAL_ARGUMENT);
+    }
+
+    HO_STATUS status = KeDemoShellWaitPid((uint32_t)pid);
+    if (status != EC_SUCCESS)
+    {
+        klog(KLOG_LEVEL_WARNING,
+             KE_USER_BOOTSTRAP_LOG_WAIT_PID_REJECTED " thread=%u pid=%lu status=%s (%d)\n",
+             thread ? thread->ThreadId : 0U,
+             (unsigned long)pid,
+             KrGetStatusMessage(status),
+             status);
+        return KiEncodeRawSyscallStatus(status);
+    }
+
+    klog(KLOG_LEVEL_INFO,
+         KE_USER_BOOTSTRAP_LOG_WAIT_PID_SUCCEEDED " thread=%u pid=%lu\n",
+         thread ? thread->ThreadId : 0U,
+         (unsigned long)pid);
+    return 0;
+}
+
+static int64_t
+KiHandleSleepMs(uint64_t milliseconds, uint64_t reserved0, uint64_t reserved1)
+{
+    KTHREAD *thread = KeGetCurrentThread();
+
+    if (reserved0 != 0 || reserved1 != 0 || milliseconds > KE_USER_BOOTSTRAP_SLEEP_MS_MAX)
+    {
+        klog(KLOG_LEVEL_WARNING,
+             KE_USER_BOOTSTRAP_LOG_SLEEP_MS_REJECTED " thread=%u milliseconds=%lu status=%s (%d)\n",
+             thread ? thread->ThreadId : 0U,
+             (unsigned long)milliseconds,
+             KrGetStatusMessage(EC_ILLEGAL_ARGUMENT),
+             EC_ILLEGAL_ARGUMENT);
+        return KiEncodeRawSyscallStatus(EC_ILLEGAL_ARGUMENT);
+    }
+
+    KeSleep(milliseconds * KE_USER_BOOTSTRAP_SLEEP_NS_PER_MS);
+    klog(KLOG_LEVEL_INFO,
+         KE_USER_BOOTSTRAP_LOG_SLEEP_MS_SUCCEEDED " thread=%u milliseconds=%lu\n",
+         thread ? thread->ThreadId : 0U,
+         (unsigned long)milliseconds);
+    return 0;
+}
+
 static HO_NORETURN void
 KiPerformBootstrapExit(uint64_t exitCode, const char *successLog, const char *exitKind)
 {
@@ -491,6 +594,15 @@ KiDispatchBootstrapSyscall(uint64_t syscallNumber, uint64_t arg0, uint64_t arg1,
 
     if (syscallNumber == SYS_READLINE)
         return KiHandleReadLine(arg0, arg1, arg2);
+
+    if (syscallNumber == SYS_SPAWN_BUILTIN)
+        return KiHandleSpawnBuiltin(arg0, arg1, arg2);
+
+    if (syscallNumber == SYS_WAIT_PID)
+        return KiHandleWaitPid(arg0, arg1, arg2);
+
+    if (syscallNumber == SYS_SLEEP_MS)
+        return KiHandleSleepMs(arg0, arg1, arg2);
 
     return ExBootstrapAdapterDispatchSyscall(syscallNumber, arg0, arg1, arg2);
 }

@@ -1,0 +1,19 @@
+# Drive the P2 demo_shell profile through prompt/log anchors so the same plan
+# works on both host and tcg paths without fixed keyboard timing assumptions.
+wait_for hsh> 
+text & tick1s
+key ret
+
+wait_for name=tick1s bg=1
+wait_for hsh> 
+text calc
+key ret
+
+wait_for calc> 
+text 3 4 +
+key ret
+
+wait_for SYS_WAIT_PID succeeded
+wait_for hsh> 
+text exit
+key ret

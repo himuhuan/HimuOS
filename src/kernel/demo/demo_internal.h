@@ -41,6 +41,7 @@
 #define HO_DEMO_TEST_USER_CAPS         18
 #define HO_DEMO_TEST_USER_DUAL         19
 #define HO_DEMO_TEST_USER_INPUT        20
+#define HO_DEMO_TEST_DEMO_SHELL        21
 
 #ifndef HO_DEMO_TEST_SELECTION
 #define HO_DEMO_TEST_SELECTION HO_DEMO_TEST_NONE
@@ -115,7 +116,9 @@ void KiUserHelloGetEmbeddedArtifacts(KI_USER_EMBEDDED_ARTIFACTS *artifacts);
 void KiUserCounterGetEmbeddedArtifacts(KI_USER_EMBEDDED_ARTIFACTS *artifacts);
 void KiHshGetEmbeddedArtifacts(KI_USER_EMBEDDED_ARTIFACTS *artifacts);
 void KiCalcGetEmbeddedArtifacts(KI_USER_EMBEDDED_ARTIFACTS *artifacts);
+void KiTick1sGetEmbeddedArtifacts(KI_USER_EMBEDDED_ARTIFACTS *artifacts);
 void RunUserHelloDemo(void);
 void RunUserCapsDemo(void);
 void RunUserDualDemo(void);
 void RunUserInputDemo(void);
+void RunDemoShellDemo(void);

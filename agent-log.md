@@ -1,200 +1,180 @@
-# P1 Agent Log
+# Agent Log
 
-## Scope
+## 1. 目标
 
-- Change: `introduce-demo-shell-input-lane`
-- Goal: implement `docs/todo.md` P1 as a bounded demo-shell input lane
-- Coordination mode: main agent as coordinator, serial task execution, `host` / `tcg` dual validation, reviewer-fix loop before final delivery
+本次工作的目标是将 [`docs/todo.md`](/home/liuhuan/HimuOS/docs/todo.md) 中的 `P2` 收口为一个新的 OpenSpec change：`introduce-demo-shell-control-plane`，并按串行阶段完成从 proposal 到实现、验证、审查和交付的完整闭环。
 
-## Constraints
+## 2. 约束
 
-- Keep the implementation minimal and strictly bounded to P1
-- Do not widen the scope into a full shell, full `stdin` / `tty`, job control, filesystem, PATH, generic loader, or kill semantics
-- Runtime input source stays on QEMU PS/2 keyboard only
-- Supported keys remain bounded to printable characters, `Enter`, and `Backspace`
-- OpenSpec artifacts under `openspec/changes/introduce-demo-shell-input-lane` are intentionally git-ignored and were updated directly during the workflow
-- `docs/todo.md` is a user-side tracked change and was intentionally excluded from this delivery and its commit
+- 以最小改动为原则，不引入完整 shell、FS、PATH、loader、完整 tty 或通用进程模型。
+- `kill_pid` 明确保留给后续阶段，不在本次 `P2` 里落地语义。
+- 保持 `user_input` 作为 `P1` 输入/foreground-handoff 的回归锚点，不让 `P2` 改动破坏既有证据链。
+- `openspec/` 内容是有意排除版本控制的；proposal/design/specs/tasks 已更新，但不会进入最终 git commit。
 
-## OpenSpec Flow
+## 3. 分阶段实施记录
 
-- Used the default planning agent to turn `docs/todo.md` P1 into a new OpenSpec change: `introduce-demo-shell-input-lane`
-- Created proposal, design, delta specs, and `tasks.md` under that change
-- Fixed the serial task structure as:
-  - `1.x` Kernel Input Lane
-  - `2.x` Foreground Read Contract
-  - `3.x` P1 User Profile
-  - `4.x` Scripted Validation
-- Applied implementation strictly in task order, then revalidated, then sent the whole batch through reviewer
+### Phase 1: OpenSpec proposal/design/specs/tasks
 
-## Implementation Summary
+- 新建 change：`openspec/changes/introduce-demo-shell-control-plane/`
+- 落盘 `proposal.md`、`design.md`、`tasks.md` 以及对应 specs。
+- 将范围收敛为 demo-shell 的窄控制面：
+  - `spawn_builtin(program_id, flags)`
+  - `wait_pid(pid)`
+  - `sleep_ms(ms)`
+- 明确 `kill_pid` 延后到后续阶段，避免把范围拉入线程终止/信号语义。
 
-### Stage 1-2
+### Phase 2: ABI / syscall / runtime helper
 
-- Added a bounded runtime input subsystem under `src/kernel/ke/input/`
-- Added the QEMU PS/2 keyboard path through:
-  - `src/drivers/input/ps2_keyboard_driver.c`
-  - `src/include/drivers/input/ps2_keyboard_driver.h`
-  - `src/kernel/ke/input/sinks/ps2_keyboard_sink.c`
-  - `src/include/kernel/ke/sinks/input_sink.h`
-- Initialized runtime keyboard input in `src/kernel/init/init.c`
-- Added `SYS_READLINE`, copyout support, and `HoUserReadLine()` through:
-  - `src/include/kernel/ex/ex_bootstrap_abi.h`
-  - `src/include/kernel/ke/user_bootstrap.h`
-  - `src/kernel/ke/user_bootstrap_syscall.c`
-  - `src/user/libsys.h`
+- 在 ABI 中新增：
+  - `SYS_SPAWN_BUILTIN`
+  - `SYS_WAIT_PID`
+  - `SYS_SLEEP_MS`
+  - builtin program id
+  - spawn flags
+- 在 [`src/user/libsys.h`](/home/liuhuan/HimuOS/src/user/libsys.h) 中新增稳定包装：
+  - `HoUserSpawnBuiltin(...)`
+  - `HoUserWaitPid(...)`
+  - `HoUserSleepMs(...)`
+- 在 [`src/kernel/ke/user_bootstrap_syscall.c`](/home/liuhuan/HimuOS/src/kernel/ke/user_bootstrap_syscall.c) 中完成 syscall 分发接入。
+- 新增 [`src/include/kernel/demo_shell.h`](/home/liuhuan/HimuOS/src/include/kernel/demo_shell.h) 与 [`src/kernel/demo/demo_shell_runtime.c`](/home/liuhuan/HimuOS/src/kernel/demo/demo_shell_runtime.c)，提供最小 child table 与 demo-shell runtime helper。
 
-### Stage 3
+### Phase 3: profile-aware hsh / tick1s / demo_shell profile
 
-- Added minimal compiled userspace payloads:
-  - `src/user/hsh/main.c`
-  - `src/user/calc/main.c`
-- Added embedded artifact bridges:
-  - `src/kernel/demo/hsh_artifact_bridge.c`
-  - `src/kernel/demo/calc_artifact_bridge.c`
-- Added the `user_input` regression profile in `src/kernel/demo/user_input.c`
-- Extended Ex bootstrap threading just enough for kernel-side coordination:
-  - joinable bootstrap thread flag
-  - thread-id query helper
-  - kernel-thread borrow helper
+- `hsh` 改为 profile-aware：
+  - `user_input` 下继续保留 `P1` skeleton 行为
+  - `demo_shell` 下启用最小 REPL，支持 `help`、`exit`、`calc`、`& tick1s`
+- 新增 bounded `tick1s` 用户程序：
+  - [`src/user/tick1s/main.c`](/home/liuhuan/HimuOS/src/user/tick1s/main.c)
+  - [`src/kernel/demo/tick1s_artifact_bridge.c`](/home/liuhuan/HimuOS/src/kernel/demo/tick1s_artifact_bridge.c)
+- 新增 `demo_shell` profile：
+  - [`src/kernel/demo/demo_shell.c`](/home/liuhuan/HimuOS/src/kernel/demo/demo_shell.c)
+- 更新 makefile，使 user build 继承 profile define，并将 `tick1s` 与 `demo_shell` profile 纳入构建与测试矩阵。
 
-### Stage 4
+### Phase 4: sendkey plan 与 host/tcg 验证
 
-- Added headless sendkey support:
-  - `scripts/qemu_sendkeys.py`
-  - `scripts/input_plans/user_input.plan`
-- Extended `scripts/qemu_capture.sh` and `makefile` so the existing capture-first workflow can optionally create a QEMU monitor socket and run the sendkey helper against it
+- 新增 [`scripts/input_plans/demo_shell.plan`](/home/liuhuan/HimuOS/scripts/input_plans/demo_shell.plan)
+- 更新 makefile 中的显式 flavor-and-capture 用法说明
+- 完成以下验证：
+  - `demo_shell` host
+  - `demo_shell` tcg
+  - `user_input` host
+  - `user_input` tcg
 
-## Build And Validation
+## 4. 问题与修复过程
 
-### Build
+### 初版故障
 
-Ran:
+在 `demo_shell` 的首次 host 验证中，sendkey 已成功打入 `& tick1s`，日志明确显示：
 
-```bash
-make clean && bear -- make all BUILD_FLAVOR=test-user_input HO_DEMO_TEST_NAME=user_input HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_INPUT
-```
+- `SYS_SPAWN_BUILTIN succeeded`
+- child PID 已返回
 
-Result:
+但随后新起的 child 在线程首次进入用户态时立即触发 `#PF`，表现为：
 
-- Build completed successfully for the `test-user_input` flavor
+- `& tick1s` 输入已完成
+- shell 开始回显 started message
+- child 进入用户态后立即 fault
 
-### Host Validation
+### 定位过程
 
-Ran:
+- 先按协议采集 `qemu_capture.sh` 运行日志
+- 观察到 fault 发生在 spawn 成功之后，而不是 sendkey/输入链路之前
+- 初步判断问题位于“在 shell 的 syscall 上下文里直接启动 builtin child”这条路径，而不是 `tick1s` 文本命令解析本身
 
-```bash
-BUILD_FLAVOR=test-user_input HO_DEMO_TEST_NAME=user_input HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_INPUT \
-QEMU_CAPTURE_MODE=host QEMU_SENDKEY_PLAN=scripts/input_plans/user_input.plan \
-bash scripts/qemu_capture.sh 25 /tmp/himuos-user-input-host.log
-```
+### 修复动作
 
-Key anchors in `/tmp/himuos-user-input-host.log`:
+将 builtin spawn 的实际启动动作收口到 joinable kernel worker 路径：
 
-- `foreground -> hsh` at line 93
-- `foreground -> calc` at line 165
-- first `SYS_READLINE succeeded bytes=8 thread=1` at line 167
-- `SYS_READLINE rejected thread=1` at line 182
-- `[HSH] handoff` at line 184
-- second `SYS_READLINE succeeded bytes=5 thread=2` at line 224
-- `[CALC]` at line 225
-- `foreground owner=0` at line 237
+- `KeDemoShellSpawnBuiltin()` 不再直接在当前 shell syscall 现场完成 child 启动
+- 改为创建一个 joinable kernel worker
+- 由 worker 在 kernel context 中完成：
+  - `ExBootstrapCreateProcess`
+  - `ExBootstrapCreateThread`
+  - `ExBootstrapStartThread`
+  - child table 填充
+- 主线程同步 `join` 该 worker，拿回 PID / 状态
 
-Interpretation:
+再次执行 `demo_shell` host / tcg 验证后，故障消失，完整链路通过。
 
-- `hsh` read the first full line `& tick1s`
-- foreground switched to a live `calc`
-- the old `hsh` reader observed the handoff as a rejected second `readline`
-- `calc` then read the second full line `3 4 +`
-- foreground ownership was cleared at the end
+## 5. 验证摘要
 
-### TCG Validation
+### demo_shell
 
-Ran:
+验证命令：
 
-```bash
-BUILD_FLAVOR=test-user_input HO_DEMO_TEST_NAME=user_input HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_INPUT \
-QEMU_CAPTURE_MODE=tcg QEMU_SENDKEY_PLAN=scripts/input_plans/user_input.plan \
-bash scripts/qemu_capture.sh 25 /tmp/himuos-user-input-tcg.log
-```
+- `BUILD_FLAVOR=test-demo_shell HO_DEMO_TEST_NAME=demo_shell HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_DEMO_SHELL QEMU_CAPTURE_MODE=host QEMU_SENDKEY_PLAN=scripts/input_plans/demo_shell.plan bash scripts/qemu_capture.sh 25 /tmp/himuos-demo-shell-host.log`
+- `BUILD_FLAVOR=test-demo_shell HO_DEMO_TEST_NAME=demo_shell HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_DEMO_SHELL QEMU_CAPTURE_MODE=tcg QEMU_SENDKEY_PLAN=scripts/input_plans/demo_shell.plan bash scripts/qemu_capture.sh 25 /tmp/himuos-demo-shell-tcg.log`
 
-Key anchors in `/tmp/himuos-user-input-tcg.log`:
+日志锚点确认了以下事件均已成立：
 
-- `foreground -> hsh` at line 92
-- first `SYS_READLINE succeeded bytes=8 thread=1` at line 133
-- `foreground -> calc` at line 155
-- `SYS_READLINE rejected thread=1` at line 164
-- `[HSH] handoff` at line 168
-- second `SYS_READLINE succeeded bytes=5 thread=2` at line 192
-- `[CALC]` at line 196
-- `foreground owner=0` at line 211
+- profile 选中：`[DEMO] Selected profile: demo_shell`
+- 后台 spawn tick1s：`SYS_SPAWN_BUILTIN succeeded ... program=3`
+- 前台 spawn calc：`SYS_SPAWN_BUILTIN succeeded ... program=2`
+- `calc>` prompt 与 `[CALC] 3 4 +`
+- `SYS_WAIT_PID succeeded`
+- `SYS_SLEEP_MS succeeded`
+- `TICK!` 共 3 次
+- `bootstrap teardown complete thread=1`
+- `foreground owner=0`
 
-Interpretation:
+### user_input
 
-- The same live handoff contract reproduced on `tcg`
-- Both runs captured the intended first line `& tick1s` and second line `3 4 +`
+验证命令：
 
-## Reviewer Findings And Fixes
+- `BUILD_FLAVOR=test-user_input HO_DEMO_TEST_NAME=user_input HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_INPUT QEMU_CAPTURE_MODE=host QEMU_SENDKEY_PLAN=scripts/input_plans/user_input.plan bash scripts/qemu_capture.sh 20 /tmp/himuos-user-input-host.log`
+- `BUILD_FLAVOR=test-user_input HO_DEMO_TEST_NAME=user_input HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_INPUT QEMU_CAPTURE_MODE=tcg QEMU_SENDKEY_PLAN=scripts/input_plans/user_input.plan bash scripts/qemu_capture.sh 20 /tmp/himuos-user-input-tcg.log`
 
-### Reviewer Pass 1
+日志锚点确认了以下事件仍然成立：
 
-The first reviewer pass raised three blockers:
+- profile 选中：`[DEMO] Selected profile: user_input`
+- `foreground -> hsh`
+- `foreground -> calc`
+- `[HSH] handoff`
+- `[CALC] 3 4 +`
+- `bootstrap teardown complete thread=2`
+- `foreground owner=0`
 
-1. Foreground handoff could leave the old reader blocked forever
-2. `user_input` only proved sequential readers, not a live `hsh` / `calc` handoff
-3. `qemu_capture.sh` could still hide sendkey helper failure behind timeout `124`
+补充说明：
 
-### Fixes Applied
+- `calc` 在 foreground handoff 之前多次收到 `SYS_READLINE rejected ... EC_INVALID_STATE` 是预期行为，这正是 `P1` “只有 foreground reader 才能读取输入”的合同体现，不视为回归。
 
-- Changed `KeInputWaitForForegroundLine()` to re-check ownership on a bounded wait cadence instead of sleeping forever on the old event
-- Added `KeInputGetCompletedReadCount()` so the kernel-side controller can switch foreground after the first completed read while both user threads are still alive
-- Changed `user_input` to start both `hsh` and `calc`, then hand off from a live `hsh` to a live `calc`
-- Changed `hsh` to issue a second `readline`, expect `-EC_INVALID_STATE`, and emit `[HSH] handoff`
-- Changed `calc` to tolerate early `-EC_INVALID_STATE` until it becomes foreground
-- Changed `scripts/qemu_capture.sh` to surface `SENDKEY_STATUS` before the watchdog timeout exit path
-- Updated the sendkey plan to wait for `[HSH] handoff` before injecting the second line
+### 关于返回码 124
 
-### Reviewer Pass 2
+四次 `qemu_capture.sh` 运行都因为超时终止返回 `124`。这是当前脚本的预期行为之一：profile 已经 clean-pass 收尾并回到 idle，但 QEMU 不会自行退出，因此 watchdog 在设定时间到达后结束进程组。
 
-- Re-review found no remaining blocking issues
-- Residual risk is limited to noisy log interleaving under heavy `tcg` scheduling, but the correctness contract is now proven by the captured anchors
+本次验证以日志锚点为准，日志中已经包含完整的 clean-pass 证据链，因此 `124` 不视为失败。
 
-## Commit
+## 6. 审查记录
 
-- Commit: `b401651`
-- Message: `Add demo-shell P1 input lane`
+- 尝试拉起 reviewer 子代理进行阻塞性审查
+- reviewer 子代理因额度限制失败，无法继续执行
+- 随后由主代理执行人工阻塞审查，重点覆盖：
+  - spawn worker / child table 生命周期
+  - foreground owner 恢复
+  - `user_input` 兼容性
+  - makefile wiring 与 artifact 嵌入
+  - failure path 与回归风险
+- 审查结论：未发现阻塞提交的问题
 
-## Git State
+## 7. 最终交付文件范围
 
-- This delivery is committed
-- Current working tree still shows only one unrelated tracked modification:
-  - `docs/todo.md`
-- That user-side change was intentionally not staged and not included in `b401651`
+### 主要修改文件
 
-## Tracked Files In This Delivery
+- [`makefile`](/home/liuhuan/HimuOS/makefile)
+- [`scripts/input_plans/user_input.plan`](/home/liuhuan/HimuOS/scripts/input_plans/user_input.plan)
+- [`scripts/input_plans/demo_shell.plan`](/home/liuhuan/HimuOS/scripts/input_plans/demo_shell.plan)
+- [`src/include/kernel/ex/ex_bootstrap_abi.h`](/home/liuhuan/HimuOS/src/include/kernel/ex/ex_bootstrap_abi.h)
+- [`src/include/kernel/demo_shell.h`](/home/liuhuan/HimuOS/src/include/kernel/demo_shell.h)
+- [`src/kernel/ke/user_bootstrap_syscall.c`](/home/liuhuan/HimuOS/src/kernel/ke/user_bootstrap_syscall.c)
+- [`src/kernel/demo/demo.c`](/home/liuhuan/HimuOS/src/kernel/demo/demo.c)
+- [`src/kernel/demo/demo_internal.h`](/home/liuhuan/HimuOS/src/kernel/demo/demo_internal.h)
+- [`src/kernel/demo/demo_shell_runtime.c`](/home/liuhuan/HimuOS/src/kernel/demo/demo_shell_runtime.c)
+- [`src/kernel/demo/demo_shell.c`](/home/liuhuan/HimuOS/src/kernel/demo/demo_shell.c)
+- [`src/kernel/demo/tick1s_artifact_bridge.c`](/home/liuhuan/HimuOS/src/kernel/demo/tick1s_artifact_bridge.c)
+- [`src/user/libsys.h`](/home/liuhuan/HimuOS/src/user/libsys.h)
+- [`src/user/hsh/main.c`](/home/liuhuan/HimuOS/src/user/hsh/main.c)
+- [`src/user/tick1s/main.c`](/home/liuhuan/HimuOS/src/user/tick1s/main.c)
 
-- `makefile`
-- `scripts/qemu_capture.sh`
-- `scripts/qemu_sendkeys.py`
-- `scripts/input_plans/user_input.plan`
-- `src/include/kernel/ex/ex_bootstrap.h`
-- `src/include/kernel/ex/ex_bootstrap_abi.h`
-- `src/include/kernel/ex/ex_thread.h`
-- `src/include/kernel/ke/input.h`
-- `src/include/kernel/ke/sinks/input_sink.h`
-- `src/include/kernel/ke/user_bootstrap.h`
-- `src/include/drivers/input/ps2_keyboard_driver.h`
-- `src/drivers/input/ps2_keyboard_driver.c`
-- `src/kernel/demo/demo.c`
-- `src/kernel/demo/demo_internal.h`
-- `src/kernel/demo/hsh_artifact_bridge.c`
-- `src/kernel/demo/calc_artifact_bridge.c`
-- `src/kernel/demo/user_input.c`
-- `src/kernel/ex/ex_bootstrap.c`
-- `src/kernel/init/init.c`
-- `src/kernel/ke/input/input.c`
-- `src/kernel/ke/input/sinks/ps2_keyboard_sink.c`
-- `src/kernel/ke/user_bootstrap_syscall.c`
-- `src/user/libsys.h`
-- `src/user/hsh/main.c`
-- `src/user/calc/main.c`
-- `agent-log.md`
+### 非版本控制交付
+
+- `openspec/changes/introduce-demo-shell-control-plane/` 下的 proposal/design/specs/tasks 已更新，但按约定不纳入 git。

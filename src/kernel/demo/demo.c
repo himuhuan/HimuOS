@@ -52,6 +52,12 @@ RunKernelDemos(void)
         return;
     }
 
+    if (HO_DEMO_TEST_SELECTION == HO_DEMO_TEST_DEMO_SHELL)
+    {
+        RunDemoShellDemo();
+        return;
+    }
+
     if (HO_DEMO_TEST_SELECTION == HO_DEMO_TEST_USER_CAPS)
     {
         RunUserCapsDemo();

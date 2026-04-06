@@ -135,6 +135,24 @@ HoUserReadLine(void *buffer, uint64_t capacity)
     return HoUserSyscall3(SYS_READLINE, (uint64_t)(void *)buffer, capacity, 0);
 }
 
+static inline int64_t
+HoUserSpawnBuiltin(uint64_t programId, uint64_t flags)
+{
+    return HoUserSyscall3(SYS_SPAWN_BUILTIN, programId, flags, 0);
+}
+
+static inline int64_t
+HoUserWaitPid(uint64_t pid)
+{
+    return HoUserSyscall3(SYS_WAIT_PID, pid, 0, 0);
+}
+
+static inline int64_t
+HoUserSleepMs(uint64_t milliseconds)
+{
+    return HoUserSyscall3(SYS_SLEEP_MS, milliseconds, 0, 0);
+}
+
 /*
  * Raw bootstrap-only helpers kept for the user_hello sentinel. They are not
  * part of the stable Ex-facing userspace ABI surface.
