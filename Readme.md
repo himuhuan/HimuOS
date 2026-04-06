@@ -1,6 +1,6 @@
 # Himu Operating System (HimuOS)
 
-*A UEFI-based x86_64 Macro Kernel with a Dual-Process User-Mode MVP*
+*A UEFI-based x86_64 Macro Kernel with a Demo-Shell Vertical Slice MVP*
 
 ## 概要
 本项目旨在从零开始设计并实现一个名为 "HimuOS" 的x86_64架构宏内核操作系统。
@@ -11,19 +11,19 @@
 
 在 Ke 层的具体实现中，本文采用设备—汇（Device-Sink）抽象模式，为控制台、时间源与时钟事件等子系统提供统一的硬件抽象接口，支持多种底层驱动实现（如时间戳计数器 TSC、高精度事件定时器 HPET、本地高级可编程中断控制器定时器 LAPIC Timer 等）的透明切换。系统建立了基于四级页表的虚拟内存管理机制，实现了内核态（Ring 0）与用户态（Ring 3）的特权级隔离，并通过共享 `int 0x80` trap entry + Ex-facing syscall contract 为用户态提供最小服务入口。
 
-当前 README 以本轮 **MVP 交付范围** 为准，而不再继续承诺完整用户子系统的最终形态。该 MVP 的目标是交付一个**正式成立、可论证、可演示的双/多进程用户态原型操作系统**。
+当前 README 以本轮 **MVP 交付范围** 为准，而不再继续承诺完整用户子系统的最终形态。该 MVP 的正式目标是交付一个 **demo-shell vertical slice**：内核 boot 后直接拉起用户态 `hsh`，并围绕 `tick1s` / `calc` / `kill` / `help` / `exit` 这组受限命令完成一条可演示、可复述、可稳定回归的官方路径。
 
 本轮 MVP 以以下能力为交付目标：
 
 - 虚拟内存管理：建立并启用四级页表，为内核和每个用户进程提供隔离的地址空间。
 - 特权级分离：实现内核态（Ring 0）和用户态（Ring 3）的安全隔离。
-- 用户程序模型：以**编译型 C 用户程序**作为正式用户程序形态，并将其装载到每个 `ExProcess` 的私有地址空间中。
+- 用户程序模型：以**编译型 C 用户程序**作为正式用户程序形态，当前官方 demo-scope 程序固定为 `hsh`、`tick1s`、`calc`，并继续沿用嵌入内核的 bootstrap 路径。
 - 系统调用与句柄：以 Ex-facing 的最小句柄化 syscall contract 作为用户态请求服务的正式方向，当前聚焦 stdout、wait、close、exit 等原型级能力。
-- 并发与调度：在单处理器（AP）上以抢占式时间片轮转（RR）为基线支撑双进程原型；若团队时间允许，再补入简化版优先级调度。
+- 并发与调度：在单处理器（AP）上以抢占式调度支撑这条 demo-shell 切片；当前调度器已经具备优先级感知 ready queue 与 RR 时间片语义，因此后续主线不再把“先补优先级调度”当作前置阶段。
 - 可观测性：以 GOP 文本输出和 COM1 串口输出作为主要演示与诊断界面。
 
 > [!IMPORTANT]
-> 本轮 MVP **不包含** 文件系统、多核（SMP）、键盘输入、Shell、通用 ELF Loader 与完整 Object Manager。
+> 本轮 MVP **不包含** 文件系统、多核（SMP）、PATH 搜索、通用 ELF / runtime loader、内核态 shell、独立 PID allocator 与完整 Object Manager。`hsh` 是受限 demo shell，而不是通用 shell ABI。
 
 ## HimuOS 参数说明
 
@@ -39,13 +39,13 @@
 | 特权级    | 支持内核态（Ring 0) 和用户态 (Ring 3)               |
 | 用户空间   | 每进程私有地址空间；当前以固定 bootstrap window 装载用户映像   |
 | 系统调用   | 目标方向为 `int 0x80` + Ex-facing 最小句柄化 syscall contract |
-| 并发与同步  | 仅支持 单AP；当前下限为 RR，简化优先级调度为可选增强项            |
+| 并发与同步  | 仅支持 单AP；当前调度器为优先级感知的抢占式 RR / tickless 语义        |
 | 多线程    | 支持内核级线程调度                                 |
 | 动态内存分配 | 支持                                        |
 | 中断     | 支持中断                                      |
 | 文件系统   | 不支持                                       |
 | 显示器    | 支持 GOP 彩色文本界面与 COM1 串口输出                  |
-| 设备支持   | GOP / COM1 / MMIO 支持，键盘(PS/2)输入；|
+| 设备支持   | GOP / COM1 / MMIO 支持；运行期键盘输入仍待补齐 |
 
 ## 回归 profile 与推荐执行流程
 
@@ -82,7 +82,7 @@ BUILD_FLAVOR=<flavor> HO_DEMO_TEST_NAME=<profile> HO_DEMO_TEST_DEFINE=<define> \
 | `pf_fixmap` | `test-pf_fixmap` | `HO_DEMO_TEST_PF_FIXMAP` | intentional fatal page-fault halt with bounded diagnostics | active fixmap alias diagnosis |
 | `pf_heap` | `test-pf_heap` | `HO_DEMO_TEST_PF_HEAP` | intentional fatal page-fault halt with bounded diagnostics | heap-backed KVA diagnosis |
 
-当前用户态相关的稳定锚点主要是 `user_hello` 与 `user_caps`。前者已经固定为**由 `src/user/user_hello` 源码编译产生的用户程序**的最小 Ring 3 进入与 clean exit 证据链，后者固定 capability / handle 路径的最小合同。README 描述的 MVP 方向，是在这两条稳定锚点之上继续推进到**编译型、双进程、Ex-facing 的用户态原型**；因此，这两条 profile 应被视为当前主线的阶段性回归基础，而不是最终用户 ABI 的全部形态。
+当前用户态相关的稳定锚点主要是 `user_hello` 与 `user_caps`。前者已经固定为**由 `src/user/user_hello` 源码编译产生的用户程序**的最小 Ring 3 进入与 clean exit 证据链，后者固定 capability / handle 路径的最小合同。README 描述的 MVP 主线，是在这两条稳定锚点之上继续推进到**编译型、Ex-facing、demo-shell vertical slice**；因此，这两条 profile 应被视为 `hsh` / `tick1s` / `calc` 官方演示切片的阶段性回归基础，而不是完整用户 ABI 的全部形态。
 
 `user_dual` 则应被视为**双进程 bring-up 的时序敏感回归项**：当它涉及 teardown / preemption 相关结论时，必须同时检查 `QEMU_CAPTURE_MODE=host` 与 `QEMU_CAPTURE_MODE=tcg` 两条路径。
 
