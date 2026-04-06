@@ -102,13 +102,19 @@ setsid bash -lc '
 make_args=(
 	run
 	SUDO_PASSWORD="$1"
-	BUILD_FLAVOR="$2"
-	HO_DEMO_TEST_NAME="$3"
-	HO_DEMO_TEST_DEFINE="$4"
 	QEMU_DISPLAY="$5"
 	QEMU_ACCEL_MODE="$6"
 	QEMU_MONITOR_SOCKET="$9"
 )
+if [ -n "$2" ]; then
+	make_args+=(BUILD_FLAVOR="$2")
+fi
+if [ -n "$3" ]; then
+	make_args+=(HO_DEMO_TEST_NAME="$3")
+fi
+if [ -n "$4" ]; then
+	make_args+=(HO_DEMO_TEST_DEFINE="$4")
+fi
 if [ "$7" != "__HIMUOS_UNSET__" ]; then
 	make_args+=(QEMU_ACCEL_ARGS="$7")
 fi

@@ -28,6 +28,20 @@ ASFLAGS     := -f elf64 -g -F dwarf
 
 BUILD_FLAVOR ?=
 
+DEFAULT_INTERACTIVE_BUILD_FLAVOR ?= default-demo_shell
+DEFAULT_INTERACTIVE_PROFILE_NAME ?= demo_shell
+DEFAULT_INTERACTIVE_PROFILE_DEFINE ?= HO_DEMO_TEST_DEMO_SHELL
+INTERACTIVE_ENTRY_GOALS := copy run debug iso run_iso
+QUIET_INTERACTIVE_LOG_GOALS := run iso run_iso
+
+ifeq ($(strip $(BUILD_FLAVOR)$(HO_DEMO_TEST_NAME)$(HO_DEMO_TEST_DEFINE)),)
+ifneq ($(filter $(INTERACTIVE_ENTRY_GOALS),$(MAKECMDGOALS)),)
+BUILD_FLAVOR := $(DEFAULT_INTERACTIVE_BUILD_FLAVOR)
+HO_DEMO_TEST_NAME := $(DEFAULT_INTERACTIVE_PROFILE_NAME)
+HO_DEMO_TEST_DEFINE := $(DEFAULT_INTERACTIVE_PROFILE_DEFINE)
+endif
+endif
+
 KRNL_VER_MAJOR  := 1
 KRNL_VER_MINOR  := 0
 KRNL_VER_PATCH  := 0
@@ -42,6 +56,16 @@ SUDO ?= sudo
 QEMU_ACCEL_MODE ?= host
 QEMU_DISPLAY ?= gtk
 QEMU_MONITOR_SOCKET ?=
+
+ifeq ($(origin HO_LOG_MIN_LEVEL), undefined)
+ifneq ($(filter $(QUIET_INTERACTIVE_LOG_GOALS),$(MAKECMDGOALS)),)
+ifeq ($(QEMU_DISPLAY),gtk)
+HO_LOG_MIN_LEVEL := KLOG_LEVEL_WARNING
+endif
+endif
+endif
+
+HO_LOG_MIN_LEVEL ?= KLOG_LEVEL_DEBUG
 
 ifeq ($(QEMU_ACCEL_MODE),host)
 QEMU_ACCEL_ARGS ?= -enable-kvm
@@ -81,6 +105,7 @@ CFLAGS := -Wall -Wextra -Wmissing-prototypes -Wstrict-prototypes -Werror \
           -Isrc -Isrc/include -Isrc/include/libc \
           -DKRNL_VERSTR=\"$(KRNL_VERSTR)\" \
           -D__HO_DEBUG_BUILD__=$(HO_DEBUG_BUILD) \
+		  -DHO_LOG_MIN_LEVEL=$(HO_LOG_MIN_LEVEL) \
 		  -DHO_ENABLE_TIMESTAMP_LOG=$(HO_ENABLE_TIMESTAMP_LOG) \
 		  -DHO_ENABLE_NULL_DETECTION=$(HO_ENABLE_NULL_DETECTION)
 
@@ -607,7 +632,9 @@ $(USR_OBJDIR)/%.o: src/%.S
 	@$(CC) $(USER_CFLAGS) -o $@ $<
 
 # ------------------------------------------------------------------------------
-# Runtime artifacts for QEMU (vvfat): always sync the current build flavor
+# Runtime artifacts for QEMU (vvfat): always sync the current build flavor.
+# Without explicit profile variables, run-like targets default to the
+# interactive demo_shell entry profile in a dedicated build flavor.
 # ------------------------------------------------------------------------------
 ESP_BOOT_EFI   := esp/EFI/BOOT/BOOTX64.efi
 ESP_KERNEL_BIN := esp/kernel.bin
@@ -767,10 +794,13 @@ run_iso: $(ISO_NAME)
 		echo "Set it explicitly, e.g. make run_iso OVMF_CODE=/usr/share/edk2/x64/OVMF.4m.fd"; \
 		exit 1; \
 	fi
+	@echo "Starting ISO VM with EFI (mode=$(QEMU_ACCEL_MODE), cpu=$(QEMU_CPU_FLAGS))..."
 	qemu-system-x86_64 \
     -m 512M \
     -bios "$(OVMF_CODE)" \
     -net none \
+    -display $(QEMU_DISPLAY) \
+    -cpu $(QEMU_CPU_FLAGS) $(QEMU_ACCEL_ARGS) \
     -cdrom himu_os.iso \
     -serial stdio
 

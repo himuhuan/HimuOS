@@ -15,9 +15,9 @@ main(void)
 {
     HoUserWaitForP1Gate();
 
-    for (uint32_t index = 0; index < 3U; ++index)
+    for (uint32_t index = 0; index < 5U; ++index)
     {
-        if (HoUserSleepMs(1000U) != 0)
+        if (HoUserSleepMs(3000U) != 0)
             HoUserAbort();
 
         if (HoUserWriteStdout(gTickLine, sizeof(gTickLine) - 1U) != (int64_t)(sizeof(gTickLine) - 1U))

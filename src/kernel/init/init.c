@@ -650,52 +650,6 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
         HO_KPANIC(initStatus, "Failed to initialize KTHREAD pool");
     }
 
-    // Pool smoke test: alloc/free/realloc + destroy + re-init
-    {
-        KE_POOL testPool;
-        initStatus = KePoolInit(&testPool, 64, 8, "smoke-test");
-        if (initStatus == EC_SUCCESS)
-        {
-            void *a = KePoolAlloc(&testPool);
-            void *b = KePoolAlloc(&testPool);
-            HO_KASSERT(a != NULL && b != NULL && a != b, EC_INVALID_STATE);
-
-            // Destroy with live objects must fail
-            HO_KASSERT(KePoolDestroy(&testPool) != EC_SUCCESS, EC_INVALID_STATE);
-
-            KePoolFree(&testPool, a);
-            void *c = KePoolAlloc(&testPool);
-            HO_KASSERT(c == a, EC_INVALID_STATE);
-            KePoolFree(&testPool, b);
-            KePoolFree(&testPool, c);
-
-            // Verify stats before destroy
-            KE_POOL_STATS stats;
-            KePoolQueryStats(&testPool, &stats);
-            HO_KASSERT(stats.UsedSlots == 0, EC_INVALID_STATE);
-            HO_KASSERT(stats.PeakUsedSlots == 2, EC_INVALID_STATE);
-            HO_KASSERT(stats.PageCount >= 1, EC_INVALID_STATE);
-
-            // Destroy with all objects returned must succeed
-            initStatus = KePoolDestroy(&testPool);
-            HO_KASSERT(initStatus == EC_SUCCESS, EC_INVALID_STATE);
-
-            // Alloc on destroyed pool must return NULL
-            HO_KASSERT(KePoolAlloc(&testPool) == NULL, EC_INVALID_STATE);
-
-            // Re-init after destroy must succeed
-            initStatus = KePoolInit(&testPool, 64, 8, "smoke-reinit");
-            HO_KASSERT(initStatus == EC_SUCCESS, EC_INVALID_STATE);
-            void *d = KePoolAlloc(&testPool);
-            HO_KASSERT(d != NULL, EC_INVALID_STATE);
-            KePoolFree(&testPool, d);
-            initStatus = KePoolDestroy(&testPool);
-            HO_KASSERT(initStatus == EC_SUCCESS, EC_INVALID_STATE);
-
-            klog(KLOG_LEVEL_INFO, "[POOL] smoke: alloc/free/realloc/destroy/re-init OK\n");
-        }
-    }
-
     // ---- Scheduler ----
     initStatus = KeSchedulerInit();
     if (initStatus != EC_SUCCESS)

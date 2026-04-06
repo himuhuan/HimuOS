@@ -61,6 +61,10 @@ BUILD_FLAVOR=<flavor> HO_DEMO_TEST_NAME=<profile> HO_DEMO_TEST_DEFINE=<define> \
 
 其中 `scripts/qemu_capture.sh` 是主运行与串口捕获入口；不要把隐式 `make run` 或 `make test` 当作默认验证路径。脚本默认使用 `QEMU_CAPTURE_MODE=host`（host/KVM），也支持显式选择 `QEMU_CAPTURE_MODE=tcg` 或 `QEMU_CAPTURE_MODE=custom`。
 
+无参 `make run`、`make iso`、`make run_iso` 现在默认装配 `demo_shell` 作为交互入口，并使用独立的 `default-demo_shell` build flavor，避免与无 profile 的普通构建产物混用。该入口的键盘输入来自运行时 PS/2 键盘链路；手工交互时应把焦点切到 QEMU 的 GTK 窗口，而不是在承载 `-serial stdio` 的宿主终端里输入。
+
+为避免 GTK 交互期间被运行时日志持续刷屏，`make run`、`make iso`、`make run_iso` 在 `QEMU_DISPLAY=gtk` 下默认把内核最小日志等级提升到 `WARNING`；因此 `DBG` 和 `INF` 都不会进入 GTK 交互输出。无头 `qemu_capture.sh` 路径默认仍保留 `DBG`，以便继续做时序与故障诊断。
+
 > [!IMPORTANT]
 > 对 `user_dual` 以及其他时序敏感 / 销毁敏感 profile，**单份 host/KVM 捕获不再视为充分证据**。回归结论必须同时给出 host 与 TCG 两份日志；若两条执行模型结果不一致，必须在缺陷记录中明确注明。
 

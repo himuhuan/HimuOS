@@ -18,4 +18,8 @@ enum KE_LOG_LEVEL
     KLOG_LEVEL_ERROR,
 };
 
+#ifndef HO_LOG_MIN_LEVEL
+#define HO_LOG_MIN_LEVEL KLOG_LEVEL_DEBUG
+#endif
+
 HO_KERNEL_API uint64_t KLogWriteFmt(enum KE_LOG_LEVEL level, const char *fmt, ...);

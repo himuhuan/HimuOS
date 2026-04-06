@@ -32,6 +32,7 @@ static const char gStartedSuffix[] = " name=tick1s bg=1\n";
 static const char gUnknownCommand[] = "[HSH] unknown command\n";
 static const char gSpawnFailed[] = "[HSH] spawn failed\n";
 static const char gJobTableFull[] = "[HSH] job table full\n";
+static const char gExitInfo[] = "[HSH] HSH exited\n";
 
 static uint64_t
 HoHshStringLength(const char *value)
@@ -142,7 +143,7 @@ main(void)
 
                 jobs[index].Alive = FALSE;
             }
-
+            HoHshMustWriteLiteral(gExitInfo);
             return 0;
         }
 

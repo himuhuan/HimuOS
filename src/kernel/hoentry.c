@@ -52,6 +52,8 @@ PrintBootBanner(void)
     ARCH_BASIC_CPU_INFO cpu;
     SYSINFO_SYSTEM_VERSION ver;
 
+    kprintf(ANSI_FG_GREEN "\n\n    Welcome to HimuOS!\n\n" ANSI_RESET);
+
     kprintf("  %-24s %s\n", "------------------------", "------------------------------------------");
     if (KeQuerySystemInformation(KE_SYSINFO_CPU_BASIC, &cpu, sizeof(cpu), NULL) == EC_SUCCESS)
     {
