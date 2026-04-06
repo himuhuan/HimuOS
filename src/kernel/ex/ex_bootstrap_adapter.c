@@ -376,10 +376,10 @@ ExBootstrapAdapterQueryThreadStaging(const KTHREAD *thread)
 }
 
 HO_KERNEL_API HO_NODISCARD int64_t
-ExBootstrapAdapterDispatchCapabilitySyscall(uint64_t syscallNumber,
-                                            uint64_t arg0,
-                                            uint64_t arg1,
-                                            uint64_t arg2)
+ExBootstrapAdapterDispatchSyscall(uint64_t syscallNumber,
+                                  uint64_t arg0,
+                                  uint64_t arg1,
+                                  uint64_t arg2)
 {
     KTHREAD *thread = KeGetCurrentThread();
     EX_PROCESS *process = ExBootstrapLookupRuntimeProcess(thread);
@@ -414,7 +414,7 @@ ExBootstrapAdapterDispatchCapabilitySyscall(uint64_t syscallNumber,
 }
 
 HO_STATUS
-ExBootstrapAdapterHandleRawExit(KTHREAD *thread)
+ExBootstrapAdapterHandleExit(KTHREAD *thread)
 {
     EX_PROCESS *process = NULL;
     EX_THREAD *runtimeThread = NULL;

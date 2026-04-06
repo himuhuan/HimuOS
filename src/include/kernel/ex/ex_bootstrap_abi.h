@@ -8,7 +8,9 @@
 
 #pragma once
 
+#ifndef __ASSEMBLER__
 #include <_hobase.h>
+#endif
 
 /*
  * Bootstrap layout defaults for the current bring-up path. The live contract
@@ -38,32 +40,39 @@
 #define KE_USER_BOOTSTRAP_P1_MAILBOX_GATE_OPEN   0x31504741U
 
 /*
- * Bootstrap raw syscall ABI:
+ * Shared bootstrap syscall trap ABI:
  * - Entry is a synchronous int 0x80 trap.
- * - RAX carries the raw syscall number on entry and the return value on exit.
+ * - RAX carries the syscall number on entry and the return value on exit.
  * - RDI, RSI, and RDX carry the first three bootstrap arguments.
- *
- * The SYS_RAW_* namespace is intentionally scoped to bring-up only. Bootstrap
- * capability SYS_* services use a separate number range so raw semantics stay
- * fixed while the pilot evolves.
+ * - Failures return negative HO_STATUS values.
  */
 #define KE_USER_BOOTSTRAP_SYSCALL_VECTOR             0x80U
 #define KE_USER_BOOTSTRAP_SYS_RAW_WRITE_MAX_LENGTH   256U
 
+/*
+ * Raw bootstrap-only syscall ABI.
+ *
+ * The SYS_RAW_* namespace is intentionally scoped to bring-up helpers and the
+ * raw userspace regression sentinel. Formal Ex-facing SYS_* services use a
+ * separate number range so raw semantics stay fixed while the pilot evolves.
+ */
 #define SYS_RAW_INVALID                              0U
 #define SYS_RAW_WRITE                                1U
 #define SYS_RAW_EXIT                                 2U
 
 /*
- * Bootstrap capability syscall ABI:
+ * Ex-facing bootstrap syscall ABI:
  * - Shares the int 0x80 trap entry and register convention with SYS_RAW_*.
  * - Uses a distinct number range and process-private generation-checked handles.
+ * - SYS_EXIT(exit_code, reserved0, reserved1) is the formal userspace
+ *   termination contract for compiled bootstrap userspace.
  */
 #define KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE         0x100U
 
 #define SYS_WRITE                                          (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 0U)
 #define SYS_CLOSE                                          (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 1U)
 #define SYS_WAIT_ONE                                       (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 2U)
+#define SYS_EXIT                                           (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 3U)
 
 #define KE_USER_BOOTSTRAP_WAIT_ONE_TIMEOUT_MAX_MS          0xFFFFFFFFULL
 #define KE_USER_BOOTSTRAP_WAIT_ONE_TIMEOUT_NS_PER_MS       1000000ULL
@@ -79,6 +88,7 @@
 #define KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK_SIZE       24U
 #define KE_USER_BOOTSTRAP_CONST_PAYLOAD_OFFSET             KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK_SIZE
 
+#ifndef __ASSEMBLER__
 typedef struct __attribute__((packed)) KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK
 {
     uint32_t Version;
@@ -88,6 +98,7 @@ typedef struct __attribute__((packed)) KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK
     uint32_t Stdout;
     uint32_t WaitObject;
 } KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK;
+#endif
 
 /*
  * Bootstrap raw write keeps both rejection and success paths on the same
@@ -110,6 +121,7 @@ typedef struct __attribute__((packed)) KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK
 #define KE_USER_BOOTSTRAP_LOG_INVALID_RAW_WRITE        "[USERBOOT] invalid raw write rejected"
 #define KE_USER_BOOTSTRAP_LOG_HELLO_WRITE_SUCCEEDED    "[USERBOOT] hello write succeeds"
 #define KE_USER_BOOTSTRAP_LOG_SYS_RAW_EXIT             "[USERBOOT] SYS_RAW_EXIT"
+#define KE_USER_BOOTSTRAP_LOG_SYS_EXIT                 "[USERBOOT] SYS_EXIT"
 #define KE_USER_BOOTSTRAP_LOG_INVALID_SYSCALL          "[USERBOOT] invalid raw syscall"
 #define KE_USER_BOOTSTRAP_LOG_INVALID_CAP_SYSCALL      "[USERCAP] invalid capability syscall"
 #define KE_USER_BOOTSTRAP_LOG_CAP_WRITE_SUCCEEDED      "[USERCAP] stdout capability write succeeds"
