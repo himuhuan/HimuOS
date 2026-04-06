@@ -2,45 +2,41 @@
 
 ## Scope
 
-- OpenSpec change: `introduce-demo-shell-input-lane`
+- Change: `introduce-demo-shell-input-lane`
 - Goal: implement `docs/todo.md` P1 as a bounded demo-shell input lane
-- Coordination mode: main agent as coordinator, serial implementation, validation on both `host` and `tcg`, reviewer-fix loop before commit
+- Coordination mode: main agent as coordinator, serial task execution, `host` / `tcg` dual validation, reviewer-fix loop before final delivery
 
 ## Constraints
 
-- Keep the implementation minimal and bounded to P1
-- Do not widen the scope into a full shell, full `stdin`/`tty`, job control, filesystem, PATH, or kill semantics
-- Runtime input source must stay on QEMU PS/2 keyboard
-- Supported keys remain limited to printable characters, `Enter`, and `Backspace`
+- Keep the implementation minimal and strictly bounded to P1
+- Do not widen the scope into a full shell, full `stdin` / `tty`, job control, filesystem, PATH, generic loader, or kill semantics
+- Runtime input source stays on QEMU PS/2 keyboard only
+- Supported keys remain bounded to printable characters, `Enter`, and `Backspace`
 - OpenSpec artifacts under `openspec/changes/introduce-demo-shell-input-lane` are intentionally git-ignored and were updated directly during the workflow
-- User-side tracked change in `docs/todo.md` was treated as out-of-scope and excluded from the final commit
+- `docs/todo.md` is a user-side tracked change and was intentionally excluded from this delivery and its commit
 
-## Proposal And Task Breakdown
+## OpenSpec Flow
 
-- Used the default planning agent to turn `docs/todo.md` P1 into a new OpenSpec change
-- Created the following OpenSpec artifacts for `introduce-demo-shell-input-lane`
-  - `proposal.md`
-  - `design.md`
-  - `specs/demo-shell-input-lane/spec.md`
-  - delta specs for `minimal-user-mode-bootstrap`, `bootstrap-capability-syscalls`, `ex-facing-userspace-abi`, and `ke-regression-profiles`
-  - `tasks.md`
-- Serial task groups were fixed as:
+- Used the default planning agent to turn `docs/todo.md` P1 into a new OpenSpec change: `introduce-demo-shell-input-lane`
+- Created proposal, design, delta specs, and `tasks.md` under that change
+- Fixed the serial task structure as:
   - `1.x` Kernel Input Lane
   - `2.x` Foreground Read Contract
   - `3.x` P1 User Profile
   - `4.x` Scripted Validation
+- Applied implementation strictly in task order, then revalidated, then sent the whole batch through reviewer
 
-## Implementation Record
+## Implementation Summary
 
 ### Stage 1-2
 
 - Added a bounded runtime input subsystem under `src/kernel/ke/input/`
-- Added a PS/2 keyboard driver and sink under:
+- Added the QEMU PS/2 keyboard path through:
   - `src/drivers/input/ps2_keyboard_driver.c`
   - `src/include/drivers/input/ps2_keyboard_driver.h`
   - `src/kernel/ke/input/sinks/ps2_keyboard_sink.c`
   - `src/include/kernel/ke/sinks/input_sink.h`
-- Initialized runtime keyboard input from `src/kernel/init/init.c`
+- Initialized runtime keyboard input in `src/kernel/init/init.c`
 - Added `SYS_READLINE`, copyout support, and `HoUserReadLine()` through:
   - `src/include/kernel/ex/ex_bootstrap_abi.h`
   - `src/include/kernel/ke/user_bootstrap.h`
@@ -56,7 +52,7 @@
   - `src/kernel/demo/hsh_artifact_bridge.c`
   - `src/kernel/demo/calc_artifact_bridge.c`
 - Added the `user_input` regression profile in `src/kernel/demo/user_input.c`
-- Extended Ex bootstrap threading just enough to support the demo controller:
+- Extended Ex bootstrap threading just enough for kernel-side coordination:
   - joinable bootstrap thread flag
   - thread-id query helper
   - kernel-thread borrow helper
@@ -68,7 +64,7 @@
   - `scripts/input_plans/user_input.plan`
 - Extended `scripts/qemu_capture.sh` and `makefile` so the existing capture-first workflow can optionally create a QEMU monitor socket and run the sendkey helper against it
 
-## Validation
+## Build And Validation
 
 ### Build
 
@@ -95,8 +91,8 @@ bash scripts/qemu_capture.sh 25 /tmp/himuos-user-input-host.log
 Key anchors in `/tmp/himuos-user-input-host.log`:
 
 - `foreground -> hsh` at line 93
-- first `SYS_READLINE succeeded bytes=8 thread=1` at line 167
 - `foreground -> calc` at line 165
+- first `SYS_READLINE succeeded bytes=8 thread=1` at line 167
 - `SYS_READLINE rejected thread=1` at line 182
 - `[HSH] handoff` at line 184
 - second `SYS_READLINE succeeded bytes=5 thread=2` at line 224
@@ -106,7 +102,7 @@ Key anchors in `/tmp/himuos-user-input-host.log`:
 Interpretation:
 
 - `hsh` read the first full line `& tick1s`
-- foreground was handed to `calc`
+- foreground switched to a live `calc`
 - the old `hsh` reader observed the handoff as a rejected second `readline`
 - `calc` then read the second full line `3 4 +`
 - foreground ownership was cleared at the end
@@ -144,27 +140,37 @@ Interpretation:
 The first reviewer pass raised three blockers:
 
 1. Foreground handoff could leave the old reader blocked forever
-2. `user_input` only proved sequential readers, not a live hsh/calc handoff
+2. `user_input` only proved sequential readers, not a live `hsh` / `calc` handoff
 3. `qemu_capture.sh` could still hide sendkey helper failure behind timeout `124`
 
 ### Fixes Applied
 
-- Fixed old-reader hang by changing `KeInputWaitForForegroundLine()` to re-check ownership on a bounded wait cadence instead of sleeping forever on the old event
-- Added `KeInputGetCompletedReadCount()` so the kernel-side `user_input` controller can switch foreground after the first completed read while both user threads are still alive
+- Changed `KeInputWaitForForegroundLine()` to re-check ownership on a bounded wait cadence instead of sleeping forever on the old event
+- Added `KeInputGetCompletedReadCount()` so the kernel-side controller can switch foreground after the first completed read while both user threads are still alive
 - Changed `user_input` to start both `hsh` and `calc`, then hand off from a live `hsh` to a live `calc`
 - Changed `hsh` to issue a second `readline`, expect `-EC_INVALID_STATE`, and emit `[HSH] handoff`
 - Changed `calc` to tolerate early `-EC_INVALID_STATE` until it becomes foreground
 - Changed `scripts/qemu_capture.sh` to surface `SENDKEY_STATUS` before the watchdog timeout exit path
 - Updated the sendkey plan to wait for `[HSH] handoff` before injecting the second line
 
-### Reviewer Recheck Outcome
+### Reviewer Pass 2
 
-- No remaining blocking issues were found after the fixes
+- Re-review found no remaining blocking issues
 - Residual risk is limited to noisy log interleaving under heavy `tcg` scheduling, but the correctness contract is now proven by the captured anchors
 
-## Files Included In Commit
+## Commit
 
-Tracked files intended for this change:
+- Commit: `b401651`
+- Message: `Add demo-shell P1 input lane`
+
+## Git State
+
+- This delivery is committed
+- Current working tree still shows only one unrelated tracked modification:
+  - `docs/todo.md`
+- That user-side change was intentionally not staged and not included in `b401651`
+
+## Tracked Files In This Delivery
 
 - `makefile`
 - `scripts/qemu_capture.sh`
@@ -192,8 +198,3 @@ Tracked files intended for this change:
 - `src/user/hsh/main.c`
 - `src/user/calc/main.c`
 - `agent-log.md`
-
-Excluded intentionally:
-
-- `docs/todo.md`
-- git-ignored OpenSpec change artifacts under `openspec/changes/introduce-demo-shell-input-lane`
