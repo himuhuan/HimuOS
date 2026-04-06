@@ -5,9 +5,14 @@ Send a simple scripted key plan to a QEMU HMP unix monitor socket.
 Plan format:
   - Blank lines and lines starting with '#' are ignored.
   - 'wait_for <substring>' waits until the substring appears in the capture log.
+  - 'capture <name> <regex>' waits until the regex matches the capture log and
+    stores the first capture group (or full match) into <name>.
   - 'wait <seconds>' sleeps for the given duration.
   - 'text <literal text>' types the given text character-by-character.
   - 'key <hmp-key>' sends one raw HMP sendkey token.
+
+The 'wait_for', 'capture', 'text', and 'key' payloads may reference captured
+variables using '{{name}}'.
 
 Only a bounded ASCII subset is supported because the P1 profile only needs
 letters, digits, spaces and a few punctuation keys.
@@ -17,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import pathlib
+import re
 import socket
 import sys
 import time
@@ -121,21 +127,53 @@ def connect_monitor(path: pathlib.Path, timeout_s: float) -> socket.socket:
     raise TimeoutError(f"monitor socket did not become ready: {path}")
 
 
-def wait_for_log_contains(log_path: pathlib.Path, pattern: str, timeout_s: float) -> None:
+def wait_for_log_contains(log_path: pathlib.Path, pattern: str, timeout_s: float, start_index: int) -> int:
     deadline = time.time() + timeout_s
 
     while time.time() < deadline:
         if log_path.exists():
             content = log_path.read_text(encoding="utf-8", errors="ignore")
-            if pattern in content:
-                return
+            offset = content.find(pattern, start_index)
+            if offset >= 0:
+                return offset + len(pattern)
 
         time.sleep(0.1)
 
     raise TimeoutError(f"log pattern did not appear within {timeout_s:.1f}s: {pattern!r}")
 
 
+def capture_log_variable(log_path: pathlib.Path, pattern: str, timeout_s: float, start_index: int) -> tuple[str, int]:
+    deadline = time.time() + timeout_s
+    regex = re.compile(pattern, re.MULTILINE)
+
+    while time.time() < deadline:
+        if log_path.exists():
+            content = log_path.read_text(encoding="utf-8", errors="ignore")
+            match = regex.search(content, start_index)
+            if match is not None:
+                if match.lastindex:
+                    return match.group(1), match.end()
+                return match.group(0), match.end()
+
+        time.sleep(0.1)
+
+    raise TimeoutError(f"log regex did not match within {timeout_s:.1f}s: {pattern!r}")
+
+
+def substitute_variables(value: str, variables: dict[str, str]) -> str:
+    def replace(match: re.Match[str]) -> str:
+        name = match.group(1)
+        if name not in variables:
+            raise KeyError(f"plan variable is not set: {name}")
+        return variables[name]
+
+    return re.sub(r"\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}", replace, value)
+
+
 def run_plan(connection: socket.socket, log_path: pathlib.Path, plan_path: pathlib.Path, pattern_timeout_s: float) -> None:
+    variables: dict[str, str] = {}
+    log_cursor = 0
+
     for raw_line in plan_path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
@@ -143,7 +181,21 @@ def run_plan(connection: socket.socket, log_path: pathlib.Path, plan_path: pathl
 
         op, _, payload = line.partition(" ")
         if op == "wait_for":
-            wait_for_log_contains(log_path, payload, pattern_timeout_s)
+            log_cursor = wait_for_log_contains(log_path,
+                                              substitute_variables(payload, variables),
+                                              pattern_timeout_s,
+                                              log_cursor)
+            continue
+
+        if op == "capture":
+            name, _, pattern = payload.partition(" ")
+            if not name or not pattern:
+                raise ValueError("capture requires a variable name and regex pattern")
+
+            variables[name], log_cursor = capture_log_variable(log_path,
+                                                               substitute_variables(pattern, variables),
+                                                               pattern_timeout_s,
+                                                               log_cursor)
             continue
 
         if op == "wait":
@@ -151,12 +203,12 @@ def run_plan(connection: socket.socket, log_path: pathlib.Path, plan_path: pathl
             continue
 
         if op == "text":
-            for char in payload:
+            for char in substitute_variables(payload, variables):
                 send_hmp_command(connection, f"sendkey {char_to_hmp_key(char)}")
             continue
 
         if op == "key":
-            send_hmp_command(connection, f"sendkey {payload}")
+            send_hmp_command(connection, f"sendkey {substitute_variables(payload, variables)}")
             continue
 
         raise ValueError(f"unsupported plan operation: {op}")

@@ -14,3 +14,5 @@
 HO_KERNEL_API void KeDemoShellResetControlPlane(void);
 HO_KERNEL_API HO_STATUS KeDemoShellSpawnBuiltin(uint32_t programId, uint32_t flags, uint32_t *outPid);
 HO_KERNEL_API HO_STATUS KeDemoShellWaitPid(uint32_t pid);
+HO_KERNEL_API HO_STATUS KeDemoShellKillPid(uint32_t pid);
+HO_KERNEL_API BOOL KeDemoShellShouldTerminateCurrentThread(uint32_t *outProgramId);

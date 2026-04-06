@@ -28,6 +28,7 @@ typedef struct KE_DEMO_SHELL_CHILD_ENTRY
     BOOL Foreground;
     uint32_t RestoreForegroundOwnerThreadId;
     KTHREAD *KernelThread;
+    BOOL KillRequested;
 } KE_DEMO_SHELL_CHILD_ENTRY;
 
 typedef struct KE_DEMO_SHELL_SPAWN_WORK
@@ -53,6 +54,9 @@ static HO_STATUS KiLookupChildSlot(uint32_t parentThreadId,
                                    uint32_t childThreadId,
                                    uint32_t *outSlotIndex,
                                    KE_DEMO_SHELL_CHILD_ENTRY *outEntry);
+static HO_STATUS KiLookupChildSlotByThreadId(uint32_t childThreadId,
+                                             uint32_t *outSlotIndex,
+                                             KE_DEMO_SHELL_CHILD_ENTRY *outEntry);
 
 static void
 KiUnexpectedDemoShellKernelEntry(void *arg)
@@ -268,6 +272,38 @@ KiLookupChildSlot(uint32_t parentThreadId,
     return status;
 }
 
+static HO_STATUS
+KiLookupChildSlotByThreadId(uint32_t childThreadId, uint32_t *outSlotIndex, KE_DEMO_SHELL_CHILD_ENTRY *outEntry)
+{
+    KE_CRITICAL_SECTION guard = {0};
+    HO_STATUS status = EC_INVALID_STATE;
+
+    if (outSlotIndex == NULL || outEntry == NULL || childThreadId == 0U)
+        return EC_ILLEGAL_ARGUMENT;
+
+    *outSlotIndex = KE_DEMO_SHELL_CHILD_TABLE_CAPACITY;
+    memset(outEntry, 0, sizeof(*outEntry));
+
+    KeEnterCriticalSection(&guard);
+
+    for (uint32_t index = 0; index < KE_DEMO_SHELL_CHILD_TABLE_CAPACITY; ++index)
+    {
+        if (!gKeDemoShellChildTable[index].Active)
+            continue;
+
+        if (gKeDemoShellChildTable[index].ChildThreadId != childThreadId)
+            continue;
+
+        *outSlotIndex = index;
+        *outEntry = gKeDemoShellChildTable[index];
+        status = EC_SUCCESS;
+        break;
+    }
+
+    KeLeaveCriticalSection(&guard);
+    return status;
+}
+
 HO_KERNEL_API void
 KeDemoShellResetControlPlane(void)
 {
@@ -364,4 +400,77 @@ KeDemoShellWaitPid(uint32_t pid)
 
     KiReleaseChildSlot(slotIndex);
     return status;
+}
+
+HO_KERNEL_API HO_STATUS
+KeDemoShellKillPid(uint32_t pid)
+{
+    KTHREAD *currentThread = KeGetCurrentThread();
+    KE_DEMO_SHELL_CHILD_ENTRY childEntry = {0};
+    uint32_t slotIndex = KE_DEMO_SHELL_CHILD_TABLE_CAPACITY;
+    HO_STATUS status = EC_SUCCESS;
+
+    if (currentThread == NULL || pid == 0U)
+        return EC_ILLEGAL_ARGUMENT;
+
+    status = KiLookupChildSlot(currentThread->ThreadId, pid, &slotIndex, &childEntry);
+    if (status != EC_SUCCESS)
+        return status;
+
+    if (childEntry.KernelThread == NULL || childEntry.KillRequested)
+        return EC_INVALID_STATE;
+
+    {
+        KE_CRITICAL_SECTION guard = {0};
+        KeEnterCriticalSection(&guard);
+        if (!gKeDemoShellChildTable[slotIndex].Active ||
+            gKeDemoShellChildTable[slotIndex].ParentThreadId != currentThread->ThreadId ||
+            gKeDemoShellChildTable[slotIndex].ChildThreadId != pid ||
+            gKeDemoShellChildTable[slotIndex].KillRequested)
+        {
+            KeLeaveCriticalSection(&guard);
+            return EC_INVALID_STATE;
+        }
+
+        gKeDemoShellChildTable[slotIndex].KillRequested = TRUE;
+        KeLeaveCriticalSection(&guard);
+    }
+
+    status = KeThreadJoin(childEntry.KernelThread, KE_WAIT_INFINITE);
+    if (status != EC_SUCCESS)
+        return status;
+
+    if (childEntry.Foreground && childEntry.RestoreForegroundOwnerThreadId != 0U)
+    {
+        status = KeInputSetForegroundOwnerThreadId(childEntry.RestoreForegroundOwnerThreadId);
+        if (status != EC_SUCCESS)
+            return status;
+    }
+
+    KiReleaseChildSlot(slotIndex);
+    return EC_SUCCESS;
+}
+
+HO_KERNEL_API BOOL
+KeDemoShellShouldTerminateCurrentThread(uint32_t *outProgramId)
+{
+    KTHREAD *currentThread = KeGetCurrentThread();
+    KE_DEMO_SHELL_CHILD_ENTRY childEntry = {0};
+    uint32_t slotIndex = KE_DEMO_SHELL_CHILD_TABLE_CAPACITY;
+    HO_STATUS status = EC_SUCCESS;
+
+    if (outProgramId != NULL)
+        *outProgramId = KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_NONE;
+
+    if (currentThread == NULL)
+        return FALSE;
+
+    status = KiLookupChildSlotByThreadId(currentThread->ThreadId, &slotIndex, &childEntry);
+    if (status != EC_SUCCESS || !childEntry.KillRequested)
+        return FALSE;
+
+    if (outProgramId != NULL)
+        *outProgramId = childEntry.ProgramId;
+
+    return TRUE;
 }

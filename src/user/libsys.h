@@ -153,6 +153,12 @@ HoUserSleepMs(uint64_t milliseconds)
     return HoUserSyscall3(SYS_SLEEP_MS, milliseconds, 0, 0);
 }
 
+static inline int64_t
+HoUserKillPid(uint64_t pid)
+{
+    return HoUserSyscall3(SYS_KILL_PID, pid, 0, 0);
+}
+
 /*
  * Raw bootstrap-only helpers kept for the user_hello sentinel. They are not
  * part of the stable Ex-facing userspace ABI surface.

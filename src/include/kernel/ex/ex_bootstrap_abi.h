@@ -78,6 +78,7 @@
 #define SYS_SPAWN_BUILTIN                                  (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 5U)
 #define SYS_WAIT_PID                                       (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 6U)
 #define SYS_SLEEP_MS                                       (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 7U)
+#define SYS_KILL_PID                                       (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 8U)
 
 #define KE_USER_BOOTSTRAP_WAIT_ONE_TIMEOUT_MAX_MS          0xFFFFFFFFULL
 #define KE_USER_BOOTSTRAP_WAIT_ONE_TIMEOUT_NS_PER_MS       1000000ULL
@@ -151,6 +152,9 @@ typedef struct __attribute__((packed)) KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK
 #define KE_USER_BOOTSTRAP_LOG_WAIT_PID_REJECTED        "[DEMOSHELL] SYS_WAIT_PID rejected"
 #define KE_USER_BOOTSTRAP_LOG_SLEEP_MS_SUCCEEDED       "[DEMOSHELL] SYS_SLEEP_MS succeeded"
 #define KE_USER_BOOTSTRAP_LOG_SLEEP_MS_REJECTED        "[DEMOSHELL] SYS_SLEEP_MS rejected"
+#define KE_USER_BOOTSTRAP_LOG_KILL_PID_SUCCEEDED       "[DEMOSHELL] SYS_KILL_PID succeeded"
+#define KE_USER_BOOTSTRAP_LOG_KILL_PID_REJECTED        "[DEMOSHELL] SYS_KILL_PID rejected"
+#define KE_USER_BOOTSTRAP_LOG_KILL_EXIT                "[DEMOSHELL] kill exit"
 #define KE_USER_BOOTSTRAP_LOG_INVALID_USER_BUFFER      "[USERBOOT] invalid user buffer"
 #define KE_USER_BOOTSTRAP_LOG_TEARDOWN_FAILED          "[USERBOOT] bootstrap teardown failed"
 #define KE_USER_BOOTSTRAP_LOG_TEARDOWN_COMPLETE        "[USERBOOT] bootstrap teardown complete"

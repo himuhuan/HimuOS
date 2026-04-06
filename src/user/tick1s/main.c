@@ -17,7 +17,7 @@ main(void)
 
     for (;;)
     {
-        if (HoUserSleepMs(1000U) != 0)
+        if (HoUserSleepMs(5000U) != 0)
             HoUserAbort();
 
         if (HoUserWriteStdout(gTickLine, sizeof(gTickLine) - 1U) != (int64_t)(sizeof(gTickLine) - 1U))

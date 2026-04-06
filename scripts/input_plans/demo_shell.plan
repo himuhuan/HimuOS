@@ -1,10 +1,10 @@
-# Drive the P3 demo_shell profile through prompt/log anchors so the same plan
+# Drive the P4 demo_shell profile through prompt/log anchors so the same plan
 # works on both host and tcg paths without fixed keyboard timing assumptions.
 wait_for hsh> 
 text & tick1s
 key ret
 
-wait_for name=tick1s bg=1
+capture tick_pid \[HSH\] started pid=(\d+) name=tick1s bg=1
 wait_for hsh> 
 text calc
 key ret
@@ -27,3 +27,15 @@ text q
 key ret
 
 wait_for hsh> 
+wait 0.3
+text kill {{tick_pid}}
+key ret
+
+wait_for [DEMOSHELL] SYS_KILL_PID succeeded pid={{tick_pid}}
+wait_for [HSH] killed pid={{tick_pid}}
+wait_for hsh> 
+wait 0.2
+text exit
+key ret
+
+wait_for [HSH] HSH exited

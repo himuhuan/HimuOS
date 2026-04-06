@@ -2,6 +2,8 @@
 # QEMU Output Capture Script for HimuOS
 # Usage: ./qemu_capture.sh [timeout_seconds] [output_file]
 # Optional env: QEMU_CAPTURE_MODE=host|tcg|custom (default: host)
+# Optional env: QEMU_CAPTURE_EXIT_ON=<substring> to stop QEMU early once the
+#               capture log shows a success anchor.
 
 set -u
 
@@ -14,6 +16,7 @@ HO_DEMO_TEST_DEFINE=${HO_DEMO_TEST_DEFINE:-}
 QEMU_DISPLAY=${QEMU_DISPLAY:-none}
 QEMU_CAPTURE_MODE=${QEMU_CAPTURE_MODE:-host}
 QEMU_SENDKEY_PLAN=${QEMU_SENDKEY_PLAN:-}
+QEMU_CAPTURE_EXIT_ON=${QEMU_CAPTURE_EXIT_ON:-}
 TMP_DIR=$(mktemp -d /tmp/qemu_capture.XXXXXX)
 FIFO_PATH="${TMP_DIR}/output.fifo"
 MONITOR_SOCKET=""
@@ -22,12 +25,15 @@ RUNNER_PGID=""
 TEE_PID=""
 WATCHDOG_PID=""
 SENDKEY_PID=""
+EXIT_ON_WATCH_PID=""
 TIMED_OUT=0
 SENDKEY_STATUS=0
+EXIT_ON_MATCHED=0
 UNSET_SENTINEL="__HIMUOS_UNSET__"
 RUN_QEMU_ACCEL_MODE="$QEMU_CAPTURE_MODE"
 RUN_QEMU_ACCEL_ARGS="$UNSET_SENTINEL"
 RUN_QEMU_CPU_FLAGS="$UNSET_SENTINEL"
+EXIT_ON_SENTINEL="${TMP_DIR}/exit-on.matched"
 
 case "$QEMU_CAPTURE_MODE" in
 	host|tcg)
@@ -91,6 +97,9 @@ if [ -n "$QEMU_SENDKEY_PLAN" ]; then
 	echo "Using QEMU_SENDKEY_PLAN=${QEMU_SENDKEY_PLAN}"
 	MONITOR_SOCKET="${TMP_DIR}/monitor.sock"
 fi
+if [ -n "$QEMU_CAPTURE_EXIT_ON" ]; then
+	echo "Using QEMU_CAPTURE_EXIT_ON=${QEMU_CAPTURE_EXIT_ON}"
+fi
 
 mkfifo "$FIFO_PATH"
 tee "$OUTPUT_FILE" <"$FIFO_PATH" &
@@ -141,6 +150,25 @@ if [ -n "$QEMU_SENDKEY_PLAN" ]; then
 	SENDKEY_PID=$!
 fi
 
+if [ -n "$QEMU_CAPTURE_EXIT_ON" ]; then
+	(
+		while kill -0 "$RUNNER_PID" 2>/dev/null; do
+			if [ -f "$OUTPUT_FILE" ] && grep -Fq "$QEMU_CAPTURE_EXIT_ON" "$OUTPUT_FILE"; then
+				: >"$EXIT_ON_SENTINEL"
+				echo ""
+				echo "QEMU exit pattern observed, terminating process group ${RUNNER_PGID}..."
+				kill_runner_group TERM
+				sleep 2
+				kill_runner_group KILL
+				exit 0
+			fi
+
+			sleep 0.1
+		done
+	) &
+	EXIT_ON_WATCH_PID=$!
+fi
+
 (
 	sleep "$TIMEOUT"
 	if kill -0 "$RUNNER_PID" 2>/dev/null; then
@@ -159,6 +187,10 @@ RUN_STATUS=$?
 
 kill "$WATCHDOG_PID" 2>/dev/null || true
 wait "$WATCHDOG_PID" 2>/dev/null || true
+if [ -n "$EXIT_ON_WATCH_PID" ]; then
+	kill "$EXIT_ON_WATCH_PID" 2>/dev/null || true
+	wait "$EXIT_ON_WATCH_PID" 2>/dev/null || true
+fi
 wait "$TEE_PID"
 
 if [ -n "$SENDKEY_PID" ]; then
@@ -168,6 +200,12 @@ fi
 
 if [ "$RUN_STATUS" -eq 143 ] || [ "$RUN_STATUS" -eq 137 ]; then
 	TIMED_OUT=1
+fi
+
+if [ -f "$EXIT_ON_SENTINEL" ]; then
+	EXIT_ON_MATCHED=1
+	TIMED_OUT=0
+	RUN_STATUS=0
 fi
 
 echo ""

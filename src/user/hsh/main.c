@@ -26,7 +26,7 @@ typedef struct HO_HSH_JOB
     BOOL Alive;
 } HO_HSH_JOB;
 
-static const char gHelpText[] = "help\nexit\ncalc\n& tick1s\n";
+static const char gHelpText[] = "help\nexit\ncalc\n& tick1s\nkill <pid>\n";
 static const char gTick1sName[] = "tick1s";
 static const char gStartedPrefix[] = "[HSH] started pid=";
 static const char gStartedNamePrefix[] = " name=";
@@ -35,6 +35,9 @@ static const char gUnknownCommand[] = "[HSH] unknown command\n";
 static const char gSpawnFailed[] = "[HSH] spawn failed\n";
 static const char gJobTableFull[] = "[HSH] job table full\n";
 static const char gExitRefused[] = "[HSH] exit refused: live background job\n";
+static const char gKillRejected[] = "[HSH] kill rejected\n";
+static const char gKillFailed[] = "[HSH] kill failed\n";
+static const char gKilledPrefix[] = "[HSH] killed pid=";
 static const char gExitInfo[] = "[HSH] HSH exited\n";
 
 static uint64_t
@@ -126,6 +129,43 @@ HoHshLineEquals(const char *line, uint64_t length, const char *literal)
     return TRUE;
 }
 
+static BOOL
+HoHshTryParseDecimal(const char *buffer, uint64_t length, uint32_t *outValue)
+{
+    uint64_t value = 0;
+
+    if (outValue == NULL || length == 0U)
+        return FALSE;
+
+    for (uint64_t index = 0; index < length; ++index)
+    {
+        char ch = buffer[index];
+        if (ch < '0' || ch > '9')
+            return FALSE;
+
+        value = (value * 10U) + (uint64_t)(ch - '0');
+        if (value > 0xFFFFFFFFULL)
+            return FALSE;
+    }
+
+    *outValue = (uint32_t)value;
+    return TRUE;
+}
+
+static BOOL
+HoHshTryParseKillPid(const char *line, uint64_t length, uint32_t *outPid)
+{
+    uint64_t prefixLength = 5U;
+
+    if (length <= prefixLength)
+        return FALSE;
+
+    if (line[0] != 'k' || line[1] != 'i' || line[2] != 'l' || line[3] != 'l' || line[4] != ' ')
+        return FALSE;
+
+    return HoHshTryParseDecimal(line + prefixLength, length - prefixLength, outPid);
+}
+
 static void
 HoHshRecordJob(HO_HSH_JOB *job, uint32_t pid, const char *name, BOOL background)
 {
@@ -163,6 +203,18 @@ HoHshHasLiveBackgroundJobs(const HO_HSH_JOB *jobs)
     return FALSE;
 }
 
+static HO_HSH_JOB *
+HoHshFindLiveJobByPid(HO_HSH_JOB *jobs, uint32_t pid)
+{
+    for (uint32_t index = 0; index < HO_HSH_MAX_JOBS; ++index)
+    {
+        if (jobs[index].Alive && jobs[index].Pid == pid)
+            return &jobs[index];
+    }
+
+    return NULL;
+}
+
 static int32_t
 HoHshReserveJobSlot(HO_HSH_JOB *jobs)
 {
@@ -173,6 +225,18 @@ HoHshReserveJobSlot(HO_HSH_JOB *jobs)
     }
 
     return -1;
+}
+
+static void
+HoHshWriteKilled(uint32_t pid)
+{
+    char line[48];
+    uint64_t length = 0;
+
+    HoHshAppendLiteral(line, &length, sizeof(line), gKilledPrefix);
+    HoHshAppendPid(line, &length, sizeof(line), pid);
+    HoHshAppendLiteral(line, &length, sizeof(line), "\n");
+    HoHshMustWrite(line, length);
 }
 
 int
@@ -248,6 +312,29 @@ main(void)
             HoHshRecordJob(&jobs[slotIndex], (uint32_t)pid, gTick1sName, TRUE);
             HoHshWriteJobStarted(&jobs[slotIndex]);
             continue;
+        }
+
+        {
+            uint32_t killPid = 0;
+            if (HoHshTryParseKillPid(line, (uint64_t)status, &killPid))
+            {
+                HO_HSH_JOB *job = HoHshFindLiveJobByPid(jobs, killPid);
+                if (job == NULL)
+                {
+                    HoHshMustWriteLiteral(gKillRejected);
+                    continue;
+                }
+
+                if (HoUserKillPid(killPid) < 0)
+                {
+                    HoHshMustWriteLiteral(gKillFailed);
+                    continue;
+                }
+
+                job->Alive = FALSE;
+                HoHshWriteKilled(killPid);
+                continue;
+            }
         }
 
         HoHshMustWriteLiteral(gUnknownCommand);

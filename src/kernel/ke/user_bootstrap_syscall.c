@@ -40,7 +40,9 @@ static int64_t KiHandleReadLine(uint64_t userBuffer, uint64_t capacity, uint64_t
 static int64_t KiHandleSpawnBuiltin(uint64_t programId, uint64_t flags, uint64_t reserved);
 static int64_t KiHandleWaitPid(uint64_t pid, uint64_t reserved0, uint64_t reserved1);
 static int64_t KiHandleSleepMs(uint64_t milliseconds, uint64_t reserved0, uint64_t reserved1);
+static int64_t KiHandleKillPid(uint64_t pid, uint64_t reserved0, uint64_t reserved1);
 static HO_NORETURN void KiPerformBootstrapExit(uint64_t exitCode, const char *successLog, const char *exitKind);
+static HO_NORETURN void KiPerformBootstrapKillExit(uint32_t programId);
 static int64_t KiHandleRawExit(uint64_t exitCode);
 static int64_t KiHandleExit(uint64_t exitCode, uint64_t reserved0, uint64_t reserved1);
 static int64_t KiDispatchRawSyscall(uint64_t rawSyscallNumber, uint64_t arg0, uint64_t arg1, uint64_t arg2);
@@ -514,6 +516,41 @@ KiHandleSleepMs(uint64_t milliseconds, uint64_t reserved0, uint64_t reserved1)
     return 0;
 }
 
+static int64_t
+KiHandleKillPid(uint64_t pid, uint64_t reserved0, uint64_t reserved1)
+{
+    KTHREAD *thread = KeGetCurrentThread();
+
+    if (reserved0 != 0 || reserved1 != 0 || pid == 0 || pid > 0xFFFFFFFFULL)
+    {
+        klog(KLOG_LEVEL_WARNING,
+             KE_USER_BOOTSTRAP_LOG_KILL_PID_REJECTED " thread=%u pid=%lu status=%s (%d)\n",
+             thread ? thread->ThreadId : 0U,
+             (unsigned long)pid,
+             KrGetStatusMessage(EC_ILLEGAL_ARGUMENT),
+             EC_ILLEGAL_ARGUMENT);
+        return KiEncodeRawSyscallStatus(EC_ILLEGAL_ARGUMENT);
+    }
+
+    HO_STATUS status = KeDemoShellKillPid((uint32_t)pid);
+    if (status != EC_SUCCESS)
+    {
+        klog(KLOG_LEVEL_WARNING,
+             KE_USER_BOOTSTRAP_LOG_KILL_PID_REJECTED " thread=%u pid=%lu status=%s (%d)\n",
+             thread ? thread->ThreadId : 0U,
+             (unsigned long)pid,
+             KrGetStatusMessage(status),
+             status);
+        return KiEncodeRawSyscallStatus(status);
+    }
+
+    klog(KLOG_LEVEL_INFO,
+         KE_USER_BOOTSTRAP_LOG_KILL_PID_SUCCEEDED " pid=%lu thread=%u\n",
+         (unsigned long)pid,
+         thread ? thread->ThreadId : 0U);
+    return 0;
+}
+
 static HO_NORETURN void
 KiPerformBootstrapExit(uint64_t exitCode, const char *successLog, const char *exitKind)
 {
@@ -530,6 +567,25 @@ KiPerformBootstrapExit(uint64_t exitCode, const char *successLog, const char *ex
                              status,
                              exitKind,
                              "Bootstrap exit handoff validation failed after no-return transition");
+
+    KeThreadExit();
+}
+
+static HO_NORETURN void
+KiPerformBootstrapKillExit(uint32_t programId)
+{
+    KTHREAD *thread = KeGetCurrentThread();
+    if (!thread || ExBootstrapAdapterQueryThreadStaging(thread) == NULL)
+        KiAbortBootstrapExit(thread, 0, EC_INVALID_STATE, "kill", "Bootstrap kill exit missing staging");
+
+    klog(KLOG_LEVEL_INFO,
+         KE_USER_BOOTSTRAP_LOG_KILL_EXIT " thread=%u program=%u\n",
+         thread->ThreadId,
+         programId);
+
+    HO_STATUS status = ExBootstrapAdapterHandleExit(thread);
+    if (status != EC_SUCCESS)
+        KiAbortBootstrapExit(thread, 0, status, "kill", "Bootstrap kill exit handoff validation failed");
 
     KeThreadExit();
 }
@@ -604,6 +660,9 @@ KiDispatchBootstrapSyscall(uint64_t syscallNumber, uint64_t arg0, uint64_t arg1,
     if (syscallNumber == SYS_SLEEP_MS)
         return KiHandleSleepMs(arg0, arg1, arg2);
 
+    if (syscallNumber == SYS_KILL_PID)
+        return KiHandleKillPid(arg0, arg1, arg2);
+
     return ExBootstrapAdapterDispatchSyscall(syscallNumber, arg0, arg1, arg2);
 }
 
@@ -611,10 +670,15 @@ static void
 KiHandleRawSyscallTrap(void *frame, MAYBE_UNUSED void *context)
 {
     INTERRUPT_FRAME *interruptFrame = (INTERRUPT_FRAME *)frame;
+    uint32_t killedProgramId = KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_NONE;
     int64_t returnValue = KiDispatchBootstrapSyscall(interruptFrame->Context.RAX,
                                                      interruptFrame->Context.RDI,
                                                      interruptFrame->Context.RSI,
                                                      interruptFrame->Context.RDX);
+
+    if (KeDemoShellShouldTerminateCurrentThread(&killedProgramId))
+        KiPerformBootstrapKillExit(killedProgramId);
+
     interruptFrame->Context.RAX = (uint64_t)returnValue;
 }
 
