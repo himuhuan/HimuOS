@@ -65,6 +65,8 @@ BUILD_FLAVOR=<flavor> HO_DEMO_TEST_NAME=<profile> HO_DEMO_TEST_DEFINE=<define> \
 
 为避免 GTK 交互期间被运行时日志持续刷屏，`make run`、`make iso`、`make run_iso` 在 `QEMU_DISPLAY=gtk` 下默认把内核最小日志等级提升到 `WARNING`；因此 `DBG` 和 `INF` 都不会进入 GTK 交互输出。无头 `qemu_capture.sh` 路径默认仍保留 `DBG`，以便继续做时序与故障诊断。
 
+如需把内核图形控制台切为白底黑字，可传入 `HO_ENABLE_CONSOLE_LIGHT_THEME=1`。该开关只影响内核接管 GOP 之后的图形控制台默认主题与首次清屏，不影响 UEFI 文本阶段，也不改变 COM1 串口捕获内容。例如：`make run HO_ENABLE_CONSOLE_LIGHT_THEME=1`，或 `HO_ENABLE_CONSOLE_LIGHT_THEME=1 bash scripts/qemu_capture.sh 30 /tmp/himuos-demo.log`。
+
 > [!IMPORTANT]
 > 对 `user_dual` 以及其他时序敏感 / 销毁敏感 profile，**单份 host/KVM 捕获不再视为充分证据**。回归结论必须同时给出 host 与 TCG 两份日志；若两条执行模型结果不一致，必须在缺陷记录中明确注明。
 

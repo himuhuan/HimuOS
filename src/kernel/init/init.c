@@ -494,7 +494,7 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
     InitCpuState(block);
     InitBitmapFont();
     VdInit(&gVideoDriver, block);
-    VdClearScreen(&gVideoDriver, COLOR_BLACK);
+    VdClearScreen(&gVideoDriver, HO_CONSOLE_DEFAULT_BACKGROUND);
     ConsoleInit(&gVideoDriver, &gSystemFont);
 
     HO_STATUS initStatus;
