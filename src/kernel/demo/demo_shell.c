@@ -86,6 +86,7 @@ RunDemoShellDemo(void)
     createParams.EntryOffset = KI_DEMO_SHELL_ENTRY_OFFSET;
     createParams.ConstBytes = hshArtifacts.ConstBytes;
     createParams.ConstLength = hshArtifacts.ConstLength;
+    createParams.ProgramId = KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_HSH;
 
     status = ExBootstrapCreateProcess(&createParams, &process);
     if (status != EC_SUCCESS)

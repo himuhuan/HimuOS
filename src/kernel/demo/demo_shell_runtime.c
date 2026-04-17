@@ -100,6 +100,7 @@ KiDemoShellSpawnWorkerThread(void *arg)
     createParams.EntryOffset = KE_DEMO_SHELL_ENTRY_OFFSET;
     createParams.ConstBytes = artifacts.ConstBytes;
     createParams.ConstLength = artifacts.ConstLength;
+    createParams.ProgramId = work->ProgramId;
 
     foregroundRequested = (work->Flags & KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND) != 0U;
 
@@ -425,8 +426,7 @@ KeDemoShellKillPid(uint32_t pid)
         KeEnterCriticalSection(&guard);
         if (!gKeDemoShellChildTable[slotIndex].Active ||
             gKeDemoShellChildTable[slotIndex].ParentThreadId != currentThread->ThreadId ||
-            gKeDemoShellChildTable[slotIndex].ChildThreadId != pid ||
-            gKeDemoShellChildTable[slotIndex].KillRequested)
+            gKeDemoShellChildTable[slotIndex].ChildThreadId != pid || gKeDemoShellChildTable[slotIndex].KillRequested)
         {
             KeLeaveCriticalSection(&guard);
             return EC_INVALID_STATE;

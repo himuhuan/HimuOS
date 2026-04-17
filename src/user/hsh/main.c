@@ -26,7 +26,7 @@ typedef struct HO_HSH_JOB
     BOOL Alive;
 } HO_HSH_JOB;
 
-static const char gHelpText[] = "help\nsysinfo\nexit\ncalc\n& tick1s\nkill <pid>\n";
+static const char gHelpText[] = "help\nsysinfo\nps\nexit\ncalc\n& tick1s\nkill <pid>\n";
 static const char gTick1sName[] = "tick1s";
 static const char gStartedPrefix[] = "[HSH] started pid=";
 static const char gStartedNamePrefix[] = " name=";
@@ -34,6 +34,7 @@ static const char gStartedBackgroundPrefix[] = " bg=";
 static const char gUnknownCommand[] = "[HSH] unknown command\n";
 static const char gSpawnFailed[] = "[HSH] spawn failed\n";
 static const char gSysinfoFailed[] = "[HSH] sysinfo failed\n";
+static const char gPsFailed[] = "[HSH] ps failed\n";
 static const char gJobTableFull[] = "[HSH] job table full\n";
 static const char gExitRefused[] = "[HSH] exit refused: live background job\n";
 static const char gKillRejected[] = "[HSH] kill rejected\n";
@@ -288,6 +289,22 @@ main(void)
             }
 
             HoHshMustWrite(sysinfoText, (uint64_t)sysinfoLength);
+            continue;
+        }
+
+        if (HoHshLineEquals(line, (uint64_t)status, "ps"))
+        {
+            char threadListText[EX_SYSINFO_TEXT_MAX_LENGTH];
+            int64_t threadListLength =
+                HoUserQuerySysinfo(EX_SYSINFO_CLASS_THREAD_LIST_TEXT, threadListText, sizeof(threadListText));
+
+            if (threadListLength < 0)
+            {
+                HoHshMustWriteLiteral(gPsFailed);
+                continue;
+            }
+
+            HoHshMustWrite(threadListText, (uint64_t)threadListLength);
             continue;
         }
 

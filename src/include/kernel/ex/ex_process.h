@@ -15,9 +15,10 @@ typedef struct EX_PROCESS EX_PROCESS;
 
 typedef struct EX_BOOTSTRAP_PROCESS_CREATE_PARAMS
 {
-	const void *CodeBytes;
-	uint64_t CodeLength;
-	uint64_t EntryOffset;
-	const void *ConstBytes;
-	uint64_t ConstLength;
+    const void *CodeBytes;
+    uint64_t CodeLength;
+    uint64_t EntryOffset;
+    const void *ConstBytes;
+    uint64_t ConstLength;
+    uint32_t ProgramId;
 } EX_BOOTSTRAP_PROCESS_CREATE_PARAMS;

@@ -18,9 +18,9 @@
 #include <kernel/ke/user_bootstrap.h>
 #include <libc/string.h>
 
-#define EX_PRIVATE_HANDLE_INDEX_BITS       8u
-#define EX_PRIVATE_HANDLE_INDEX_MASK       ((EX_PRIVATE_HANDLE)0x000000FFu)
-#define EX_PRIVATE_HANDLE_GENERATION_MASK  ((uint32_t)0x00FFFFFFu)
+#define EX_PRIVATE_HANDLE_INDEX_BITS        8u
+#define EX_PRIVATE_HANDLE_INDEX_MASK        ((EX_PRIVATE_HANDLE)0x000000FFu)
+#define EX_PRIVATE_HANDLE_GENERATION_MASK   ((uint32_t)0x00FFFFFFu)
 #define EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY 4u
 
 #if EX_PRIVATE_HANDLE_TABLE_CAPACITY > 0xFFu
@@ -46,6 +46,10 @@ static uint32_t KiFindRuntimeAliasSlotByThreadKey(const KTHREAD *thread);
 static uint32_t KiFindRuntimeAliasSlotByProcess(const EX_PROCESS *process);
 static uint32_t KiFindRuntimeAliasSlotByThreadObject(const EX_THREAD *thread);
 static uint32_t KiFindFreeRuntimeAliasSlot(void);
+static void KiCopyBootstrapProgramName(char *destination, size_t destinationSize, const char *source);
+static const char *KiGetBootstrapProgramName(uint32_t programId);
+static uint32_t KiMapBootstrapThreadState(const KTHREAD *thread);
+static void KiSortThreadEntries(EX_SYSINFO_THREAD_LIST *threadList);
 
 typedef struct EX_BOOTSTRAP_RUNTIME_ALIAS
 {
@@ -64,6 +68,85 @@ KiInitializeObjectHeader(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE type)
 
     header->Type = type;
     header->ReferenceCount = 1;
+}
+
+static void
+KiCopyBootstrapProgramName(char *destination, size_t destinationSize, const char *source)
+{
+    size_t copyLength = 0;
+
+    if (destination == NULL || destinationSize == 0)
+        return;
+
+    if (source != NULL)
+    {
+        copyLength = strlen(source);
+        if (copyLength >= destinationSize)
+            copyLength = destinationSize - 1;
+        memcpy(destination, source, copyLength);
+    }
+
+    destination[copyLength] = '\0';
+}
+
+static const char *
+KiGetBootstrapProgramName(uint32_t programId)
+{
+    switch (programId)
+    {
+    case KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_HSH:
+        return "hsh";
+    case KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_CALC:
+        return "calc";
+    case KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_TICK1S:
+        return "tick1s";
+    default:
+        return "user";
+    }
+}
+
+static uint32_t
+KiMapBootstrapThreadState(const KTHREAD *thread)
+{
+    if (thread == NULL)
+        return EX_SYSINFO_THREAD_STATE_INVALID;
+
+    switch (thread->State)
+    {
+    case KTHREAD_STATE_READY:
+        return EX_SYSINFO_THREAD_STATE_READY;
+    case KTHREAD_STATE_RUNNING:
+        return EX_SYSINFO_THREAD_STATE_RUNNING;
+    case KTHREAD_STATE_BLOCKED:
+        if (thread->WaitBlock.Dispatcher == NULL && thread->WaitBlock.DeadlineNs != 0)
+            return EX_SYSINFO_THREAD_STATE_SLEEPING;
+        return EX_SYSINFO_THREAD_STATE_BLOCKED;
+    case KTHREAD_STATE_TERMINATED:
+        return EX_SYSINFO_THREAD_STATE_TERMINATED;
+    default:
+        return EX_SYSINFO_THREAD_STATE_INVALID;
+    }
+}
+
+static void
+KiSortThreadEntries(EX_SYSINFO_THREAD_LIST *threadList)
+{
+    if (threadList == NULL || threadList->ReturnedCount < 2U)
+        return;
+
+    for (uint32_t index = 1; index < threadList->ReturnedCount; ++index)
+    {
+        EX_SYSINFO_THREAD_ENTRY entry = threadList->Entries[index];
+        uint32_t insertIndex = index;
+
+        while (insertIndex != 0U && threadList->Entries[insertIndex - 1U].ThreadId > entry.ThreadId)
+        {
+            threadList->Entries[insertIndex] = threadList->Entries[insertIndex - 1U];
+            --insertIndex;
+        }
+
+        threadList->Entries[insertIndex] = entry;
+    }
 }
 
 static HO_STATUS
@@ -101,8 +184,7 @@ KiRestoreImportedRootForProcessTeardown(const EX_PROCESS *process)
     if (process == NULL || !process->AddressSpace.Initialized)
         return EC_SUCCESS;
 
-    if (KeQueryActiveRootPageTable(&activeRoot) != EC_SUCCESS ||
-        activeRoot != process->AddressSpace.RootPageTablePhys)
+    if (KeQueryActiveRootPageTable(&activeRoot) != EC_SUCCESS || activeRoot != process->AddressSpace.RootPageTablePhys)
     {
         return EC_SUCCESS;
     }
@@ -197,16 +279,14 @@ KiReleaseHandleObject(EX_OBJECT_HEADER *objectHeader)
         return ExBootstrapReleaseProcess(CONTAINING_RECORD(objectHeader, EX_PROCESS, Header));
     case EX_OBJECT_TYPE_THREAD:
         return ExBootstrapReleaseThread(CONTAINING_RECORD(objectHeader, EX_THREAD, Header));
-    case EX_OBJECT_TYPE_STDOUT_SERVICE:
-    {
+    case EX_OBJECT_TYPE_STDOUT_SERVICE: {
         EX_STDOUT_SERVICE *stdoutService = CONTAINING_RECORD(objectHeader, EX_STDOUT_SERVICE, Header);
         uint32_t remainingReferences = 0;
 
         (void)stdoutService;
         return KiReleaseObject(objectHeader, EX_OBJECT_TYPE_STDOUT_SERVICE, &remainingReferences);
     }
-    case EX_OBJECT_TYPE_WAITABLE:
-    {
+    case EX_OBJECT_TYPE_WAITABLE: {
         uint32_t remainingReferences = 0;
 
         return KiReleaseObject(objectHeader, EX_OBJECT_TYPE_WAITABLE, &remainingReferences);
@@ -369,29 +449,25 @@ KiInvalidateObjectSelfHandleIfMatch(EX_OBJECT_HEADER *objectHeader, EX_PRIVATE_H
 
     switch (objectHeader->Type)
     {
-    case EX_OBJECT_TYPE_PROCESS:
-    {
+    case EX_OBJECT_TYPE_PROCESS: {
         EX_PROCESS *process = CONTAINING_RECORD(objectHeader, EX_PROCESS, Header);
         if (process->SelfHandle == handle)
             process->SelfHandle = EX_PRIVATE_HANDLE_INVALID;
         break;
     }
-    case EX_OBJECT_TYPE_THREAD:
-    {
+    case EX_OBJECT_TYPE_THREAD: {
         EX_THREAD *thread = CONTAINING_RECORD(objectHeader, EX_THREAD, Header);
         if (thread->SelfHandle == handle)
             thread->SelfHandle = EX_PRIVATE_HANDLE_INVALID;
         break;
     }
-    case EX_OBJECT_TYPE_STDOUT_SERVICE:
-    {
+    case EX_OBJECT_TYPE_STDOUT_SERVICE: {
         EX_STDOUT_SERVICE *stdoutService = CONTAINING_RECORD(objectHeader, EX_STDOUT_SERVICE, Header);
         if (stdoutService->Owner != NULL && stdoutService->Owner->StdoutHandle == handle)
             stdoutService->Owner->StdoutHandle = EX_PRIVATE_HANDLE_INVALID;
         break;
     }
-    case EX_OBJECT_TYPE_WAITABLE:
-    {
+    case EX_OBJECT_TYPE_WAITABLE: {
         EX_WAITABLE_OBJECT *waitObject = CONTAINING_RECORD(objectHeader, EX_WAITABLE_OBJECT, Header);
         if (waitObject->Owner != NULL && waitObject->Owner->WaitHandle == handle)
             waitObject->Owner->WaitHandle = EX_PRIVATE_HANDLE_INVALID;
@@ -420,9 +496,8 @@ KiReleaseStdoutServiceOwner(EX_PROCESS *process)
     if (process == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    HO_STATUS status = KiReleaseObject(&process->StdoutService.Header,
-                                       EX_OBJECT_TYPE_STDOUT_SERVICE,
-                                       &remainingReferences);
+    HO_STATUS status =
+        KiReleaseObject(&process->StdoutService.Header, EX_OBJECT_TYPE_STDOUT_SERVICE, &remainingReferences);
     if (status != EC_SUCCESS)
         return status;
 
@@ -491,9 +566,7 @@ KiBuildInitialBootstrapConstBytes(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *para
 
     if (params->ConstLength != 0)
     {
-        memcpy(constBytes + KE_USER_BOOTSTRAP_CONST_PAYLOAD_OFFSET,
-               params->ConstBytes,
-               (size_t)params->ConstLength);
+        memcpy(constBytes + KE_USER_BOOTSTRAP_CONST_PAYLOAD_OFFSET, params->ConstBytes, (size_t)params->ConstLength);
     }
 
     *outConstBytes = constBytes;
@@ -549,8 +622,8 @@ KiCleanupWaitableBacking(EX_WAITABLE_OBJECT *waitObject)
     if (waitObject->Dispatcher == NULL)
         return EC_INVALID_STATE;
 
-    HO_STATUS status = companionThread->State == KTHREAD_STATE_NEW ? KiDestroyNewThread(companionThread) :
-                                                                     KeThreadDetach(companionThread);
+    HO_STATUS status = companionThread->State == KTHREAD_STATE_NEW ? KiDestroyNewThread(companionThread)
+                                                                   : KeThreadDetach(companionThread);
     if (status != EC_SUCCESS)
         return status;
 
@@ -750,12 +823,11 @@ ExBootstrapClosePrivateHandle(EX_PROCESS *process, EX_PRIVATE_HANDLE *handle)
     *handle = EX_PRIVATE_HANDLE_INVALID;
     status = KiReleaseHandleObject(objectHeader);
 
-Exit:
-    {
-        HO_STATUS ownerStatus = ExBootstrapReleaseProcess(ownerReference);
-        if (status == EC_SUCCESS)
-            status = ownerStatus;
-    }
+Exit: {
+    HO_STATUS ownerStatus = ExBootstrapReleaseProcess(ownerReference);
+    if (status == EC_SUCCESS)
+        status = ownerStatus;
+}
 
     return status;
 }
@@ -838,6 +910,52 @@ ExBootstrapHasRuntimeAlias(void)
 
     KeLeaveCriticalSection(&guard);
     return FALSE;
+}
+
+HO_STATUS
+ExBootstrapCaptureThreadList(EX_SYSINFO_THREAD_LIST *outThreadList)
+{
+    KE_CRITICAL_SECTION guard = {0};
+
+    if (outThreadList == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    memset(outThreadList, 0, sizeof(*outThreadList));
+    outThreadList->Version = EX_SYSINFO_THREAD_LIST_VERSION;
+    outThreadList->Size = sizeof(*outThreadList);
+
+    KeEnterCriticalSection(&guard);
+
+    for (uint32_t index = 0; index < EX_BOOTSTRAP_RUNTIME_ALIAS_CAPACITY; ++index)
+    {
+        const EX_BOOTSTRAP_RUNTIME_ALIAS *slot = NULL;
+        EX_SYSINFO_THREAD_ENTRY *entry = NULL;
+
+        if (!KiIsRuntimeAliasSlotPopulated(index))
+            continue;
+
+        slot = &gExBootstrapRuntimeAliases[index];
+        if (slot->ThreadKey == NULL || slot->Process == NULL)
+            continue;
+
+        outThreadList->TotalCount++;
+        if (outThreadList->ReturnedCount >= EX_SYSINFO_THREAD_LIST_MAX_ENTRIES)
+        {
+            outThreadList->Truncated = TRUE;
+            continue;
+        }
+
+        entry = &outThreadList->Entries[outThreadList->ReturnedCount++];
+        entry->ThreadId = slot->ThreadKey->ThreadId;
+        entry->State = KiMapBootstrapThreadState(slot->ThreadKey);
+        entry->Priority = slot->ThreadKey->Priority;
+        KiCopyBootstrapProgramName(entry->Name, sizeof(entry->Name),
+                                   KiGetBootstrapProgramName(slot->Process->ProgramId));
+    }
+
+    KeLeaveCriticalSection(&guard);
+    KiSortThreadEntries(outThreadList);
+    return EC_SUCCESS;
 }
 
 BOOL
@@ -1056,8 +1174,7 @@ static HO_STATUS
 KiCreateWaitablePilotHandle(EX_PROCESS *process)
 {
     KTHREAD *companionThread = NULL;
-    const EX_PRIVATE_HANDLE_RIGHTS waitRights = EX_PRIVATE_HANDLE_RIGHT_WAIT |
-                                                EX_PRIVATE_HANDLE_RIGHT_CLOSE;
+    const EX_PRIVATE_HANDLE_RIGHTS waitRights = EX_PRIVATE_HANDLE_RIGHT_WAIT | EX_PRIVATE_HANDLE_RIGHT_CLOSE;
 
     if (process == NULL)
         return EC_ILLEGAL_ARGUMENT;
@@ -1130,11 +1247,9 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
     KE_USER_BOOTSTRAP_CREATE_PARAMS keParams = {0};
     uint8_t *initialConstBytes = NULL;
     uint64_t initialConstLength = 0;
-    const EX_PRIVATE_HANDLE_RIGHTS processSelfRights = EX_PRIVATE_HANDLE_RIGHT_QUERY |
-                                                       EX_PRIVATE_HANDLE_RIGHT_CLOSE |
-                                                       EX_PRIVATE_HANDLE_RIGHT_PROCESS_SELF;
-    const EX_PRIVATE_HANDLE_RIGHTS stdoutRights = EX_PRIVATE_HANDLE_RIGHT_WRITE |
-                                                  EX_PRIVATE_HANDLE_RIGHT_CLOSE;
+    const EX_PRIVATE_HANDLE_RIGHTS processSelfRights =
+        EX_PRIVATE_HANDLE_RIGHT_QUERY | EX_PRIVATE_HANDLE_RIGHT_CLOSE | EX_PRIVATE_HANDLE_RIGHT_PROCESS_SELF;
+    const EX_PRIVATE_HANDLE_RIGHTS stdoutRights = EX_PRIVATE_HANDLE_RIGHT_WRITE | EX_PRIVATE_HANDLE_RIGHT_CLOSE;
 
     if (outProcess == NULL)
         return EC_ILLEGAL_ARGUMENT;
@@ -1153,6 +1268,7 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
         return EC_OUT_OF_RESOURCE;
 
     ExBootstrapInitializeProcessObject(process);
+    process->ProgramId = params->ProgramId;
 
     HO_STATUS status = KeCreateProcessAddressSpace(&process->AddressSpace);
     if (status != EC_SUCCESS)
@@ -1214,7 +1330,8 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
         return releaseStatus == EC_SUCCESS ? status : releaseStatus;
     }
 
-    status = ExBootstrapInsertPrivateHandle(process, &process->StdoutService.Header, stdoutRights, &process->StdoutHandle);
+    status =
+        ExBootstrapInsertPrivateHandle(process, &process->StdoutService.Header, stdoutRights, &process->StdoutHandle);
     if (status != EC_SUCCESS)
     {
         HO_STATUS teardownStatus = ExBootstrapTeardownProcessPayload(process);
@@ -1264,9 +1381,8 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
     EX_PROCESS *process = NULL;
     EX_THREAD *thread = NULL;
     KTHREAD *kernelThread = NULL;
-    const EX_PRIVATE_HANDLE_RIGHTS threadSelfRights = EX_PRIVATE_HANDLE_RIGHT_QUERY |
-                                                      EX_PRIVATE_HANDLE_RIGHT_CLOSE |
-                                                      EX_PRIVATE_HANDLE_RIGHT_THREAD_SELF;
+    const EX_PRIVATE_HANDLE_RIGHTS threadSelfRights =
+        EX_PRIVATE_HANDLE_RIGHT_QUERY | EX_PRIVATE_HANDLE_RIGHT_CLOSE | EX_PRIVATE_HANDLE_RIGHT_THREAD_SELF;
 
     if (processHandle == NULL || outThread == NULL)
         return EC_ILLEGAL_ARGUMENT;
@@ -1277,8 +1393,8 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
     if (process == NULL || params == NULL || params->EntryPoint == NULL || process->Staging == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    if ((params->Flags & ~(EX_BOOTSTRAP_THREAD_CREATE_FLAG_SEED_WAIT_OBJECT |
-                           EX_BOOTSTRAP_THREAD_CREATE_FLAG_JOINABLE)) != 0)
+    if ((params->Flags &
+         ~(EX_BOOTSTRAP_THREAD_CREATE_FLAG_SEED_WAIT_OBJECT | EX_BOOTSTRAP_THREAD_CREATE_FLAG_JOINABLE)) != 0)
         return EC_ILLEGAL_ARGUMENT;
 
     thread = (EX_THREAD *)kzalloc(sizeof(*thread));
@@ -1287,9 +1403,9 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
 
     ExBootstrapInitializeThreadObject(thread);
 
-    HO_STATUS status = (params->Flags & EX_BOOTSTRAP_THREAD_CREATE_FLAG_JOINABLE) != 0 ?
-                           KeThreadCreateJoinable(&kernelThread, (KTHREAD_ENTRY)params->EntryPoint, params->EntryArg) :
-                           KeThreadCreate(&kernelThread, (KTHREAD_ENTRY)params->EntryPoint, params->EntryArg);
+    HO_STATUS status = (params->Flags & EX_BOOTSTRAP_THREAD_CREATE_FLAG_JOINABLE) != 0
+                           ? KeThreadCreateJoinable(&kernelThread, (KTHREAD_ENTRY)params->EntryPoint, params->EntryArg)
+                           : KeThreadCreate(&kernelThread, (KTHREAD_ENTRY)params->EntryPoint, params->EntryArg);
     if (status != EC_SUCCESS)
     {
         HO_STATUS releaseStatus = ExBootstrapReleaseThread(thread);
@@ -1339,32 +1455,31 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
     *processHandle = NULL;
     return EC_SUCCESS;
 
-FailThreadRuntimeSetup:
-    {
-        HO_STATUS detachStatus = KeUserBootstrapDetachThread(kernelThread, process->Staging);
-        HO_STATUS destroyStatus = KiDestroyNewThread(kernelThread);
-        HO_STATUS waitCloseStatus = ExBootstrapClosePrivateHandle(process, &process->WaitHandle);
-        HO_STATUS closeStatus = ExBootstrapClosePrivateHandle(process, &thread->SelfHandle);
+FailThreadRuntimeSetup: {
+    HO_STATUS detachStatus = KeUserBootstrapDetachThread(kernelThread, process->Staging);
+    HO_STATUS destroyStatus = KiDestroyNewThread(kernelThread);
+    HO_STATUS waitCloseStatus = ExBootstrapClosePrivateHandle(process, &process->WaitHandle);
+    HO_STATUS closeStatus = ExBootstrapClosePrivateHandle(process, &thread->SelfHandle);
 
-        thread->Thread = NULL;
-        thread->Process = NULL;
+    thread->Thread = NULL;
+    thread->Process = NULL;
 
-        HO_STATUS releaseStatus = ExBootstrapReleaseThread(thread);
+    HO_STATUS releaseStatus = ExBootstrapReleaseThread(thread);
 
-        if (detachStatus != EC_SUCCESS)
-            return detachStatus;
+    if (detachStatus != EC_SUCCESS)
+        return detachStatus;
 
-        if (destroyStatus != EC_SUCCESS)
-            return destroyStatus;
+    if (destroyStatus != EC_SUCCESS)
+        return destroyStatus;
 
-        if (waitCloseStatus != EC_SUCCESS)
-            return waitCloseStatus;
+    if (waitCloseStatus != EC_SUCCESS)
+        return waitCloseStatus;
 
-        if (closeStatus != EC_SUCCESS)
-            return closeStatus;
+    if (closeStatus != EC_SUCCESS)
+        return closeStatus;
 
-        return releaseStatus == EC_SUCCESS ? status : releaseStatus;
-    }
+    return releaseStatus == EC_SUCCESS ? status : releaseStatus;
+}
 }
 
 HO_STATUS

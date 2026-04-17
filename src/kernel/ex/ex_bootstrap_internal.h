@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <kernel/ex/ex_bootstrap_abi.h>
 #include <kernel/ex/ex_process.h>
 #include <kernel/ex/ex_thread.h>
 #include <kernel/ke/mm.h>
@@ -79,6 +80,7 @@ struct EX_PROCESS
     EX_PRIVATE_HANDLE SelfHandle;
     EX_PRIVATE_HANDLE StdoutHandle;
     EX_PRIVATE_HANDLE WaitHandle;
+    uint32_t ProgramId;
     EX_STDOUT_SERVICE StdoutService;
     EX_WAITABLE_OBJECT WaitObject;
     EX_PRIVATE_HANDLE_TABLE HandleTable;
@@ -100,9 +102,9 @@ EX_PROCESS *ExBootstrapRetainProcess(EX_PROCESS *process);
 HO_STATUS ExBootstrapReleaseProcess(EX_PROCESS *process);
 HO_STATUS ExBootstrapReleaseThread(EX_THREAD *thread);
 HO_STATUS ExBootstrapInsertPrivateHandle(EX_PROCESS *process,
-                                        EX_OBJECT_HEADER *objectHeader,
-                                        EX_PRIVATE_HANDLE_RIGHTS rights,
-                                        EX_PRIVATE_HANDLE *outHandle);
+                                         EX_OBJECT_HEADER *objectHeader,
+                                         EX_PRIVATE_HANDLE_RIGHTS rights,
+                                         EX_PRIVATE_HANDLE *outHandle);
 HO_STATUS ExBootstrapResolvePrivateHandle(EX_PROCESS *process,
                                           EX_PRIVATE_HANDLE handle,
                                           EX_OBJECT_TYPE expectedType,
@@ -113,6 +115,7 @@ HO_STATUS ExBootstrapClosePrivateHandle(EX_PROCESS *process, EX_PRIVATE_HANDLE *
 HO_STATUS ExBootstrapCloseAllPrivateHandles(EX_PROCESS *process);
 BOOL ExBootstrapHasRuntimeAlias(void);
 BOOL ExBootstrapRuntimeAliasMatchesProcess(const EX_PROCESS *process);
+HO_STATUS ExBootstrapCaptureThreadList(EX_SYSINFO_THREAD_LIST *outThreadList);
 HO_STATUS ExBootstrapPublishRuntimeAlias(EX_PROCESS *process, EX_THREAD *thread);
 EX_THREAD *ExBootstrapLookupRuntimeThread(const struct KTHREAD *thread);
 EX_PROCESS *ExBootstrapLookupRuntimeProcess(const struct KTHREAD *thread);

@@ -124,12 +124,14 @@ RunUserInputDemo(void)
     hshCreateParams.EntryOffset = KI_USER_INPUT_ENTRY_OFFSET;
     hshCreateParams.ConstBytes = hshArtifacts.ConstBytes;
     hshCreateParams.ConstLength = hshArtifacts.ConstLength;
+    hshCreateParams.ProgramId = KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_HSH;
 
     calcCreateParams.CodeBytes = calcArtifacts.CodeBytes;
     calcCreateParams.CodeLength = calcArtifacts.CodeLength;
     calcCreateParams.EntryOffset = KI_USER_INPUT_ENTRY_OFFSET;
     calcCreateParams.ConstBytes = calcArtifacts.ConstBytes;
     calcCreateParams.ConstLength = calcArtifacts.ConstLength;
+    calcCreateParams.ProgramId = KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_CALC;
 
     status = ExBootstrapCreateProcess(&hshCreateParams, &hshProcess);
     if (status != EC_SUCCESS)
