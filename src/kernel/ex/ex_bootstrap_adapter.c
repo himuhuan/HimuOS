@@ -36,6 +36,8 @@ static void KiCopyAbiString(char *destination, size_t destinationSize, const cha
 static BOOL KiAppendSysinfoChar(char *buffer, size_t *offset, size_t capacity, char value);
 static BOOL KiAppendSysinfoLiteral(char *buffer, size_t *offset, size_t capacity, const char *literal);
 static BOOL KiAppendSysinfoUInt64(char *buffer, size_t *offset, size_t capacity, uint64_t value);
+static BOOL KiAppendSysinfoHex64(char *buffer, size_t *offset, size_t capacity, uint64_t value);
+static BOOL KiAppendSysinfoVirtualAddress(char *buffer, size_t *offset, size_t capacity, HO_VIRTUAL_ADDRESS value);
 static BOOL KiAppendSysinfoPadding(char *buffer, size_t *offset, size_t capacity, size_t count);
 static BOOL KiAppendSysinfoPaddedLiteral(
     char *buffer, size_t *offset, size_t capacity, const char *literal, size_t width);
@@ -43,12 +45,37 @@ static BOOL KiAppendSysinfoPaddedUInt64(char *buffer, size_t *offset, size_t cap
 static BOOL KiAppendSysinfoMegabytes(char *buffer, size_t *offset, size_t capacity, uint64_t bytes);
 static BOOL KiAppendSysinfoUptimeTenths(char *buffer, size_t *offset, size_t capacity, uint64_t nanoseconds);
 static BOOL KiAppendSysinfoScaledFrequency(char *buffer, size_t *offset, size_t capacity, uint64_t frequencyHz);
+static BOOL KiAppendSysinfoAddressLine(
+    char *buffer, size_t *offset, size_t capacity, const char *label, HO_VIRTUAL_ADDRESS address);
+static BOOL KiAppendSysinfoRangeLine(char *buffer,
+                                     size_t *offset,
+                                     size_t capacity,
+                                     const char *label,
+                                     HO_VIRTUAL_ADDRESS base,
+                                     HO_VIRTUAL_ADDRESS endExclusive);
+static BOOL KiAppendSysinfoArenaLine(char *buffer,
+                                     size_t *offset,
+                                     size_t capacity,
+                                     const char *label,
+                                     HO_VIRTUAL_ADDRESS base,
+                                     uint64_t usedPages,
+                                     uint64_t totalPages,
+                                     uint64_t activeAllocations);
+static BOOL KiAppendSysinfoFixmapLine(char *buffer,
+                                      size_t *offset,
+                                      size_t capacity,
+                                      HO_VIRTUAL_ADDRESS base,
+                                      uint64_t activeSlots,
+                                      uint64_t totalSlots,
+                                      uint64_t activeAllocations);
+static const char *KiGetImportedRegionTypeName(uint16_t type);
 static HO_STATUS KiCaptureSysinfoOverview(EX_SYSINFO_OVERVIEW *overview);
 static HO_STATUS KiCaptureSysinfoThreadList(EX_SYSINFO_THREAD_LIST *threadList);
 static HO_STATUS KiBuildSysinfoOverviewText(char *buffer,
                                             size_t capacity,
                                             const EX_SYSINFO_OVERVIEW *overview,
                                             size_t *outLength);
+static HO_STATUS KiBuildSysinfoMemmapText(char *buffer, size_t capacity, size_t *outLength);
 static const char *KiGetSysinfoThreadStateName(uint32_t state);
 static HO_STATUS KiBuildSysinfoThreadListText(char *buffer,
                                               size_t capacity,
@@ -276,6 +303,36 @@ KiAppendSysinfoUInt64(char *buffer, size_t *offset, size_t capacity, uint64_t va
 }
 
 static BOOL
+KiAppendSysinfoHex64(char *buffer, size_t *offset, size_t capacity, uint64_t value)
+{
+    char digits[17];
+    size_t length = (size_t)UInt64ToStringEx(value, digits, 16, 16, '0');
+
+    if (length != 16U)
+        return FALSE;
+
+    for (size_t index = 0; index < length; ++index)
+    {
+        if (!KiAppendSysinfoChar(buffer, offset, capacity, digits[index]))
+            return FALSE;
+
+        if (index != (length - 1U) && ((index + 1U) % 4U) == 0U)
+        {
+            if (!KiAppendSysinfoChar(buffer, offset, capacity, '_'))
+                return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
+static BOOL
+KiAppendSysinfoVirtualAddress(char *buffer, size_t *offset, size_t capacity, HO_VIRTUAL_ADDRESS value)
+{
+    return KiAppendSysinfoHex64(buffer, offset, capacity, (uint64_t)value);
+}
+
+static BOOL
 KiAppendSysinfoPadding(char *buffer, size_t *offset, size_t capacity, size_t count)
 {
     while (count != 0U)
@@ -379,6 +436,99 @@ KiAppendSysinfoScaledFrequency(char *buffer, size_t *offset, size_t capacity, ui
 
     return KiAppendSysinfoUInt64(buffer, offset, capacity, frequencyHz) &&
            KiAppendSysinfoLiteral(buffer, offset, capacity, " Hz");
+}
+
+static BOOL
+KiAppendSysinfoAddressLine(char *buffer, size_t *offset, size_t capacity, const char *label, HO_VIRTUAL_ADDRESS address)
+{
+    return KiAppendSysinfoLiteral(buffer, offset, capacity, "  ") &&
+           KiAppendSysinfoPaddedLiteral(buffer, offset, capacity, label, 13U) &&
+           KiAppendSysinfoVirtualAddress(buffer, offset, capacity, address) &&
+           KiAppendSysinfoLiteral(buffer, offset, capacity, "\n");
+}
+
+static BOOL
+KiAppendSysinfoRangeLine(char *buffer,
+                         size_t *offset,
+                         size_t capacity,
+                         const char *label,
+                         HO_VIRTUAL_ADDRESS base,
+                         HO_VIRTUAL_ADDRESS endExclusive)
+{
+    return KiAppendSysinfoLiteral(buffer, offset, capacity, "  ") &&
+           KiAppendSysinfoPaddedLiteral(buffer, offset, capacity, label, 13U) &&
+           KiAppendSysinfoChar(buffer, offset, capacity, '[') &&
+           KiAppendSysinfoVirtualAddress(buffer, offset, capacity, base) &&
+           KiAppendSysinfoLiteral(buffer, offset, capacity, ", ") &&
+           KiAppendSysinfoVirtualAddress(buffer, offset, capacity, endExclusive) &&
+           KiAppendSysinfoLiteral(buffer, offset, capacity, ")\n");
+}
+
+static BOOL
+KiAppendSysinfoArenaLine(char *buffer,
+                         size_t *offset,
+                         size_t capacity,
+                         const char *label,
+                         HO_VIRTUAL_ADDRESS base,
+                         uint64_t usedPages,
+                         uint64_t totalPages,
+                         uint64_t activeAllocations)
+{
+    return KiAppendSysinfoLiteral(buffer, offset, capacity, "  ") &&
+           KiAppendSysinfoPaddedLiteral(buffer, offset, capacity, label, 13U) &&
+           KiAppendSysinfoVirtualAddress(buffer, offset, capacity, base) &&
+           KiAppendSysinfoLiteral(buffer, offset, capacity, "  used ") &&
+           KiAppendSysinfoUInt64(buffer, offset, capacity, usedPages) &&
+           KiAppendSysinfoChar(buffer, offset, capacity, '/') &&
+           KiAppendSysinfoUInt64(buffer, offset, capacity, totalPages) &&
+           KiAppendSysinfoLiteral(buffer, offset, capacity, " pages allocs ") &&
+           KiAppendSysinfoUInt64(buffer, offset, capacity, activeAllocations) &&
+           KiAppendSysinfoLiteral(buffer, offset, capacity, "\n");
+}
+
+static BOOL
+KiAppendSysinfoFixmapLine(char *buffer,
+                          size_t *offset,
+                          size_t capacity,
+                          HO_VIRTUAL_ADDRESS base,
+                          uint64_t activeSlots,
+                          uint64_t totalSlots,
+                          uint64_t activeAllocations)
+{
+    return KiAppendSysinfoLiteral(buffer, offset, capacity, "  ") &&
+           KiAppendSysinfoPaddedLiteral(buffer, offset, capacity, "fixmap arena", 13U) &&
+           KiAppendSysinfoVirtualAddress(buffer, offset, capacity, base) &&
+           KiAppendSysinfoLiteral(buffer, offset, capacity, "  slots ") &&
+           KiAppendSysinfoUInt64(buffer, offset, capacity, activeSlots) &&
+           KiAppendSysinfoChar(buffer, offset, capacity, '/') &&
+           KiAppendSysinfoUInt64(buffer, offset, capacity, totalSlots) &&
+           KiAppendSysinfoLiteral(buffer, offset, capacity, " allocs ") &&
+           KiAppendSysinfoUInt64(buffer, offset, capacity, activeAllocations) &&
+           KiAppendSysinfoLiteral(buffer, offset, capacity, "\n");
+}
+
+static const char *
+KiGetImportedRegionTypeName(uint16_t type)
+{
+    switch (type)
+    {
+    case BOOT_MAPPING_REGION_KERNEL_CODE:
+        return "kernel-code";
+    case BOOT_MAPPING_REGION_KERNEL_DATA:
+        return "kernel-data";
+    case BOOT_MAPPING_REGION_KERNEL_STACK:
+        return "kernel-stack";
+    case BOOT_MAPPING_REGION_KERNEL_IST_STACK:
+        return "ist-stack";
+    case BOOT_MAPPING_REGION_FRAMEBUFFER:
+        return "framebuffer";
+    case BOOT_MAPPING_REGION_HPET_MMIO:
+        return "hpet-mmio";
+    case BOOT_MAPPING_REGION_LAPIC_MMIO:
+        return "lapic-mmio";
+    default:
+        return NULL;
+    }
 }
 
 static HO_STATUS
@@ -704,6 +854,112 @@ KiBuildSysinfoOverviewText(char *buffer, size_t capacity, const EX_SYSINFO_OVERV
     return EC_SUCCESS;
 }
 
+static HO_STATUS
+KiBuildSysinfoMemmapText(char *buffer, size_t capacity, size_t *outLength)
+{
+    size_t length = 0;
+    SYSINFO_VMM_OVERVIEW overview = {0};
+    KE_KVA_ARENA_INFO stackArena = {0};
+    KE_KVA_ARENA_INFO heapArena = {0};
+    KE_KVA_ARENA_INFO fixmapArena = {0};
+    KE_USER_BOOTSTRAP_LAYOUT layout = {0};
+    const KE_KERNEL_ADDRESS_SPACE *space = NULL;
+    uint32_t printedRegionCount = 0;
+
+    if (buffer == NULL || outLength == NULL || capacity == 0)
+        return EC_ILLEGAL_ARGUMENT;
+
+    space = KeGetKernelAddressSpace();
+    if (space == NULL)
+        return EC_INVALID_STATE;
+
+    HO_STATUS status = KeQuerySystemInformation(KE_SYSINFO_VMM_OVERVIEW, &overview, sizeof(overview), NULL);
+    if (status != EC_SUCCESS)
+        return status;
+
+    status = KeKvaQueryArenaInfo(KE_KVA_ARENA_STACK, &stackArena);
+    if (status != EC_SUCCESS)
+        return status;
+
+    status = KeKvaQueryArenaInfo(KE_KVA_ARENA_HEAP, &heapArena);
+    if (status != EC_SUCCESS)
+        return status;
+
+    status = KeKvaQueryArenaInfo(KE_KVA_ARENA_FIXMAP, &fixmapArena);
+    if (status != EC_SUCCESS)
+        return status;
+
+    status = KeUserBootstrapQueryCurrentThreadLayout(&layout);
+    if (status != EC_SUCCESS)
+        return status;
+
+    if (layout.StackBase < layout.GuardBase || layout.StackTop < layout.StackBase ||
+        layout.GuardBase < (layout.UserRangeBase + (2ULL * PAGE_4KB)))
+    {
+        return EC_INVALID_STATE;
+    }
+
+    if (!KiAppendSysinfoLiteral(buffer, &length, capacity, "HimuOS Virtual Memory Map\n") ||
+        !KiAppendSysinfoLiteral(buffer, &length, capacity, "High Half\n") ||
+        !KiAppendSysinfoAddressLine(buffer, &length, capacity, "kernel base", KRNL_BASE_VA) ||
+        !KiAppendSysinfoArenaLine(buffer, &length, capacity, "stack arena", stackArena.BaseAddress,
+                                  stackArena.TotalPages - stackArena.FreePages, stackArena.TotalPages,
+                                  stackArena.ActiveAllocations) ||
+        !KiAppendSysinfoArenaLine(buffer, &length, capacity, "heap arena", heapArena.BaseAddress,
+                                  heapArena.TotalPages - heapArena.FreePages, heapArena.TotalPages,
+                                  heapArena.ActiveAllocations) ||
+        !KiAppendSysinfoFixmapLine(buffer, &length, capacity, fixmapArena.BaseAddress, overview.FixmapActiveSlots,
+                                   overview.FixmapTotalSlots, fixmapArena.ActiveAllocations) ||
+        !KiAppendSysinfoAddressLine(buffer, &length, capacity, "HHDM base", HHDM_BASE_VA) ||
+        !KiAppendSysinfoAddressLine(buffer, &length, capacity, "MMIO base", MMIO_BASE_VA) ||
+        !KiAppendSysinfoLiteral(buffer, &length, capacity, "  active KVA   ") ||
+        !KiAppendSysinfoUInt64(buffer, &length, capacity, overview.ActiveKvaRangeCount) ||
+        !KiAppendSysinfoLiteral(buffer, &length, capacity, " live ranges\n") ||
+        !KiAppendSysinfoLiteral(buffer, &length, capacity, "Imported Regions\n"))
+    {
+        return EC_NOT_ENOUGH_MEMORY;
+    }
+
+    for (uint32_t index = 0; index < space->RegionCount; ++index)
+    {
+        const KE_IMPORTED_REGION *region = &space->Regions[index];
+        const char *regionName = KiGetImportedRegionTypeName(region->Type);
+
+        if (regionName == NULL)
+            continue;
+
+        printedRegionCount += 1U;
+        if (!KiAppendSysinfoAddressLine(buffer, &length, capacity, regionName, region->VirtualStart))
+        {
+            return EC_NOT_ENOUGH_MEMORY;
+        }
+    }
+
+    if (printedRegionCount == 0U)
+    {
+        if (!KiAppendSysinfoLiteral(buffer, &length, capacity, "  (none)\n"))
+            return EC_NOT_ENOUGH_MEMORY;
+    }
+
+    if (!KiAppendSysinfoLiteral(buffer, &length, capacity, "Low Half (bootstrap)\n") ||
+        !KiAppendSysinfoRangeLine(buffer, &length, capacity, "code slot", layout.UserRangeBase,
+                                  layout.UserRangeBase + PAGE_4KB) ||
+        !KiAppendSysinfoRangeLine(buffer, &length, capacity, "const slot", layout.UserRangeBase + PAGE_4KB,
+                                  layout.GuardBase) ||
+        !KiAppendSysinfoRangeLine(buffer, &length, capacity, "guard page", layout.GuardBase, layout.StackBase) ||
+        !KiAppendSysinfoRangeLine(buffer, &length, capacity, "stack page", layout.StackBase, layout.StackTop))
+    {
+        return EC_NOT_ENOUGH_MEMORY;
+    }
+
+    if (length >= capacity)
+        return EC_NOT_ENOUGH_MEMORY;
+
+    buffer[length] = '\0';
+    *outLength = length;
+    return EC_SUCCESS;
+}
+
 static const char *
 KiGetSysinfoThreadStateName(uint32_t state)
 {
@@ -790,7 +1046,8 @@ KiHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64_t userBu
         return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, EC_INVALID_STATE);
 
     if (infoClassRaw != EX_SYSINFO_CLASS_OVERVIEW && infoClassRaw != EX_SYSINFO_CLASS_OVERVIEW_TEXT &&
-        infoClassRaw != EX_SYSINFO_CLASS_THREAD_LIST && infoClassRaw != EX_SYSINFO_CLASS_THREAD_LIST_TEXT)
+        infoClassRaw != EX_SYSINFO_CLASS_THREAD_LIST && infoClassRaw != EX_SYSINFO_CLASS_THREAD_LIST_TEXT &&
+        infoClassRaw != EX_SYSINFO_CLASS_MEMMAP_TEXT)
         return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, EC_ILLEGAL_ARGUMENT);
 
     if (userBuffer == 0)
@@ -841,6 +1098,28 @@ KiHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64_t userBu
 
             return (int64_t)textLength;
         }
+    }
+
+    if (infoClassRaw == EX_SYSINFO_CLASS_MEMMAP_TEXT)
+    {
+        char text[EX_SYSINFO_TEXT_MAX_LENGTH];
+        size_t textLength = 0;
+
+        status = KiBuildSysinfoMemmapText(text, sizeof(text), &textLength);
+        if (status != EC_SUCCESS)
+            return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, status);
+
+        if (length < textLength)
+            return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, EC_NOT_ENOUGH_MEMORY);
+
+        status = KeUserBootstrapCopyOutBytes((HO_VIRTUAL_ADDRESS)userBuffer, text, textLength);
+        if (status != EC_SUCCESS)
+            return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, status);
+
+        klog(KLOG_LEVEL_INFO, KE_USER_BOOTSTRAP_LOG_QUERY_SYSINFO_SUCCEEDED " class=%lu bytes=%lu thread=%u\n",
+             (unsigned long)infoClassRaw, (unsigned long)textLength, thread ? thread->ThreadId : 0U);
+
+        return (int64_t)textLength;
     }
 
     {
