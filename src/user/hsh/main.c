@@ -26,13 +26,14 @@ typedef struct HO_HSH_JOB
     BOOL Alive;
 } HO_HSH_JOB;
 
-static const char gHelpText[] = "help\nexit\ncalc\n& tick1s\nkill <pid>\n";
+static const char gHelpText[] = "help\nsysinfo\nexit\ncalc\n& tick1s\nkill <pid>\n";
 static const char gTick1sName[] = "tick1s";
 static const char gStartedPrefix[] = "[HSH] started pid=";
 static const char gStartedNamePrefix[] = " name=";
 static const char gStartedBackgroundPrefix[] = " bg=";
 static const char gUnknownCommand[] = "[HSH] unknown command\n";
 static const char gSpawnFailed[] = "[HSH] spawn failed\n";
+static const char gSysinfoFailed[] = "[HSH] sysinfo failed\n";
 static const char gJobTableFull[] = "[HSH] job table full\n";
 static const char gExitRefused[] = "[HSH] exit refused: live background job\n";
 static const char gKillRejected[] = "[HSH] kill rejected\n";
@@ -54,8 +55,18 @@ HoHshStringLength(const char *value)
 static void
 HoHshMustWrite(const char *buffer, uint64_t length)
 {
-    if (HoUserWriteStdout(buffer, length) != (int64_t)length)
-        HoUserAbort();
+    while (length != 0U)
+    {
+        uint64_t chunkLength = length;
+        if (chunkLength > KE_USER_BOOTSTRAP_SYS_RAW_WRITE_MAX_LENGTH)
+            chunkLength = KE_USER_BOOTSTRAP_SYS_RAW_WRITE_MAX_LENGTH;
+
+        if (HoUserWriteStdout(buffer, chunkLength) != (int64_t)chunkLength)
+            HoUserAbort();
+
+        buffer += chunkLength;
+        length -= chunkLength;
+    }
 }
 
 static void
@@ -264,6 +275,22 @@ main(void)
             continue;
         }
 
+        if (HoHshLineEquals(line, (uint64_t)status, "sysinfo"))
+        {
+            char sysinfoText[EX_SYSINFO_TEXT_MAX_LENGTH];
+            int64_t sysinfoLength =
+                HoUserQuerySysinfo(EX_SYSINFO_CLASS_OVERVIEW_TEXT, sysinfoText, sizeof(sysinfoText));
+
+            if (sysinfoLength < 0)
+            {
+                HoHshMustWriteLiteral(gSysinfoFailed);
+                continue;
+            }
+
+            HoHshMustWrite(sysinfoText, (uint64_t)sysinfoLength);
+            continue;
+        }
+
         if (HoHshLineEquals(line, (uint64_t)status, "exit"))
         {
             if (HoHshHasLiveBackgroundJobs(jobs))
@@ -278,8 +305,8 @@ main(void)
 
         if (HoHshLineEquals(line, (uint64_t)status, "calc"))
         {
-            int64_t pid = HoUserSpawnBuiltin(KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_CALC,
-                                             KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND);
+            int64_t pid =
+                HoUserSpawnBuiltin(KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_CALC, KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND);
             if (pid < 0)
             {
                 HoHshMustWriteLiteral(gSpawnFailed);
@@ -301,8 +328,8 @@ main(void)
                 continue;
             }
 
-            int64_t pid = HoUserSpawnBuiltin(KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_TICK1S,
-                                             KE_USER_BOOTSTRAP_SPAWN_FLAG_NONE);
+            int64_t pid =
+                HoUserSpawnBuiltin(KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_TICK1S, KE_USER_BOOTSTRAP_SPAWN_FLAG_NONE);
             if (pid < 0)
             {
                 HoHshMustWriteLiteral(gSpawnFailed);

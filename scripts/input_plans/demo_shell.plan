@@ -1,6 +1,16 @@
 # Drive the P4 demo_shell profile through prompt/log anchors so the same plan
 # works on both host and tcg paths without fixed keyboard timing assumptions.
 wait_for hsh> 
+text sysinfo
+key ret
+
+wait_for HimuOS System Information
+wait_for CPU:
+wait_for Memory:
+wait_for Clock:
+wait_for Time:
+wait_for hsh> 
+
 text & tick1s
 key ret
 

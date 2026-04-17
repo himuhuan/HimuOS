@@ -20,12 +20,11 @@
  * that root's low-half rather than the shared imported kernel root. A dynamic
  * per-process layout allocator is a future phase.
  */
-#define KE_USER_BOOTSTRAP_PAGE_SIZE              0x1000ULL
-#define KE_USER_BOOTSTRAP_WINDOW_BASE            0x0000000080000000ULL
-#define KE_USER_BOOTSTRAP_WINDOW_PAGE_COUNT      4ULL
-#define KE_USER_BOOTSTRAP_WINDOW_END_EXCLUSIVE   (KE_USER_BOOTSTRAP_WINDOW_BASE +                     \
-                                                  (KE_USER_BOOTSTRAP_WINDOW_PAGE_COUNT *              \
-                                                   KE_USER_BOOTSTRAP_PAGE_SIZE))
+#define KE_USER_BOOTSTRAP_PAGE_SIZE         0x1000ULL
+#define KE_USER_BOOTSTRAP_WINDOW_BASE       0x0000000080000000ULL
+#define KE_USER_BOOTSTRAP_WINDOW_PAGE_COUNT 4ULL
+#define KE_USER_BOOTSTRAP_WINDOW_END_EXCLUSIVE                                                                         \
+    (KE_USER_BOOTSTRAP_WINDOW_BASE + (KE_USER_BOOTSTRAP_WINDOW_PAGE_COUNT * KE_USER_BOOTSTRAP_PAGE_SIZE))
 /* Default single-page placements inside the current bootstrap layout. */
 #define KE_USER_BOOTSTRAP_CODE_BASE              KE_USER_BOOTSTRAP_WINDOW_BASE
 #define KE_USER_BOOTSTRAP_CONST_BASE             (KE_USER_BOOTSTRAP_CODE_BASE + KE_USER_BOOTSTRAP_PAGE_SIZE)
@@ -46,9 +45,9 @@
  * - RDI, RSI, and RDX carry the first three bootstrap arguments.
  * - Failures return negative HO_STATUS values.
  */
-#define KE_USER_BOOTSTRAP_SYSCALL_VECTOR             0x80U
-#define KE_USER_BOOTSTRAP_SYS_RAW_WRITE_MAX_LENGTH   256U
-#define KE_USER_BOOTSTRAP_READLINE_MAX_LENGTH        128U
+#define KE_USER_BOOTSTRAP_SYSCALL_VECTOR         0x80U
+#define KE_USER_BOOTSTRAP_SYS_RAW_WRITE_MAX_LENGTH       256U
+#define KE_USER_BOOTSTRAP_READLINE_MAX_LENGTH            128U
 
 /*
  * Raw bootstrap-only syscall ABI.
@@ -57,9 +56,9 @@
  * raw userspace regression sentinel. Formal Ex-facing SYS_* services use a
  * separate number range so raw semantics stay fixed while the pilot evolves.
  */
-#define SYS_RAW_INVALID                              0U
-#define SYS_RAW_WRITE                                1U
-#define SYS_RAW_EXIT                                 2U
+#define SYS_RAW_INVALID                                  0U
+#define SYS_RAW_WRITE                                    1U
+#define SYS_RAW_EXIT                                     2U
 
 /*
  * Ex-facing bootstrap syscall ABI:
@@ -68,41 +67,56 @@
  * - SYS_EXIT(exit_code, reserved0, reserved1) is the formal userspace
  *   termination contract for compiled bootstrap userspace.
  */
-#define KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE         0x100U
+#define KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE        0x100U
 
-#define SYS_WRITE                                          (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 0U)
-#define SYS_CLOSE                                          (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 1U)
-#define SYS_WAIT_ONE                                       (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 2U)
-#define SYS_EXIT                                           (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 3U)
-#define SYS_READLINE                                       (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 4U)
-#define SYS_SPAWN_BUILTIN                                  (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 5U)
-#define SYS_WAIT_PID                                       (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 6U)
-#define SYS_SLEEP_MS                                       (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 7U)
-#define SYS_KILL_PID                                       (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 8U)
+#define SYS_WRITE                                        (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 0U)
+#define SYS_CLOSE                                        (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 1U)
+#define SYS_WAIT_ONE                                     (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 2U)
+#define SYS_EXIT                                         (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 3U)
+#define SYS_READLINE                                     (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 4U)
+#define SYS_SPAWN_BUILTIN                                (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 5U)
+#define SYS_WAIT_PID                                     (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 6U)
+#define SYS_SLEEP_MS                                     (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 7U)
+#define SYS_KILL_PID                                     (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 8U)
+#define SYS_QUERY_SYSINFO                                (KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE + 9U)
 
-#define KE_USER_BOOTSTRAP_WAIT_ONE_TIMEOUT_MAX_MS          0xFFFFFFFFULL
-#define KE_USER_BOOTSTRAP_WAIT_ONE_TIMEOUT_NS_PER_MS       1000000ULL
-#define KE_USER_BOOTSTRAP_SLEEP_MS_MAX                     0xFFFFFFFFULL
-#define KE_USER_BOOTSTRAP_SLEEP_NS_PER_MS                  1000000ULL
+#define KE_USER_BOOTSTRAP_WAIT_ONE_TIMEOUT_MAX_MS        0xFFFFFFFFULL
+#define KE_USER_BOOTSTRAP_WAIT_ONE_TIMEOUT_NS_PER_MS     1000000ULL
+#define KE_USER_BOOTSTRAP_SLEEP_MS_MAX                   0xFFFFFFFFULL
+#define KE_USER_BOOTSTRAP_SLEEP_NS_PER_MS                1000000ULL
 
-#define KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_NONE             0U
-#define KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_HSH              1U
-#define KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_CALC             2U
-#define KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_TICK1S           3U
+#define KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_NONE           0U
+#define KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_HSH            1U
+#define KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_CALC           2U
+#define KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_TICK1S         3U
 
-#define KE_USER_BOOTSTRAP_SPAWN_FLAG_NONE                  0U
-#define KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND            0x00000001U
+#define KE_USER_BOOTSTRAP_SPAWN_FLAG_NONE                0U
+#define KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND          0x00000001U
 
-#define KE_USER_BOOTSTRAP_CAPABILITY_INVALID_HANDLE        0U
-#define KE_USER_BOOTSTRAP_CAPABILITY_SEED_VERSION          1U
-#define KE_USER_BOOTSTRAP_CAPABILITY_SEED_VERSION_OFFSET   0U
-#define KE_USER_BOOTSTRAP_CAPABILITY_SEED_SIZE_OFFSET      4U
-#define KE_USER_BOOTSTRAP_CAPABILITY_PROCESS_SELF_OFFSET   8U
-#define KE_USER_BOOTSTRAP_CAPABILITY_THREAD_SELF_OFFSET    12U
-#define KE_USER_BOOTSTRAP_CAPABILITY_STDOUT_OFFSET         16U
-#define KE_USER_BOOTSTRAP_CAPABILITY_WAIT_OBJECT_OFFSET    20U
-#define KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK_SIZE       24U
-#define KE_USER_BOOTSTRAP_CONST_PAYLOAD_OFFSET             KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK_SIZE
+#define KE_USER_BOOTSTRAP_CAPABILITY_INVALID_HANDLE      0U
+#define KE_USER_BOOTSTRAP_CAPABILITY_SEED_VERSION        1U
+#define KE_USER_BOOTSTRAP_CAPABILITY_SEED_VERSION_OFFSET 0U
+#define KE_USER_BOOTSTRAP_CAPABILITY_SEED_SIZE_OFFSET    4U
+#define KE_USER_BOOTSTRAP_CAPABILITY_PROCESS_SELF_OFFSET 8U
+#define KE_USER_BOOTSTRAP_CAPABILITY_THREAD_SELF_OFFSET  12U
+#define KE_USER_BOOTSTRAP_CAPABILITY_STDOUT_OFFSET       16U
+#define KE_USER_BOOTSTRAP_CAPABILITY_WAIT_OBJECT_OFFSET  20U
+#define KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK_SIZE     24U
+#define KE_USER_BOOTSTRAP_CONST_PAYLOAD_OFFSET           KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK_SIZE
+
+#define EX_SYSINFO_OVERVIEW_VERSION                      1U
+#define EX_SYSINFO_TEXT_MAX_LENGTH                       512U
+#define EX_SYSINFO_OVERVIEW_CPU_NAME_LENGTH              128U
+#define EX_SYSINFO_OVERVIEW_SOURCE_NAME_LENGTH           32U
+
+#define EX_SYSINFO_OVERVIEW_VALID_CPU                    (1ULL << 0)
+#define EX_SYSINFO_OVERVIEW_VALID_MEMORY                 (1ULL << 1)
+#define EX_SYSINFO_OVERVIEW_VALID_VMM                    (1ULL << 2)
+#define EX_SYSINFO_OVERVIEW_VALID_SCHEDULER              (1ULL << 3)
+#define EX_SYSINFO_OVERVIEW_VALID_UPTIME                 (1ULL << 4)
+#define EX_SYSINFO_OVERVIEW_VALID_CLOCK                  (1ULL << 5)
+#define EX_SYSINFO_OVERVIEW_VALID_TIME_SOURCE            (1ULL << 6)
+#define EX_SYSINFO_OVERVIEW_VALID_VERSION                (1ULL << 7)
 
 #ifndef __ASSEMBLER__
 typedef struct __attribute__((packed)) KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK
@@ -114,6 +128,49 @@ typedef struct __attribute__((packed)) KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK
     uint32_t Stdout;
     uint32_t WaitObject;
 } KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK;
+
+typedef enum EX_SYSINFO_CLASS
+{
+    EX_SYSINFO_CLASS_INVALID = 0,
+    EX_SYSINFO_CLASS_OVERVIEW = 1,
+    EX_SYSINFO_CLASS_OVERVIEW_TEXT = 2,
+} EX_SYSINFO_CLASS;
+
+typedef struct EX_SYSINFO_OVERVIEW
+{
+    uint32_t Version;
+    uint32_t Size;
+    uint64_t ValidMask;
+    char CpuModel[EX_SYSINFO_OVERVIEW_CPU_NAME_LENGTH];
+    uint64_t PhysicalTotalBytes;
+    uint64_t PhysicalFreeBytes;
+    uint64_t PhysicalAllocatedBytes;
+    uint64_t PhysicalReservedBytes;
+    uint64_t StackArenaTotalPages;
+    uint64_t StackArenaUsedPages;
+    uint64_t HeapArenaTotalPages;
+    uint64_t HeapArenaUsedPages;
+    uint64_t FixmapTotalSlots;
+    uint64_t FixmapActiveSlots;
+    uint32_t SchedulerEnabled;
+    uint32_t CurrentThreadId;
+    uint32_t IdleThreadId;
+    uint32_t ReadyQueueDepth;
+    uint32_t SleepQueueDepth;
+    uint32_t ActiveThreadCount;
+    uint64_t UptimeNanoseconds;
+    uint32_t ClockReady;
+    uint32_t ClockVectorNumber;
+    uint64_t ClockFrequencyHz;
+    char ClockSourceName[EX_SYSINFO_OVERVIEW_SOURCE_NAME_LENGTH];
+    uint64_t TimeSourceFrequencyHz;
+    char TimeSourceName[EX_SYSINFO_OVERVIEW_SOURCE_NAME_LENGTH];
+    uint16_t SystemMajor;
+    uint16_t SystemMinor;
+    uint16_t SystemPatch;
+    char BuildDate[12];
+    char BuildTime[10];
+} EX_SYSINFO_OVERVIEW;
 #endif
 
 /*
@@ -154,6 +211,8 @@ typedef struct __attribute__((packed)) KE_USER_BOOTSTRAP_CAPABILITY_SEED_BLOCK
 #define KE_USER_BOOTSTRAP_LOG_SLEEP_MS_REJECTED        "[DEMOSHELL] SYS_SLEEP_MS rejected"
 #define KE_USER_BOOTSTRAP_LOG_KILL_PID_SUCCEEDED       "[DEMOSHELL] SYS_KILL_PID succeeded"
 #define KE_USER_BOOTSTRAP_LOG_KILL_PID_REJECTED        "[DEMOSHELL] SYS_KILL_PID rejected"
+#define KE_USER_BOOTSTRAP_LOG_QUERY_SYSINFO_SUCCEEDED  "[SYSINFO] SYS_QUERY_SYSINFO succeeded"
+#define KE_USER_BOOTSTRAP_LOG_QUERY_SYSINFO_REJECTED   "[SYSINFO] SYS_QUERY_SYSINFO rejected"
 #define KE_USER_BOOTSTRAP_LOG_KILL_EXIT                "[DEMOSHELL] kill exit"
 #define KE_USER_BOOTSTRAP_LOG_INVALID_USER_BUFFER      "[USERBOOT] invalid user buffer"
 #define KE_USER_BOOTSTRAP_LOG_TEARDOWN_FAILED          "[USERBOOT] bootstrap teardown failed"

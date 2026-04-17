@@ -159,6 +159,12 @@ HoUserKillPid(uint64_t pid)
     return HoUserSyscall3(SYS_KILL_PID, pid, 0, 0);
 }
 
+static inline int64_t
+HoUserQuerySysinfo(uint64_t infoClass, void *buffer, uint64_t bufferSize)
+{
+    return HoUserSyscall3(SYS_QUERY_SYSINFO, infoClass, (uint64_t)(void *)buffer, bufferSize);
+}
+
 /*
  * Raw bootstrap-only helpers kept for the user_hello sentinel. They are not
  * part of the stable Ex-facing userspace ABI surface.
