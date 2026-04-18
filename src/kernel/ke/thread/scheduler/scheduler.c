@@ -619,7 +619,9 @@ KiSchedule(void)
     BOOT_CAPSULE *capsule = KeGetBootCapsule();
     capsule->CpuInfo.Tss.RSP0 = next->StackBase + next->StackSize;
 
+#if HO_ENABLE_SCHED_SWITCH_LOG
     klog(KLOG_LEVEL_DEBUG, "[SCHED] Switch %u -> %u\n", prev->ThreadId, next->ThreadId);
+#endif
 
     // Arm clock event for next deadline
     uint64_t nowNs = KiNowNs();
