@@ -11,7 +11,7 @@
 
 static const char gHshPrompt[] = "hsh> ";
 
-#if defined(HO_DEMO_TEST_DEMO_SHELL)
+#if defined(HO_DEMO_TEST_DEMO_SHELL) || defined(HO_DEMO_TEST_USER_FAULT)
 
 enum
 {
@@ -26,7 +26,7 @@ typedef struct HO_HSH_JOB
     BOOL Alive;
 } HO_HSH_JOB;
 
-static const char gHelpText[] = "help\nsysinfo\nmemmap\nps\nexit\ncalc\n& tick1s\nkill <pid>\n";
+static const char gHelpText[] = "help\nsysinfo\nmemmap\nps\nexit\ncalc\nfault_de\nfault_pf\n& tick1s\nkill <pid>\n";
 static const char gTick1sName[] = "tick1s";
 static const char gStartedPrefix[] = "[HSH] started pid=";
 static const char gStartedNamePrefix[] = " name=";
@@ -340,6 +340,38 @@ main(void)
         {
             int64_t pid =
                 HoUserSpawnBuiltin(KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_CALC, KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND);
+            if (pid < 0)
+            {
+                HoHshMustWriteLiteral(gSpawnFailed);
+                continue;
+            }
+
+            if (HoUserWaitPid((uint64_t)pid) < 0)
+                HoUserAbort();
+
+            continue;
+        }
+
+        if (HoHshLineEquals(line, (uint64_t)status, "fault_de"))
+        {
+            int64_t pid =
+                HoUserSpawnBuiltin(KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_FAULT_DE, KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND);
+            if (pid < 0)
+            {
+                HoHshMustWriteLiteral(gSpawnFailed);
+                continue;
+            }
+
+            if (HoUserWaitPid((uint64_t)pid) < 0)
+                HoUserAbort();
+
+            continue;
+        }
+
+        if (HoHshLineEquals(line, (uint64_t)status, "fault_pf"))
+        {
+            int64_t pid =
+                HoUserSpawnBuiltin(KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_FAULT_PF, KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND);
             if (pid < 0)
             {
                 HoHshMustWriteLiteral(gSpawnFailed);

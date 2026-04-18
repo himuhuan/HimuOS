@@ -141,7 +141,7 @@ USR_BUILDROOT := build/user$(if $(strip $(BUILD_FLAVOR)),/$(BUILD_FLAVOR),)
 USR_OBJDIR    := $(USR_BUILDROOT)/obj
 USR_BINDIR    := $(USR_BUILDROOT)/bin
 
-VALID_TEST_MODULES := schedule guard_wait owned_exit irql_wait irql_sleep irql_yield irql_exit pf_imported pf_guard pf_fixmap pf_heap kthread_pool_race user_hello user_caps user_dual user_input demo_shell list
+VALID_TEST_MODULES := schedule guard_wait owned_exit irql_wait irql_sleep irql_yield irql_exit pf_imported pf_guard pf_fixmap pf_heap kthread_pool_race user_hello user_caps user_dual user_input demo_shell user_fault list
 TEST_MODULE_GOALS  := $(filter-out test,$(MAKECMDGOALS))
 TEST_MODULE        := $(if $(strip $(TEST_MODULE_GOALS)),$(firstword $(TEST_MODULE_GOALS)),list)
 TEST_BUILD_FLAVOR  := test-$(TEST_MODULE)
@@ -163,14 +163,15 @@ TEST_DEFINE_user_caps := HO_DEMO_TEST_USER_CAPS
 TEST_DEFINE_user_dual := HO_DEMO_TEST_USER_DUAL
 TEST_DEFINE_user_input := HO_DEMO_TEST_USER_INPUT
 TEST_DEFINE_demo_shell := HO_DEMO_TEST_DEMO_SHELL
+TEST_DEFINE_user_fault := HO_DEMO_TEST_USER_FAULT
 
 ifneq ($(filter test,$(MAKECMDGOALS)),)
 ifneq ($(words $(TEST_MODULE_GOALS)),0)
 ifneq ($(words $(TEST_MODULE_GOALS)),1)
-$(error Usage: make test <module>. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap, kthread_pool_race, user_hello, user_caps, user_dual, user_input, demo_shell. Use `make test` or `make test list` to inspect supported modules)
+$(error Usage: make test <module>. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap, kthread_pool_race, user_hello, user_caps, user_dual, user_input, demo_shell, user_fault. Use `make test` or `make test list` to inspect supported modules)
 endif
 ifneq ($(filter $(TEST_MODULE),$(VALID_TEST_MODULES)), $(TEST_MODULE))
-$(error Unknown test module '$(TEST_MODULE)'. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap, kthread_pool_race, user_hello, user_caps, user_dual, user_input, demo_shell. Use `make test list` to inspect supported modules)
+$(error Unknown test module '$(TEST_MODULE)'. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap, kthread_pool_race, user_hello, user_caps, user_dual, user_input, demo_shell, user_fault. Use `make test list` to inspect supported modules)
 endif
 endif
 endif
@@ -255,6 +256,8 @@ SRCS_KERNEL_C := \
     src/kernel/demo/hsh_artifact_bridge.c               \
     src/kernel/demo/calc_artifact_bridge.c              \
     src/kernel/demo/tick1s_artifact_bridge.c            \
+    src/kernel/demo/fault_de_artifact_bridge.c          \
+    src/kernel/demo/fault_pf_artifact_bridge.c          \
     src/kernel/demo/user_hello_artifact_bridge.c        \
 	src/kernel/demo/user_hello.c                        \
     src/kernel/demo/user_dual.c                         \
@@ -350,6 +353,12 @@ SRCS_USER_CALC_C := \
 SRCS_USER_TICK1S_C := \
     src/user/tick1s/main.c
 
+SRCS_USER_FAULT_DE_C := \
+    src/user/fault_de/main.c
+
+SRCS_USER_FAULT_PF_C := \
+    src/user/fault_pf/main.c
+
 SRCS_USER_COMMON_S := \
     src/user/crt0.S
 
@@ -358,12 +367,16 @@ OBJS_USER_COUNTER_C := $(patsubst src/%.c,$(USR_OBJDIR)/%.o,$(SRCS_USER_COUNTER_
 OBJS_USER_HSH_C := $(patsubst src/%.c,$(USR_OBJDIR)/%.o,$(SRCS_USER_HSH_C))
 OBJS_USER_CALC_C := $(patsubst src/%.c,$(USR_OBJDIR)/%.o,$(SRCS_USER_CALC_C))
 OBJS_USER_TICK1S_C := $(patsubst src/%.c,$(USR_OBJDIR)/%.o,$(SRCS_USER_TICK1S_C))
+OBJS_USER_FAULT_DE_C := $(patsubst src/%.c,$(USR_OBJDIR)/%.o,$(SRCS_USER_FAULT_DE_C))
+OBJS_USER_FAULT_PF_C := $(patsubst src/%.c,$(USR_OBJDIR)/%.o,$(SRCS_USER_FAULT_PF_C))
 OBJS_USER_HELLO_S := $(patsubst src/%.S,$(USR_OBJDIR)/%.o,$(SRCS_USER_COMMON_S))
 OBJS_USER_HELLO   := $(OBJS_USER_HELLO_C) $(OBJS_USER_HELLO_S)
 OBJS_USER_COUNTER := $(OBJS_USER_COUNTER_C) $(OBJS_USER_HELLO_S)
 OBJS_USER_HSH     := $(OBJS_USER_HSH_C) $(OBJS_USER_HELLO_S)
 OBJS_USER_CALC    := $(OBJS_USER_CALC_C) $(OBJS_USER_HELLO_S)
 OBJS_USER_TICK1S  := $(OBJS_USER_TICK1S_C) $(OBJS_USER_HELLO_S)
+OBJS_USER_FAULT_DE := $(OBJS_USER_FAULT_DE_C) $(OBJS_USER_HELLO_S)
+OBJS_USER_FAULT_PF := $(OBJS_USER_FAULT_PF_C) $(OBJS_USER_HELLO_S)
 
 TARGET_USER_HELLO_ELF       := $(USR_BINDIR)/user_hello.elf
 TARGET_USER_HELLO_CODE_BIN  := $(USR_BINDIR)/user_hello.code.bin
@@ -390,6 +403,16 @@ TARGET_USER_TICK1S_CODE_BIN  := $(USR_BINDIR)/tick1s.code.bin
 TARGET_USER_TICK1S_CONST_BIN := $(USR_BINDIR)/tick1s.const.bin
 TARGET_USER_TICK1S           := $(TARGET_USER_TICK1S_ELF) $(TARGET_USER_TICK1S_CODE_BIN) $(TARGET_USER_TICK1S_CONST_BIN)
 
+TARGET_USER_FAULT_DE_ELF       := $(USR_BINDIR)/fault_de.elf
+TARGET_USER_FAULT_DE_CODE_BIN  := $(USR_BINDIR)/fault_de.code.bin
+TARGET_USER_FAULT_DE_CONST_BIN := $(USR_BINDIR)/fault_de.const.bin
+TARGET_USER_FAULT_DE           := $(TARGET_USER_FAULT_DE_ELF) $(TARGET_USER_FAULT_DE_CODE_BIN) $(TARGET_USER_FAULT_DE_CONST_BIN)
+
+TARGET_USER_FAULT_PF_ELF       := $(USR_BINDIR)/fault_pf.elf
+TARGET_USER_FAULT_PF_CODE_BIN  := $(USR_BINDIR)/fault_pf.code.bin
+TARGET_USER_FAULT_PF_CONST_BIN := $(USR_BINDIR)/fault_pf.const.bin
+TARGET_USER_FAULT_PF           := $(TARGET_USER_FAULT_PF_ELF) $(TARGET_USER_FAULT_PF_CODE_BIN) $(TARGET_USER_FAULT_PF_CONST_BIN)
+
 path_to_symbol = $(subst -,_,$(subst .,_,$(subst /,_,$(1))))
 
 TARGET_USER_HELLO_CODE_OBJ  := $(KRN_OBJDIR)/demo/user_hello.code.bin.o
@@ -402,11 +425,17 @@ TARGET_USER_CALC_CODE_OBJ     := $(KRN_OBJDIR)/demo/calc.code.bin.o
 TARGET_USER_CALC_CONST_OBJ    := $(KRN_OBJDIR)/demo/calc.const.bin.o
 TARGET_USER_TICK1S_CODE_OBJ   := $(KRN_OBJDIR)/demo/tick1s.code.bin.o
 TARGET_USER_TICK1S_CONST_OBJ  := $(KRN_OBJDIR)/demo/tick1s.const.bin.o
+TARGET_USER_FAULT_DE_CODE_OBJ := $(KRN_OBJDIR)/demo/fault_de.code.bin.o
+TARGET_USER_FAULT_DE_CONST_OBJ := $(KRN_OBJDIR)/demo/fault_de.const.bin.o
+TARGET_USER_FAULT_PF_CODE_OBJ := $(KRN_OBJDIR)/demo/fault_pf.code.bin.o
+TARGET_USER_FAULT_PF_CONST_OBJ := $(KRN_OBJDIR)/demo/fault_pf.const.bin.o
 OBJS_KERNEL_EMBEDDED          := $(TARGET_USER_HELLO_CODE_OBJ) $(TARGET_USER_HELLO_CONST_OBJ) \
                                  $(TARGET_USER_COUNTER_CODE_OBJ) $(TARGET_USER_COUNTER_CONST_OBJ) \
                                  $(TARGET_USER_HSH_CODE_OBJ) $(TARGET_USER_HSH_CONST_OBJ) \
                                  $(TARGET_USER_CALC_CODE_OBJ) $(TARGET_USER_CALC_CONST_OBJ) \
-                                 $(TARGET_USER_TICK1S_CODE_OBJ) $(TARGET_USER_TICK1S_CONST_OBJ)
+                                 $(TARGET_USER_TICK1S_CODE_OBJ) $(TARGET_USER_TICK1S_CONST_OBJ) \
+                                 $(TARGET_USER_FAULT_DE_CODE_OBJ) $(TARGET_USER_FAULT_DE_CONST_OBJ) \
+                                 $(TARGET_USER_FAULT_PF_CODE_OBJ) $(TARGET_USER_FAULT_PF_CONST_OBJ)
 OBJS_KERNEL                 := $(OBJS_KERNEL_C) $(OBJS_KERNEL_ASM) $(OBJS_KERNEL_EMBEDDED)
 
 USER_HELLO_CODE_BIN_SYMBOL_BASE  := _binary_$(call path_to_symbol,$(TARGET_USER_HELLO_CODE_BIN))
@@ -419,8 +448,12 @@ USER_CALC_CODE_BIN_SYMBOL_BASE     := _binary_$(call path_to_symbol,$(TARGET_USE
 USER_CALC_CONST_BIN_SYMBOL_BASE    := _binary_$(call path_to_symbol,$(TARGET_USER_CALC_CONST_BIN))
 USER_TICK1S_CODE_BIN_SYMBOL_BASE   := _binary_$(call path_to_symbol,$(TARGET_USER_TICK1S_CODE_BIN))
 USER_TICK1S_CONST_BIN_SYMBOL_BASE  := _binary_$(call path_to_symbol,$(TARGET_USER_TICK1S_CONST_BIN))
+USER_FAULT_DE_CODE_BIN_SYMBOL_BASE := _binary_$(call path_to_symbol,$(TARGET_USER_FAULT_DE_CODE_BIN))
+USER_FAULT_DE_CONST_BIN_SYMBOL_BASE := _binary_$(call path_to_symbol,$(TARGET_USER_FAULT_DE_CONST_BIN))
+USER_FAULT_PF_CODE_BIN_SYMBOL_BASE := _binary_$(call path_to_symbol,$(TARGET_USER_FAULT_PF_CODE_BIN))
+USER_FAULT_PF_CONST_BIN_SYMBOL_BASE := _binary_$(call path_to_symbol,$(TARGET_USER_FAULT_PF_CONST_BIN))
 
-.PHONY: all clean copy run efi install clean_code vmware_img kernel user debug run_iso test schedule user_hello user_caps user_dual user_input demo_shell list
+.PHONY: all clean copy run efi install clean_code vmware_img kernel user debug run_iso test schedule user_hello user_caps user_dual user_input demo_shell user_fault list
 
 all: efi kernel user
 
@@ -455,8 +488,8 @@ $(KRN_OBJDIR)/%.o: src/%.asm
 	@echo "ASM $<"
 	@nasm $(ASFLAGS) -o $@ $<
 
-user: $(TARGET_USER_HELLO) $(TARGET_USER_COUNTER) $(TARGET_USER_HSH) $(TARGET_USER_CALC) $(TARGET_USER_TICK1S)
-	@echo "User build complete: $(TARGET_USER_HELLO_ELF) $(TARGET_USER_COUNTER_ELF) $(TARGET_USER_HSH_ELF) $(TARGET_USER_CALC_ELF) $(TARGET_USER_TICK1S_ELF)"
+user: $(TARGET_USER_HELLO) $(TARGET_USER_COUNTER) $(TARGET_USER_HSH) $(TARGET_USER_CALC) $(TARGET_USER_TICK1S) $(TARGET_USER_FAULT_DE) $(TARGET_USER_FAULT_PF)
+	@echo "User build complete: $(TARGET_USER_HELLO_ELF) $(TARGET_USER_COUNTER_ELF) $(TARGET_USER_HSH_ELF) $(TARGET_USER_CALC_ELF) $(TARGET_USER_TICK1S_ELF) $(TARGET_USER_FAULT_DE_ELF) $(TARGET_USER_FAULT_PF_ELF)"
 
 $(TARGET_USER_HELLO_ELF): $(OBJS_USER_HELLO) src/user/user.ld
 	@mkdir -p $(dir $@)
@@ -529,6 +562,36 @@ $(TARGET_USER_TICK1S_CODE_BIN): $(TARGET_USER_TICK1S_ELF)
 	@$(OBJCOPY) -O binary --only-section=.text $< $@
 
 $(TARGET_USER_TICK1S_CONST_BIN): $(TARGET_USER_TICK1S_ELF)
+	@mkdir -p $(dir $@)
+	@echo "USER OBJCOPY $@"
+	@$(OBJCOPY) -O binary --only-section=.rodata $< $@
+
+$(TARGET_USER_FAULT_DE_ELF): $(OBJS_USER_FAULT_DE) src/user/user.ld
+	@mkdir -p $(dir $@)
+	@echo "USER LD $@"
+	@$(LD) -o $@ $(OBJS_USER_FAULT_DE) $(USER_LDFLAGS) -T src/user/user.ld -Map=$(USR_BINDIR)/fault_de.map
+
+$(TARGET_USER_FAULT_DE_CODE_BIN): $(TARGET_USER_FAULT_DE_ELF)
+	@mkdir -p $(dir $@)
+	@echo "USER OBJCOPY $@"
+	@$(OBJCOPY) -O binary --only-section=.text $< $@
+
+$(TARGET_USER_FAULT_DE_CONST_BIN): $(TARGET_USER_FAULT_DE_ELF)
+	@mkdir -p $(dir $@)
+	@echo "USER OBJCOPY $@"
+	@$(OBJCOPY) -O binary --only-section=.rodata $< $@
+
+$(TARGET_USER_FAULT_PF_ELF): $(OBJS_USER_FAULT_PF) src/user/user.ld
+	@mkdir -p $(dir $@)
+	@echo "USER LD $@"
+	@$(LD) -o $@ $(OBJS_USER_FAULT_PF) $(USER_LDFLAGS) -T src/user/user.ld -Map=$(USR_BINDIR)/fault_pf.map
+
+$(TARGET_USER_FAULT_PF_CODE_BIN): $(TARGET_USER_FAULT_PF_ELF)
+	@mkdir -p $(dir $@)
+	@echo "USER OBJCOPY $@"
+	@$(OBJCOPY) -O binary --only-section=.text $< $@
+
+$(TARGET_USER_FAULT_PF_CONST_BIN): $(TARGET_USER_FAULT_PF_ELF)
 	@mkdir -p $(dir $@)
 	@echo "USER OBJCOPY $@"
 	@$(OBJCOPY) -O binary --only-section=.rodata $< $@
@@ -623,6 +686,42 @@ $(TARGET_USER_TICK1S_CONST_OBJ): $(TARGET_USER_TICK1S_CONST_BIN)
 		--redefine-sym $(USER_TICK1S_CONST_BIN_SYMBOL_BASE)_end=gKiTick1sConstBytesEnd \
 		$@
 
+$(TARGET_USER_FAULT_DE_CODE_OBJ): $(TARGET_USER_FAULT_DE_CODE_BIN)
+	@mkdir -p $(dir $@)
+	@echo "BINOBJ $@"
+	@$(LD) -r -b binary -o $@ $<
+	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
+		--redefine-sym $(USER_FAULT_DE_CODE_BIN_SYMBOL_BASE)_start=gKiFaultDeCodeBytesStart \
+		--redefine-sym $(USER_FAULT_DE_CODE_BIN_SYMBOL_BASE)_end=gKiFaultDeCodeBytesEnd \
+		$@
+
+$(TARGET_USER_FAULT_DE_CONST_OBJ): $(TARGET_USER_FAULT_DE_CONST_BIN)
+	@mkdir -p $(dir $@)
+	@echo "BINOBJ $@"
+	@$(LD) -r -b binary -o $@ $<
+	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
+		--redefine-sym $(USER_FAULT_DE_CONST_BIN_SYMBOL_BASE)_start=gKiFaultDeConstBytesStart \
+		--redefine-sym $(USER_FAULT_DE_CONST_BIN_SYMBOL_BASE)_end=gKiFaultDeConstBytesEnd \
+		$@
+
+$(TARGET_USER_FAULT_PF_CODE_OBJ): $(TARGET_USER_FAULT_PF_CODE_BIN)
+	@mkdir -p $(dir $@)
+	@echo "BINOBJ $@"
+	@$(LD) -r -b binary -o $@ $<
+	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
+		--redefine-sym $(USER_FAULT_PF_CODE_BIN_SYMBOL_BASE)_start=gKiFaultPfCodeBytesStart \
+		--redefine-sym $(USER_FAULT_PF_CODE_BIN_SYMBOL_BASE)_end=gKiFaultPfCodeBytesEnd \
+		$@
+
+$(TARGET_USER_FAULT_PF_CONST_OBJ): $(TARGET_USER_FAULT_PF_CONST_BIN)
+	@mkdir -p $(dir $@)
+	@echo "BINOBJ $@"
+	@$(LD) -r -b binary -o $@ $<
+	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
+		--redefine-sym $(USER_FAULT_PF_CONST_BIN_SYMBOL_BASE)_start=gKiFaultPfConstBytesStart \
+		--redefine-sym $(USER_FAULT_PF_CONST_BIN_SYMBOL_BASE)_end=gKiFaultPfConstBytesEnd \
+		$@
+
 $(USR_OBJDIR)/%.o: src/%.c
 	@mkdir -p $(dir $@)
 	@echo "USER CC $<"
@@ -682,7 +781,9 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  user_hello  - compiled minimal userspace hello regression profile"
 	@echo "  user_caps   - staged bootstrap stdout capability pilot regression"
 	@echo "  user_dual   - launch compiled user_hello and user_counter together"
+	@echo "  user_input  - bounded demo-shell input profile (use qemu_capture host+tcg with sendkeys)"
 	@echo "  demo_shell  - P2 demo-shell control-plane regression profile"
+	@echo "  user_fault  - demo-shell child fault regression profile"
 	@echo "Recommended explicit workflow:"
 	@echo "  make clean"
 	@echo "  # schedule"
@@ -720,6 +821,17 @@ ifeq ($(TEST_MODULE),list)
 	@echo "      QEMU_CAPTURE_MODE=tcg QEMU_SENDKEY_PLAN=scripts/input_plans/demo_shell.plan \\"
 	@echo "      QEMU_CAPTURE_EXIT_ON='[HSH] HSH exited' \\"
 	@echo "      bash scripts/qemu_capture.sh 25 /tmp/himuos-demo-shell-tcg.log"
+	@echo "  # user_fault (child #DE/#PF recovery: collect both host and tcg evidence)"
+	@echo "  make clean"
+	@echo "  bear -- make all BUILD_FLAVOR=test-user_fault HO_DEMO_TEST_NAME=user_fault HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_FAULT"
+	@echo "  BUILD_FLAVOR=test-user_fault HO_DEMO_TEST_NAME=user_fault HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_FAULT \\"
+	@echo "      QEMU_CAPTURE_MODE=host QEMU_SENDKEY_PLAN=scripts/input_plans/user_fault.plan \\"
+	@echo "      QEMU_CAPTURE_EXIT_ON='[HSH] HSH exited' \\"
+	@echo "      bash scripts/qemu_capture.sh 25 /tmp/himuos-user-fault-host.log"
+	@echo "  BUILD_FLAVOR=test-user_fault HO_DEMO_TEST_NAME=user_fault HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_FAULT \\"
+	@echo "      QEMU_CAPTURE_MODE=tcg QEMU_SENDKEY_PLAN=scripts/input_plans/user_fault.plan \\"
+	@echo "      QEMU_CAPTURE_EXIT_ON='[HSH] HSH exited' \\"
+	@echo "      bash scripts/qemu_capture.sh 25 /tmp/himuos-user-fault-tcg.log"
 	@echo "Usage:"
 	@echo "  make test schedule   # run the scheduler demo suite"
 	@echo "  make test irql_wait  # run a dispatch-guard misuse panic regression"
@@ -730,13 +842,14 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  make test user_dual  # select the dual compiled-userspace bring-up profile (use qemu_capture host+tcg)"
 	@echo "  make test user_input # select the bounded demo-shell input profile (use qemu_capture host+tcg with sendkeys)"
 	@echo "  make test demo_shell # select the P2 demo-shell control-plane profile (use qemu_capture host+tcg with sendkeys)"
+	@echo "  make test user_fault # select the demo-shell child fault profile (use qemu_capture host+tcg with sendkeys)"
 	@echo "  make test            # list available test modules"
 else
 	@echo "Starting test module: $(TEST_MODULE)"
 	@$(MAKE) run BUILD_FLAVOR=$(TEST_BUILD_FLAVOR) HO_DEMO_TEST_NAME=$(TEST_MODULE) HO_DEMO_TEST_DEFINE=$(TEST_DEFINE_$(TEST_MODULE))
 endif
 
-schedule user_hello user_caps user_dual user_input demo_shell list:
+schedule user_hello user_caps user_dual user_input demo_shell user_fault list:
 	@:
 		
 debug: copy

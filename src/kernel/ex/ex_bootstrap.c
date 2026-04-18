@@ -100,6 +100,10 @@ KiGetBootstrapProgramName(uint32_t programId)
         return "calc";
     case KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_TICK1S:
         return "tick1s";
+    case KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_FAULT_DE:
+        return "fault_de";
+    case KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_FAULT_PF:
+        return "fault_pf";
     default:
         return "user";
     }

@@ -194,6 +194,12 @@ KiResolveBuiltinArtifacts(uint32_t programId, KI_USER_EMBEDDED_ARTIFACTS *artifa
     case KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_TICK1S:
         KiTick1sGetEmbeddedArtifacts(artifacts);
         return EC_SUCCESS;
+    case KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_FAULT_DE:
+        KiFaultDeGetEmbeddedArtifacts(artifacts);
+        return EC_SUCCESS;
+    case KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_FAULT_PF:
+        KiFaultPfGetEmbeddedArtifacts(artifacts);
+        return EC_SUCCESS;
     default:
         return EC_ILLEGAL_ARGUMENT;
     }
@@ -397,6 +403,11 @@ KeDemoShellWaitPid(uint32_t pid)
     if (childEntry.Foreground && childEntry.RestoreForegroundOwnerThreadId != 0U)
     {
         status = KeInputSetForegroundOwnerThreadId(childEntry.RestoreForegroundOwnerThreadId);
+        if (status == EC_SUCCESS)
+        {
+            klog(KLOG_LEVEL_INFO, "[DEMOSHELL] foreground restored pid=%u owner=%u\n", pid,
+                 childEntry.RestoreForegroundOwnerThreadId);
+        }
     }
 
     KiReleaseChildSlot(slotIndex);
@@ -445,6 +456,9 @@ KeDemoShellKillPid(uint32_t pid)
         status = KeInputSetForegroundOwnerThreadId(childEntry.RestoreForegroundOwnerThreadId);
         if (status != EC_SUCCESS)
             return status;
+
+        klog(KLOG_LEVEL_INFO, "[DEMOSHELL] foreground restored pid=%u owner=%u\n", pid,
+             childEntry.RestoreForegroundOwnerThreadId);
     }
 
     KiReleaseChildSlot(slotIndex);

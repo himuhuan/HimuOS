@@ -1,0 +1,46 @@
+# Drive the dedicated user_fault profile through two foreground calc crashes:
+# first a user-mode #DE, then a user-mode #PF, proving hsh recovery both times.
+wait_for hsh> 
+wait 0.2
+text calc
+key ret
+
+wait_for calc> 
+capture calc_de_pid \[DEMOSHELL\] SYS_SPAWN_BUILTIN succeeded thread=\d+ program=2 flags=1 pid=(\d+)
+wait 0.2
+text fault-de
+key ret
+
+wait_for [CALC] triggering fault-de
+wait_for [USERFAULT] #DE
+wait_for [USERBOOT] bootstrap teardown complete
+wait_for [DEMOSHELL] foreground restored pid={{calc_de_pid}}
+capture calc_de_wait \[DEMOSHELL\] SYS_WAIT_PID succeeded thread=\d+ pid=({{calc_de_pid}})
+wait_for hsh> 
+
+text calc
+key ret
+
+wait_for calc> 
+capture calc_pf_pid \[DEMOSHELL\] SYS_SPAWN_BUILTIN succeeded thread=\d+ program=2 flags=1 pid=(\d+)
+wait 0.2
+text fault-pf
+key ret
+
+wait_for [CALC] triggering fault-pf
+wait_for [USERFAULT] #PF
+wait_for [USERFAULT] CR2=
+wait_for [USERBOOT] bootstrap teardown complete
+wait_for [DEMOSHELL] foreground restored pid={{calc_pf_pid}}
+capture calc_pf_wait \[DEMOSHELL\] SYS_WAIT_PID succeeded thread=\d+ pid=({{calc_pf_pid}})
+wait_for hsh> 
+
+text ps
+key ret
+
+wait_for PID  STATE
+wait_for hsh> 
+text exit
+key ret
+
+wait_for [HSH] HSH exited

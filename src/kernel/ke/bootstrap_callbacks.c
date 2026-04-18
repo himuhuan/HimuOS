@@ -13,24 +13,25 @@ static KE_BOOTSTRAP_THREAD_OWNERSHIP_QUERY_FN gBootstrapThreadOwnershipQueryCall
 static KE_BOOTSTRAP_THREAD_ROOT_QUERY_FN gBootstrapThreadRootQueryCallback = NULL;
 static KE_BOOTSTRAP_FINALIZE_FN gBootstrapFinalizeCallback = NULL;
 static KE_BOOTSTRAP_TIMER_OBSERVE_FN gBootstrapTimerObserveCallback = NULL;
+static KE_BOOTSTRAP_USER_EXCEPTION_FN gBootstrapUserExceptionCallback = NULL;
 
 HO_KERNEL_API HO_STATUS
 KeRegisterBootstrapCallbacks(KE_BOOTSTRAP_ENTER_FN enterFn,
                              KE_BOOTSTRAP_THREAD_OWNERSHIP_QUERY_FN threadOwnershipQueryFn,
                              KE_BOOTSTRAP_THREAD_ROOT_QUERY_FN threadRootQueryFn,
                              KE_BOOTSTRAP_FINALIZE_FN finalizeFn,
-                             KE_BOOTSTRAP_TIMER_OBSERVE_FN timerObserveFn)
+                             KE_BOOTSTRAP_TIMER_OBSERVE_FN timerObserveFn,
+                             KE_BOOTSTRAP_USER_EXCEPTION_FN userExceptionFn)
 {
     if (enterFn == NULL || threadOwnershipQueryFn == NULL || threadRootQueryFn == NULL || finalizeFn == NULL ||
-        timerObserveFn == NULL)
+        timerObserveFn == NULL || userExceptionFn == NULL)
     {
         return EC_ILLEGAL_ARGUMENT;
     }
 
     if (gBootstrapEnterCallback != NULL || gBootstrapThreadOwnershipQueryCallback != NULL ||
-        gBootstrapThreadRootQueryCallback != NULL ||
-        gBootstrapFinalizeCallback != NULL ||
-        gBootstrapTimerObserveCallback != NULL)
+        gBootstrapThreadRootQueryCallback != NULL || gBootstrapFinalizeCallback != NULL ||
+        gBootstrapTimerObserveCallback != NULL || gBootstrapUserExceptionCallback != NULL)
     {
         return EC_INVALID_STATE;
     }
@@ -40,6 +41,7 @@ KeRegisterBootstrapCallbacks(KE_BOOTSTRAP_ENTER_FN enterFn,
     gBootstrapThreadRootQueryCallback = threadRootQueryFn;
     gBootstrapFinalizeCallback = finalizeFn;
     gBootstrapTimerObserveCallback = timerObserveFn;
+    gBootstrapUserExceptionCallback = userExceptionFn;
     return EC_SUCCESS;
 }
 
@@ -71,4 +73,10 @@ KE_BOOTSTRAP_TIMER_OBSERVE_FN
 KiGetBootstrapTimerObserveCallback(void)
 {
     return gBootstrapTimerObserveCallback;
+}
+
+KE_BOOTSTRAP_USER_EXCEPTION_FN
+KiGetBootstrapUserExceptionCallback(void)
+{
+    return gBootstrapUserExceptionCallback;
 }

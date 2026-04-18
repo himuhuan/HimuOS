@@ -11,7 +11,7 @@
 
 static const char gCalcPrompt[] = "calc> ";
 
-#if defined(HO_DEMO_TEST_DEMO_SHELL)
+#if defined(HO_DEMO_TEST_DEMO_SHELL) || defined(HO_DEMO_TEST_USER_FAULT)
 
 enum
 {
@@ -24,6 +24,10 @@ static const char gCalcErrorInvalidToken[] = "invalid_token";
 static const char gCalcErrorStackUnderflow[] = "stack_underflow";
 static const char gCalcErrorStackOverflow[] = "stack_overflow";
 static const char gCalcErrorDivideByZero[] = "divide_by_zero";
+static const char gCalcFaultDivideCommand[] = "fault-de";
+static const char gCalcFaultPageCommand[] = "fault-pf";
+static const char gCalcFaultDivideInfo[] = "[CALC] triggering fault-de\n";
+static const char gCalcFaultPageInfo[] = "[CALC] triggering fault-pf\n";
 
 static uint64_t
 HoCalcStringLength(const char *value)
@@ -65,7 +69,23 @@ HoCalcReadLineBlocking(char *buffer, uint64_t capacity)
     }
 }
 
-#if defined(HO_DEMO_TEST_DEMO_SHELL)
+#if defined(HO_DEMO_TEST_DEMO_SHELL) || defined(HO_DEMO_TEST_USER_FAULT)
+
+static BOOL
+HoCalcLineEquals(const char *line, uint64_t length, const char *literal)
+{
+    uint64_t literalLength = HoCalcStringLength(literal);
+    if (length != literalLength)
+        return FALSE;
+
+    for (uint64_t index = 0; index < length; ++index)
+    {
+        if (line[index] != literal[index])
+            return FALSE;
+    }
+
+    return TRUE;
+}
 
 static void
 HoCalcAppendLiteral(char *buffer, uint64_t *offset, uint64_t capacity, const char *literal)
@@ -249,6 +269,32 @@ HoCalcApplyOperator(int64_t *stack, uint32_t *stackDepth, char operatorToken)
     return TRUE;
 }
 
+static HO_NORETURN void
+HoCalcTriggerDivideFault(void)
+{
+    __asm__ volatile("xor %%rdx, %%rdx\n"
+                     "mov $1, %%rax\n"
+                     "xor %%rcx, %%rcx\n"
+                     "idivq %%rcx\n"
+                     :
+                     :
+                     : "rax", "rcx", "rdx", "cc", "memory");
+
+    HoUserAbort();
+    __builtin_unreachable();
+}
+
+static HO_NORETURN void
+HoCalcTriggerPageFault(void)
+{
+    volatile const uint8_t *guard = (volatile const uint8_t *)HoUserBootstrapStackGuardBase();
+    volatile uint8_t value = *guard;
+
+    (void)value;
+    HoUserAbort();
+    __builtin_unreachable();
+}
+
 int
 main(void)
 {
@@ -268,6 +314,18 @@ main(void)
 
         if (status == 1 && line[0] == 'q')
             HoUserExit(0);
+
+        if (HoCalcLineEquals(line, (uint64_t)status, gCalcFaultDivideCommand))
+        {
+            HoCalcMustWriteLiteral(gCalcFaultDivideInfo);
+            HoCalcTriggerDivideFault();
+        }
+
+        if (HoCalcLineEquals(line, (uint64_t)status, gCalcFaultPageCommand))
+        {
+            HoCalcMustWriteLiteral(gCalcFaultPageInfo);
+            HoCalcTriggerPageFault();
+        }
 
         if (status == 1 && (line[0] == '+' || line[0] == '-' || line[0] == '*' || line[0] == '/'))
         {
