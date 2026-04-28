@@ -63,7 +63,7 @@
 
 ## 4. PMM：Ke 层的物理页资源边界
 
-`KE_PMM` 的实现位于 [`src/kernel/ke/pmm/pmm_boot_init.c`](/home/liuhuan/projects/HimuOS/src/kernel/ke/pmm/pmm_boot_init.c)，它基于 Boot 交付的 EFI memory map 建立位图型物理页管理器。
+`KE_PMM` 的实现位于 `src/kernel/ke/pmm/pmm_boot_init.c`，它基于 Boot 交付的 EFI memory map 建立位图型物理页管理器。
 
 ### 4.1 输入整理
 
@@ -108,7 +108,7 @@ PMM 的 bitmap 元数据本身也需要落在物理页上。当前实现会：
 
 ## 5. Imported kernel address space：把 Boot 页表提升为 Ke 对象
 
-`KeImportKernelAddressSpace()` 实现在 [`src/kernel/ke/mm/address_space.c`](/home/liuhuan/projects/HimuOS/src/kernel/ke/mm/address_space.c)。
+`KeImportKernelAddressSpace()` 实现在 `src/kernel/ke/mm/address_space.c`。
 
 它做的事情不是“重建页表”，而是“认领现有活动根页表”：
 
@@ -163,7 +163,7 @@ PMM 的 bitmap 元数据本身也需要落在物理页上。当前实现会：
 
 ## 7. KE_KVA：Ke 层虚拟地址管理器
 
-`KE_KVA` 实现在 [`src/kernel/ke/mm/kva.c`](/home/liuhuan/projects/HimuOS/src/kernel/ke/mm/kva.c)，它是本分支最核心的新增。
+`KE_KVA` 实现在 `src/kernel/ke/mm/kva.c`，它是本分支最核心的新增。
 
 它解决的不是“有没有页”，而是“内核里哪些稳定虚拟地址应由谁管理”。
 
@@ -281,7 +281,7 @@ KVA 的内部账本由两部分组成：
 
 ### 10.1 KePool
 
-[`src/kernel/ke/mm/pool.c`](/home/liuhuan/projects/HimuOS/src/kernel/ke/mm/pool.c) 的关键变化是：对象池扩容不再直接走 `KePmmAllocPages()`，而是改为走 `KeHeapAllocPages(1)`。
+`src/kernel/ke/mm/pool.c` 的关键变化是：对象池扩容不再直接走 `KePmmAllocPages()`，而是改为走 `KeHeapAllocPages(1)`。
 
 这意味着：
 
@@ -293,7 +293,7 @@ KVA 的内部账本由两部分组成：
 
 ### 10.2 KTHREAD 栈
 
-[`src/kernel/ke/thread/kthread.c`](/home/liuhuan/projects/HimuOS/src/kernel/ke/thread/kthread.c) 中，线程栈也已经切到 KVA：
+`src/kernel/ke/thread/kthread.c` 中，线程栈也已经切到 KVA：
 
 1. 在线程创建时，从 stack arena 分配 `usable = KE_THREAD_STACK_PAGES`、`guardLower = 1` 的 range。
 2. 用 `KeKvaMapOwnedPages()` 给 usable 页建立物理 backing。
