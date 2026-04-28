@@ -2,29 +2,52 @@
  * HimuOperatingSystem
  *
  * File: ex/object.c
- * Description: Ex bootstrap object headers and embedded pilot objects.
+ * Description: Executive Lite object headers and embedded pilot objects.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
 #include "ex_bootstrap_internal.h"
 
+static HO_STATUS KiDestroyStdoutServiceObject(EX_OBJECT_HEADER *objectHeader);
+static HO_STATUS KiDestroyWaitableObject(EX_OBJECT_HEADER *objectHeader);
+
+BOOL
+ExObjectIsValidType(EX_OBJECT_TYPE type)
+{
+    switch (type)
+    {
+    case EX_OBJECT_TYPE_PROCESS:
+    case EX_OBJECT_TYPE_THREAD:
+    case EX_OBJECT_TYPE_CONSOLE:
+    case EX_OBJECT_TYPE_WAITABLE:
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
 void
-ExBootstrapInitializeObjectHeader(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE type)
+ExObjectInitializeHeader(EX_OBJECT_HEADER *header,
+                         EX_OBJECT_TYPE type,
+                         EX_OBJECT_FLAGS flags,
+                         EX_OBJECT_DESTROY_ROUTINE destroyRoutine)
 {
     if (header == NULL)
         return;
 
     header->Type = type;
     header->ReferenceCount = 1;
+    header->Flags = flags;
+    header->DestroyRoutine = destroyRoutine;
 }
 
 HO_STATUS
-ExBootstrapRetainObject(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE expectedType)
+ExObjectRetain(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE expectedType)
 {
     if (header == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (header->Type != expectedType || header->ReferenceCount == 0)
+    if (!ExObjectIsValidType(expectedType) || header->Type != expectedType || header->ReferenceCount == 0)
         return EC_INVALID_STATE;
 
     header->ReferenceCount++;
@@ -32,17 +55,38 @@ ExBootstrapRetainObject(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE expectedType)
 }
 
 HO_STATUS
-ExBootstrapReleaseObject(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE expectedType, uint32_t *remainingReferences)
+ExObjectRelease(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE expectedType, uint32_t *remainingReferences)
 {
     if (header == NULL || remainingReferences == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (header->Type != expectedType || header->ReferenceCount == 0)
+    if (!ExObjectIsValidType(expectedType) || header->Type != expectedType || header->ReferenceCount == 0)
         return EC_INVALID_STATE;
 
     header->ReferenceCount--;
     *remainingReferences = header->ReferenceCount;
+    if (header->ReferenceCount == 0 && header->DestroyRoutine != NULL)
+        return header->DestroyRoutine(header);
+
     return EC_SUCCESS;
+}
+
+void
+ExBootstrapInitializeObjectHeader(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE type)
+{
+    ExObjectInitializeHeader(header, type, EX_OBJECT_FLAG_NONE, NULL);
+}
+
+HO_STATUS
+ExBootstrapRetainObject(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE expectedType)
+{
+    return ExObjectRetain(header, expectedType);
+}
+
+HO_STATUS
+ExBootstrapReleaseObject(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE expectedType, uint32_t *remainingReferences)
+{
+    return ExObjectRelease(header, expectedType, remainingReferences);
 }
 
 void
@@ -51,7 +95,8 @@ ExBootstrapInitializeStdoutServiceObject(EX_PROCESS *process)
     if (process == NULL)
         return;
 
-    ExBootstrapInitializeObjectHeader(&process->StdoutService.Header, EX_OBJECT_TYPE_STDOUT_SERVICE);
+    ExObjectInitializeHeader(&process->StdoutService.Header, EX_OBJECT_TYPE_CONSOLE, EX_OBJECT_FLAG_NONE,
+                             KiDestroyStdoutServiceObject);
     process->StdoutService.Owner = process;
 }
 
@@ -63,8 +108,7 @@ ExBootstrapReleaseStdoutServiceOwner(EX_PROCESS *process)
     if (process == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    HO_STATUS status =
-        ExBootstrapReleaseObject(&process->StdoutService.Header, EX_OBJECT_TYPE_STDOUT_SERVICE, &remainingReferences);
+    HO_STATUS status = ExObjectRelease(&process->StdoutService.Header, EX_OBJECT_TYPE_CONSOLE, &remainingReferences);
     if (status != EC_SUCCESS)
         return status;
 
@@ -77,7 +121,8 @@ ExBootstrapInitializeWaitableObject(EX_PROCESS *process)
     if (process == NULL)
         return;
 
-    ExBootstrapInitializeObjectHeader(&process->WaitObject.Header, EX_OBJECT_TYPE_WAITABLE);
+    ExObjectInitializeHeader(&process->WaitObject.Header, EX_OBJECT_TYPE_WAITABLE, EX_OBJECT_FLAG_NONE,
+                             KiDestroyWaitableObject);
     process->WaitObject.Owner = process;
     process->WaitObject.Dispatcher = NULL;
     process->WaitObject.CompanionThread = NULL;
@@ -91,10 +136,27 @@ ExBootstrapReleaseWaitableObjectOwner(EX_PROCESS *process)
     if (process == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    HO_STATUS status =
-        ExBootstrapReleaseObject(&process->WaitObject.Header, EX_OBJECT_TYPE_WAITABLE, &remainingReferences);
+    HO_STATUS status = ExObjectRelease(&process->WaitObject.Header, EX_OBJECT_TYPE_WAITABLE, &remainingReferences);
     if (status != EC_SUCCESS)
         return status;
 
     return remainingReferences == 0 ? EC_SUCCESS : EC_INVALID_STATE;
+}
+
+static HO_STATUS
+KiDestroyStdoutServiceObject(EX_OBJECT_HEADER *objectHeader)
+{
+    if (objectHeader == NULL || objectHeader->Type != EX_OBJECT_TYPE_CONSOLE)
+        return EC_ILLEGAL_ARGUMENT;
+
+    return EC_SUCCESS;
+}
+
+static HO_STATUS
+KiDestroyWaitableObject(EX_OBJECT_HEADER *objectHeader)
+{
+    if (objectHeader == NULL || objectHeader->Type != EX_OBJECT_TYPE_WAITABLE)
+        return EC_ILLEGAL_ARGUMENT;
+
+    return ExBootstrapCleanupWaitableBacking(CONTAINING_RECORD(objectHeader, EX_WAITABLE_OBJECT, Header));
 }

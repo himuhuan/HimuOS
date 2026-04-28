@@ -219,7 +219,7 @@ KiDestroyBootstrapWrapperObjects(KTHREAD *thread)
         process = exThread->Process;
 
     if (process != NULL)
-        status = ExBootstrapCloseAllPrivateHandles(process);
+        status = ExHandleCloseAll(process);
 
     if (exThread != NULL)
     {

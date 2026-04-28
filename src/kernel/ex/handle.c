@@ -2,7 +2,7 @@
  * HimuOperatingSystem
  *
  * File: ex/handle.c
- * Description: Ex bootstrap private handle table and rights checks.
+ * Description: Executive Lite process-owned handle table and rights checks.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
@@ -10,51 +10,50 @@
 
 #include <libc/string.h>
 
-#define EX_PRIVATE_HANDLE_INDEX_BITS      8u
-#define EX_PRIVATE_HANDLE_INDEX_MASK      ((EX_PRIVATE_HANDLE)0x000000FFu)
-#define EX_PRIVATE_HANDLE_GENERATION_MASK ((uint32_t)0x00FFFFFFu)
+#define EX_HANDLE_INDEX_BITS      8u
+#define EX_HANDLE_INDEX_MASK      ((EX_HANDLE)0x000000FFu)
+#define EX_HANDLE_GENERATION_MASK ((uint32_t)0x00FFFFFFu)
 
-#if EX_PRIVATE_HANDLE_TABLE_CAPACITY > 0xFFu
-#error EX_PRIVATE_HANDLE_TABLE_CAPACITY exceeds the internal handle encoding range.
+#if EX_MAX_HANDLES_PER_PROCESS > 0xFFu
+#error EX_MAX_HANDLES_PER_PROCESS exceeds the internal handle encoding range.
 #endif
 
 static uint32_t
-KiAdvancePrivateHandleGeneration(uint32_t generation)
+KiAdvanceHandleGeneration(uint32_t generation)
 {
-    generation = (generation + 1u) & EX_PRIVATE_HANDLE_GENERATION_MASK;
+    generation = (generation + 1u) & EX_HANDLE_GENERATION_MASK;
     if (generation == 0)
         generation = 1u;
 
     return generation;
 }
 
-static EX_PRIVATE_HANDLE
-KiEncodePrivateHandle(uint32_t slotIndex, uint32_t generation)
+static EX_HANDLE
+KiEncodeHandle(uint32_t slotIndex, uint32_t generation)
 {
-    if (slotIndex >= EX_PRIVATE_HANDLE_TABLE_CAPACITY || generation == 0)
-        return EX_PRIVATE_HANDLE_INVALID;
+    if (slotIndex >= EX_MAX_HANDLES_PER_PROCESS || generation == 0)
+        return EX_HANDLE_INVALID;
 
-    return (EX_PRIVATE_HANDLE)((((EX_PRIVATE_HANDLE)generation) << EX_PRIVATE_HANDLE_INDEX_BITS) |
-                               (EX_PRIVATE_HANDLE)(slotIndex + 1u));
+    return (EX_HANDLE)((((EX_HANDLE)generation) << EX_HANDLE_INDEX_BITS) | (EX_HANDLE)(slotIndex + 1u));
 }
 
 static BOOL
-KiDecodePrivateHandle(EX_PRIVATE_HANDLE handle, uint32_t *slotIndex, uint32_t *generation)
+KiDecodeHandle(EX_HANDLE handle, uint32_t *slotIndex, uint32_t *generation)
 {
-    EX_PRIVATE_HANDLE encodedIndex = 0;
+    EX_HANDLE encodedIndex = 0;
     uint32_t decodedGeneration = 0;
 
-    if (slotIndex == NULL || generation == NULL || handle == EX_PRIVATE_HANDLE_INVALID)
+    if (slotIndex == NULL || generation == NULL || handle == EX_HANDLE_INVALID)
         return FALSE;
 
-    encodedIndex = handle & EX_PRIVATE_HANDLE_INDEX_MASK;
-    decodedGeneration = (uint32_t)(handle >> EX_PRIVATE_HANDLE_INDEX_BITS) & EX_PRIVATE_HANDLE_GENERATION_MASK;
+    encodedIndex = handle & EX_HANDLE_INDEX_MASK;
+    decodedGeneration = (uint32_t)(handle >> EX_HANDLE_INDEX_BITS) & EX_HANDLE_GENERATION_MASK;
 
     if (encodedIndex == 0 || decodedGeneration == 0)
         return FALSE;
 
     encodedIndex--;
-    if (encodedIndex >= EX_PRIVATE_HANDLE_TABLE_CAPACITY)
+    if (encodedIndex >= EX_MAX_HANDLES_PER_PROCESS)
         return FALSE;
 
     *slotIndex = (uint32_t)encodedIndex;
@@ -62,15 +61,15 @@ KiDecodePrivateHandle(EX_PRIVATE_HANDLE handle, uint32_t *slotIndex, uint32_t *g
     return TRUE;
 }
 
-static EX_PRIVATE_HANDLE_SLOT *
-KiLookupPrivateHandleSlot(EX_PROCESS *process, EX_PRIVATE_HANDLE handle, uint32_t *generation)
+static EX_HANDLE_SLOT *
+KiLookupHandleSlot(EX_PROCESS *process, EX_HANDLE handle, uint32_t *generation)
 {
     uint32_t slotIndex = 0;
 
     if (process == NULL || generation == NULL)
         return NULL;
 
-    if (!KiDecodePrivateHandle(handle, &slotIndex, generation))
+    if (!KiDecodeHandle(handle, &slotIndex, generation))
         return NULL;
 
     return &process->HandleTable.Slots[slotIndex];
@@ -82,11 +81,10 @@ KiRetainHandleObject(EX_OBJECT_HEADER *objectHeader)
     if (objectHeader == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (objectHeader->Type != EX_OBJECT_TYPE_PROCESS && objectHeader->Type != EX_OBJECT_TYPE_THREAD &&
-        objectHeader->Type != EX_OBJECT_TYPE_STDOUT_SERVICE && objectHeader->Type != EX_OBJECT_TYPE_WAITABLE)
+    if (!ExObjectIsValidType(objectHeader->Type))
         return EC_INVALID_STATE;
 
-    return ExBootstrapRetainObject(objectHeader, objectHeader->Type);
+    return ExObjectRetain(objectHeader, objectHeader->Type);
 }
 
 static HO_STATUS
@@ -101,17 +99,15 @@ KiReleaseHandleObject(EX_OBJECT_HEADER *objectHeader)
         return ExBootstrapReleaseProcess(CONTAINING_RECORD(objectHeader, EX_PROCESS, Header));
     case EX_OBJECT_TYPE_THREAD:
         return ExBootstrapReleaseThread(CONTAINING_RECORD(objectHeader, EX_THREAD, Header));
-    case EX_OBJECT_TYPE_STDOUT_SERVICE: {
-        EX_STDOUT_SERVICE *stdoutService = CONTAINING_RECORD(objectHeader, EX_STDOUT_SERVICE, Header);
+    case EX_OBJECT_TYPE_CONSOLE: {
         uint32_t remainingReferences = 0;
 
-        (void)stdoutService;
-        return ExBootstrapReleaseObject(objectHeader, EX_OBJECT_TYPE_STDOUT_SERVICE, &remainingReferences);
+        return ExObjectRelease(objectHeader, EX_OBJECT_TYPE_CONSOLE, &remainingReferences);
     }
     case EX_OBJECT_TYPE_WAITABLE: {
         uint32_t remainingReferences = 0;
 
-        return ExBootstrapReleaseObject(objectHeader, EX_OBJECT_TYPE_WAITABLE, &remainingReferences);
+        return ExObjectRelease(objectHeader, EX_OBJECT_TYPE_WAITABLE, &remainingReferences);
     }
     default:
         return EC_INVALID_STATE;
@@ -119,31 +115,30 @@ KiReleaseHandleObject(EX_OBJECT_HEADER *objectHeader)
 }
 
 static HO_STATUS
-KiValidateClosePrivateHandleSlot(const EX_PRIVATE_HANDLE_SLOT *slot)
+KiValidateCloseHandleSlot(const EX_HANDLE_SLOT *slot)
 {
     EX_OBJECT_HEADER *objectHeader = NULL;
 
     if (slot == NULL || slot->Object == NULL)
         return EC_INVALID_STATE;
 
-    if ((slot->Rights & EX_PRIVATE_HANDLE_RIGHT_CLOSE) != EX_PRIVATE_HANDLE_RIGHT_CLOSE)
+    if ((slot->Rights & EX_HANDLE_RIGHT_CLOSE) != EX_HANDLE_RIGHT_CLOSE)
         return EC_INVALID_STATE;
 
     objectHeader = slot->Object;
     if (ExBootstrapIsRuntimeAliasObject(objectHeader))
         return EC_INVALID_STATE;
 
-    if (objectHeader->Type != EX_OBJECT_TYPE_PROCESS && objectHeader->Type != EX_OBJECT_TYPE_THREAD &&
-        objectHeader->Type != EX_OBJECT_TYPE_STDOUT_SERVICE && objectHeader->Type != EX_OBJECT_TYPE_WAITABLE)
+    if (!ExObjectIsValidType(objectHeader->Type))
         return EC_INVALID_STATE;
 
     return EC_SUCCESS;
 }
 
 static void
-KiInvalidateObjectSelfHandleIfMatch(EX_OBJECT_HEADER *objectHeader, EX_PRIVATE_HANDLE handle)
+KiInvalidateObjectSelfHandleIfMatch(EX_OBJECT_HEADER *objectHeader, EX_HANDLE handle)
 {
-    if (objectHeader == NULL || handle == EX_PRIVATE_HANDLE_INVALID)
+    if (objectHeader == NULL || handle == EX_HANDLE_INVALID)
         return;
 
     switch (objectHeader->Type)
@@ -151,25 +146,25 @@ KiInvalidateObjectSelfHandleIfMatch(EX_OBJECT_HEADER *objectHeader, EX_PRIVATE_H
     case EX_OBJECT_TYPE_PROCESS: {
         EX_PROCESS *process = CONTAINING_RECORD(objectHeader, EX_PROCESS, Header);
         if (process->SelfHandle == handle)
-            process->SelfHandle = EX_PRIVATE_HANDLE_INVALID;
+            process->SelfHandle = EX_HANDLE_INVALID;
         break;
     }
     case EX_OBJECT_TYPE_THREAD: {
         EX_THREAD *thread = CONTAINING_RECORD(objectHeader, EX_THREAD, Header);
         if (thread->SelfHandle == handle)
-            thread->SelfHandle = EX_PRIVATE_HANDLE_INVALID;
+            thread->SelfHandle = EX_HANDLE_INVALID;
         break;
     }
-    case EX_OBJECT_TYPE_STDOUT_SERVICE: {
+    case EX_OBJECT_TYPE_CONSOLE: {
         EX_STDOUT_SERVICE *stdoutService = CONTAINING_RECORD(objectHeader, EX_STDOUT_SERVICE, Header);
         if (stdoutService->Owner != NULL && stdoutService->Owner->StdoutHandle == handle)
-            stdoutService->Owner->StdoutHandle = EX_PRIVATE_HANDLE_INVALID;
+            stdoutService->Owner->StdoutHandle = EX_HANDLE_INVALID;
         break;
     }
     case EX_OBJECT_TYPE_WAITABLE: {
         EX_WAITABLE_OBJECT *waitObject = CONTAINING_RECORD(objectHeader, EX_WAITABLE_OBJECT, Header);
         if (waitObject->Owner != NULL && waitObject->Owner->WaitHandle == handle)
-            waitObject->Owner->WaitHandle = EX_PRIVATE_HANDLE_INVALID;
+            waitObject->Owner->WaitHandle = EX_HANDLE_INVALID;
         break;
     }
     default:
@@ -178,7 +173,7 @@ KiInvalidateObjectSelfHandleIfMatch(EX_OBJECT_HEADER *objectHeader, EX_PRIVATE_H
 }
 
 static HO_STATUS
-KiCleanupPrivateHandleBacking(EX_OBJECT_HEADER *objectHeader)
+KiCleanupHandleBacking(EX_OBJECT_HEADER *objectHeader)
 {
     if (objectHeader == NULL)
         return EC_ILLEGAL_ARGUMENT;
@@ -190,18 +185,18 @@ KiCleanupPrivateHandleBacking(EX_OBJECT_HEADER *objectHeader)
 }
 
 static void
-KiClearPrivateHandleSlot(EX_PRIVATE_HANDLE_SLOT *slot)
+KiClearHandleSlot(EX_HANDLE_SLOT *slot)
 {
     if (slot == NULL)
         return;
 
     slot->Object = NULL;
-    slot->Rights = EX_PRIVATE_HANDLE_RIGHT_NONE;
-    slot->Generation = KiAdvancePrivateHandleGeneration(slot->Generation);
+    slot->Rights = EX_HANDLE_RIGHT_NONE;
+    slot->Generation = KiAdvanceHandleGeneration(slot->Generation);
 }
 
 void
-ExBootstrapInitializePrivateHandleTable(EX_PRIVATE_HANDLE_TABLE *table)
+ExHandleInitializeTable(EX_HANDLE_TABLE *table)
 {
     if (table == NULL)
         return;
@@ -210,20 +205,17 @@ ExBootstrapInitializePrivateHandleTable(EX_PRIVATE_HANDLE_TABLE *table)
 }
 
 HO_STATUS
-ExBootstrapInsertPrivateHandle(EX_PROCESS *process,
-                               EX_OBJECT_HEADER *objectHeader,
-                               EX_PRIVATE_HANDLE_RIGHTS rights,
-                               EX_PRIVATE_HANDLE *outHandle)
+ExHandleInsert(EX_PROCESS *process, EX_OBJECT_HEADER *objectHeader, EX_HANDLE_RIGHTS rights, EX_HANDLE *outHandle)
 {
-    EX_PRIVATE_HANDLE_SLOT *slot = NULL;
+    EX_HANDLE_SLOT *slot = NULL;
     uint32_t slotIndex = 0;
 
-    if (process == NULL || objectHeader == NULL || outHandle == NULL || rights == EX_PRIVATE_HANDLE_RIGHT_NONE)
+    if (process == NULL || objectHeader == NULL || outHandle == NULL || rights == EX_HANDLE_RIGHT_NONE)
         return EC_ILLEGAL_ARGUMENT;
 
-    *outHandle = EX_PRIVATE_HANDLE_INVALID;
+    *outHandle = EX_HANDLE_INVALID;
 
-    for (slotIndex = 0; slotIndex < EX_PRIVATE_HANDLE_TABLE_CAPACITY; slotIndex++)
+    for (slotIndex = 0; slotIndex < EX_MAX_HANDLES_PER_PROCESS; slotIndex++)
     {
         if (process->HandleTable.Slots[slotIndex].Object == NULL)
         {
@@ -240,22 +232,22 @@ ExBootstrapInsertPrivateHandle(EX_PROCESS *process,
         return status;
 
     if (slot->Generation == 0)
-        slot->Generation = KiAdvancePrivateHandleGeneration(0);
+        slot->Generation = KiAdvanceHandleGeneration(0);
 
     slot->Object = objectHeader;
     slot->Rights = rights;
-    *outHandle = KiEncodePrivateHandle(slotIndex, slot->Generation);
-    return *outHandle == EX_PRIVATE_HANDLE_INVALID ? EC_INVALID_STATE : EC_SUCCESS;
+    *outHandle = KiEncodeHandle(slotIndex, slot->Generation);
+    return *outHandle == EX_HANDLE_INVALID ? EC_INVALID_STATE : EC_SUCCESS;
 }
 
 HO_STATUS
-ExBootstrapResolvePrivateHandle(EX_PROCESS *process,
-                                EX_PRIVATE_HANDLE handle,
-                                EX_OBJECT_TYPE expectedType,
-                                EX_PRIVATE_HANDLE_RIGHTS desiredRights,
-                                EX_OBJECT_HEADER **outObjectHeader)
+ExHandleResolve(EX_PROCESS *process,
+                EX_HANDLE handle,
+                EX_OBJECT_TYPE expectedType,
+                EX_HANDLE_RIGHTS desiredRights,
+                EX_OBJECT_HEADER **outObjectHeader)
 {
-    EX_PRIVATE_HANDLE_SLOT *slot = NULL;
+    EX_HANDLE_SLOT *slot = NULL;
     uint32_t generation = 0;
 
     if (process == NULL || outObjectHeader == NULL)
@@ -263,11 +255,10 @@ ExBootstrapResolvePrivateHandle(EX_PROCESS *process,
 
     *outObjectHeader = NULL;
 
-    if (expectedType != EX_OBJECT_TYPE_PROCESS && expectedType != EX_OBJECT_TYPE_THREAD &&
-        expectedType != EX_OBJECT_TYPE_STDOUT_SERVICE && expectedType != EX_OBJECT_TYPE_WAITABLE)
+    if (!ExObjectIsValidType(expectedType))
         return EC_ILLEGAL_ARGUMENT;
 
-    slot = KiLookupPrivateHandleSlot(process, handle, &generation);
+    slot = KiLookupHandleSlot(process, handle, &generation);
     if (slot == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
@@ -277,7 +268,7 @@ ExBootstrapResolvePrivateHandle(EX_PROCESS *process,
     if ((slot->Rights & desiredRights) != desiredRights)
         return EC_INVALID_STATE;
 
-    HO_STATUS status = ExBootstrapRetainObject(slot->Object, expectedType);
+    HO_STATUS status = ExObjectRetain(slot->Object, expectedType);
     if (status != EC_SUCCESS)
         return status;
 
@@ -286,17 +277,17 @@ ExBootstrapResolvePrivateHandle(EX_PROCESS *process,
 }
 
 HO_STATUS
-ExBootstrapReleaseResolvedObject(EX_OBJECT_HEADER *objectHeader)
+ExHandleReleaseResolvedObject(EX_OBJECT_HEADER *objectHeader)
 {
     return KiReleaseHandleObject(objectHeader);
 }
 
 HO_STATUS
-ExBootstrapClosePrivateHandle(EX_PROCESS *process, EX_PRIVATE_HANDLE *handle)
+ExHandleClose(EX_PROCESS *process, EX_HANDLE *handle)
 {
     EX_PROCESS *ownerReference = NULL;
-    EX_PRIVATE_HANDLE localHandle = EX_PRIVATE_HANDLE_INVALID;
-    EX_PRIVATE_HANDLE_SLOT *slot = NULL;
+    EX_HANDLE localHandle = EX_HANDLE_INVALID;
+    EX_HANDLE_SLOT *slot = NULL;
     EX_OBJECT_HEADER *objectHeader = NULL;
     uint32_t generation = 0;
     HO_STATUS status = EC_SUCCESS;
@@ -305,14 +296,14 @@ ExBootstrapClosePrivateHandle(EX_PROCESS *process, EX_PRIVATE_HANDLE *handle)
         return EC_ILLEGAL_ARGUMENT;
 
     localHandle = *handle;
-    if (localHandle == EX_PRIVATE_HANDLE_INVALID)
+    if (localHandle == EX_HANDLE_INVALID)
         return EC_SUCCESS;
 
     ownerReference = ExBootstrapRetainProcess(process);
     if (ownerReference == NULL)
         return EC_INVALID_STATE;
 
-    slot = KiLookupPrivateHandleSlot(process, localHandle, &generation);
+    slot = KiLookupHandleSlot(process, localHandle, &generation);
     if (slot == NULL)
     {
         status = EC_ILLEGAL_ARGUMENT;
@@ -326,17 +317,17 @@ ExBootstrapClosePrivateHandle(EX_PROCESS *process, EX_PRIVATE_HANDLE *handle)
     }
 
     objectHeader = slot->Object;
-    status = KiValidateClosePrivateHandleSlot(slot);
+    status = KiValidateCloseHandleSlot(slot);
     if (status != EC_SUCCESS)
         goto Exit;
 
-    status = KiCleanupPrivateHandleBacking(objectHeader);
+    status = KiCleanupHandleBacking(objectHeader);
     if (status != EC_SUCCESS)
         goto Exit;
 
     KiInvalidateObjectSelfHandleIfMatch(objectHeader, localHandle);
-    KiClearPrivateHandleSlot(slot);
-    *handle = EX_PRIVATE_HANDLE_INVALID;
+    KiClearHandleSlot(slot);
+    *handle = EX_HANDLE_INVALID;
     status = KiReleaseHandleObject(objectHeader);
 
 Exit: {
@@ -349,7 +340,7 @@ Exit: {
 }
 
 HO_STATUS
-ExBootstrapCloseAllPrivateHandles(EX_PROCESS *process)
+ExHandleCloseAll(EX_PROCESS *process)
 {
     EX_PROCESS *ownerReference = NULL;
     HO_STATUS firstError = EC_SUCCESS;
@@ -363,28 +354,28 @@ ExBootstrapCloseAllPrivateHandles(EX_PROCESS *process)
     if (ownerReference == NULL)
         return EC_INVALID_STATE;
 
-    for (slotIndex = 0; slotIndex < EX_PRIVATE_HANDLE_TABLE_CAPACITY; slotIndex++)
+    for (slotIndex = 0; slotIndex < EX_MAX_HANDLES_PER_PROCESS; slotIndex++)
     {
-        EX_PRIVATE_HANDLE_SLOT *slot = &process->HandleTable.Slots[slotIndex];
+        EX_HANDLE_SLOT *slot = &process->HandleTable.Slots[slotIndex];
 
         if (slot->Object == NULL)
             continue;
 
-        firstError = KiValidateClosePrivateHandleSlot(slot);
+        firstError = KiValidateCloseHandleSlot(slot);
         if (firstError != EC_SUCCESS)
             goto Exit;
     }
 
-    for (slotIndex = 0; slotIndex < EX_PRIVATE_HANDLE_TABLE_CAPACITY; slotIndex++)
+    for (slotIndex = 0; slotIndex < EX_MAX_HANDLES_PER_PROCESS; slotIndex++)
     {
-        EX_PRIVATE_HANDLE_SLOT *slot = &process->HandleTable.Slots[slotIndex];
+        EX_HANDLE_SLOT *slot = &process->HandleTable.Slots[slotIndex];
         EX_OBJECT_HEADER *objectHeader = slot->Object;
-        EX_PRIVATE_HANDLE handle = KiEncodePrivateHandle(slotIndex, slot->Generation);
+        EX_HANDLE handle = KiEncodeHandle(slotIndex, slot->Generation);
 
         if (objectHeader == NULL)
             continue;
 
-        HO_STATUS status = KiCleanupPrivateHandleBacking(objectHeader);
+        HO_STATUS status = KiCleanupHandleBacking(objectHeader);
         if (status != EC_SUCCESS)
         {
             firstError = status;
@@ -392,7 +383,7 @@ ExBootstrapCloseAllPrivateHandles(EX_PROCESS *process)
         }
 
         KiInvalidateObjectSelfHandleIfMatch(objectHeader, handle);
-        KiClearPrivateHandleSlot(slot);
+        KiClearHandleSlot(slot);
 
         status = KiReleaseHandleObject(objectHeader);
         if (firstError == EC_SUCCESS)
@@ -405,4 +396,47 @@ Exit:
         firstError = ownerStatus;
 
     return firstError;
+}
+
+void
+ExBootstrapInitializePrivateHandleTable(EX_PRIVATE_HANDLE_TABLE *table)
+{
+    ExHandleInitializeTable(table);
+}
+
+HO_STATUS
+ExBootstrapInsertPrivateHandle(EX_PROCESS *process,
+                               EX_OBJECT_HEADER *objectHeader,
+                               EX_PRIVATE_HANDLE_RIGHTS rights,
+                               EX_PRIVATE_HANDLE *outHandle)
+{
+    return ExHandleInsert(process, objectHeader, rights, outHandle);
+}
+
+HO_STATUS
+ExBootstrapResolvePrivateHandle(EX_PROCESS *process,
+                                EX_PRIVATE_HANDLE handle,
+                                EX_OBJECT_TYPE expectedType,
+                                EX_PRIVATE_HANDLE_RIGHTS desiredRights,
+                                EX_OBJECT_HEADER **outObjectHeader)
+{
+    return ExHandleResolve(process, handle, expectedType, desiredRights, outObjectHeader);
+}
+
+HO_STATUS
+ExBootstrapReleaseResolvedObject(EX_OBJECT_HEADER *objectHeader)
+{
+    return ExHandleReleaseResolvedObject(objectHeader);
+}
+
+HO_STATUS
+ExBootstrapClosePrivateHandle(EX_PROCESS *process, EX_PRIVATE_HANDLE *handle)
+{
+    return ExHandleClose(process, handle);
+}
+
+HO_STATUS
+ExBootstrapCloseAllPrivateHandles(EX_PROCESS *process)
+{
+    return ExHandleCloseAll(process);
 }

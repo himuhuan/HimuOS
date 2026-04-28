@@ -14,6 +14,7 @@
 #include <kernel/ke/user_bootstrap.h>
 #include <libc/string.h>
 
+static HO_STATUS KiDestroyProcessObject(EX_OBJECT_HEADER *objectHeader);
 static HO_STATUS
 KiRestoreImportedRootForProcessTeardown(const EX_PROCESS *process)
 {
@@ -40,15 +41,15 @@ ExBootstrapInitializeProcessObject(EX_PROCESS *process)
     if (process == NULL)
         return;
 
-    ExBootstrapInitializeObjectHeader(&process->Header, EX_OBJECT_TYPE_PROCESS);
+    ExObjectInitializeHeader(&process->Header, EX_OBJECT_TYPE_PROCESS, EX_OBJECT_FLAG_NONE, KiDestroyProcessObject);
     memset(&process->AddressSpace, 0, sizeof(process->AddressSpace));
     process->Staging = NULL;
-    process->SelfHandle = EX_PRIVATE_HANDLE_INVALID;
-    process->StdoutHandle = EX_PRIVATE_HANDLE_INVALID;
-    process->WaitHandle = EX_PRIVATE_HANDLE_INVALID;
+    process->SelfHandle = EX_HANDLE_INVALID;
+    process->StdoutHandle = EX_HANDLE_INVALID;
+    process->WaitHandle = EX_HANDLE_INVALID;
     ExBootstrapInitializeStdoutServiceObject(process);
     ExBootstrapInitializeWaitableObject(process);
-    ExBootstrapInitializePrivateHandleTable(&process->HandleTable);
+    ExHandleInitializeTable(&process->HandleTable);
 }
 
 HO_STATUS
@@ -86,7 +87,7 @@ ExBootstrapRetainProcess(EX_PROCESS *process)
     if (process == NULL)
         return NULL;
 
-    if (ExBootstrapRetainObject(&process->Header, EX_OBJECT_TYPE_PROCESS) != EC_SUCCESS)
+    if (ExObjectRetain(&process->Header, EX_OBJECT_TYPE_PROCESS) != EC_SUCCESS)
         return NULL;
 
     return process;
@@ -96,20 +97,24 @@ HO_STATUS
 ExBootstrapReleaseProcess(EX_PROCESS *process)
 {
     uint32_t remainingReferences = 0;
-    HO_STATUS status = EC_SUCCESS;
 
     if (process == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    status = ExBootstrapReleaseObject(&process->Header, EX_OBJECT_TYPE_PROCESS, &remainingReferences);
-    if (status != EC_SUCCESS || remainingReferences != 0)
-        return status;
+    return ExObjectRelease(&process->Header, EX_OBJECT_TYPE_PROCESS, &remainingReferences);
+}
 
-    status = ExBootstrapCleanupWaitableBacking(&process->WaitObject);
-    if (status != EC_SUCCESS)
-        return status;
+static HO_STATUS
+KiDestroyProcessObject(EX_OBJECT_HEADER *objectHeader)
+{
+    EX_PROCESS *process = NULL;
 
-    status = ExBootstrapReleaseWaitableObjectOwner(process);
+    if (objectHeader == NULL || objectHeader->Type != EX_OBJECT_TYPE_PROCESS)
+        return EC_ILLEGAL_ARGUMENT;
+
+    process = CONTAINING_RECORD(objectHeader, EX_PROCESS, Header);
+
+    HO_STATUS status = ExBootstrapReleaseWaitableObjectOwner(process);
     if (status != EC_SUCCESS)
         return status;
 
@@ -129,9 +134,9 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
     KE_USER_BOOTSTRAP_CREATE_PARAMS keParams = {0};
     uint8_t *initialConstBytes = NULL;
     uint64_t initialConstLength = 0;
-    const EX_PRIVATE_HANDLE_RIGHTS processSelfRights =
-        EX_PRIVATE_HANDLE_RIGHT_QUERY | EX_PRIVATE_HANDLE_RIGHT_CLOSE | EX_PRIVATE_HANDLE_RIGHT_PROCESS_SELF;
-    const EX_PRIVATE_HANDLE_RIGHTS stdoutRights = EX_PRIVATE_HANDLE_RIGHT_WRITE | EX_PRIVATE_HANDLE_RIGHT_CLOSE;
+    const EX_HANDLE_RIGHTS processSelfRights =
+        EX_HANDLE_RIGHT_QUERY | EX_HANDLE_RIGHT_CLOSE | EX_HANDLE_RIGHT_PROCESS_SELF;
+    const EX_HANDLE_RIGHTS stdoutRights = EX_HANDLE_RIGHT_WRITE | EX_HANDLE_RIGHT_CLOSE;
 
     if (outProcess == NULL)
         return EC_ILLEGAL_ARGUMENT;
@@ -196,11 +201,11 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
     }
 
     process->Staging = staging;
-    status = ExBootstrapInsertPrivateHandle(process, &process->Header, processSelfRights, &process->SelfHandle);
+    status = ExHandleInsert(process, &process->Header, processSelfRights, &process->SelfHandle);
     if (status != EC_SUCCESS)
     {
         HO_STATUS teardownStatus = ExBootstrapTeardownProcessPayload(process);
-        HO_STATUS closeStatus = ExBootstrapCloseAllPrivateHandles(process);
+        HO_STATUS closeStatus = ExHandleCloseAll(process);
         HO_STATUS releaseStatus = ExBootstrapReleaseProcess(process);
 
         if (teardownStatus != EC_SUCCESS)
@@ -212,12 +217,11 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
         return releaseStatus == EC_SUCCESS ? status : releaseStatus;
     }
 
-    status =
-        ExBootstrapInsertPrivateHandle(process, &process->StdoutService.Header, stdoutRights, &process->StdoutHandle);
+    status = ExHandleInsert(process, &process->StdoutService.Header, stdoutRights, &process->StdoutHandle);
     if (status != EC_SUCCESS)
     {
         HO_STATUS teardownStatus = ExBootstrapTeardownProcessPayload(process);
-        HO_STATUS closeStatus = ExBootstrapCloseAllPrivateHandles(process);
+        HO_STATUS closeStatus = ExHandleCloseAll(process);
         HO_STATUS releaseStatus = ExBootstrapReleaseProcess(process);
 
         if (teardownStatus != EC_SUCCESS)
@@ -244,7 +248,7 @@ ExBootstrapDestroyProcess(EX_PROCESS *process)
 
     HO_STATUS status = ExBootstrapTeardownProcessPayload(process);
 
-    HO_STATUS closeStatus = ExBootstrapCloseAllPrivateHandles(process);
+    HO_STATUS closeStatus = ExHandleCloseAll(process);
     if (status == EC_SUCCESS)
         status = closeStatus;
 

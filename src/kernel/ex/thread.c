@@ -15,6 +15,7 @@
 #include <kernel/ke/user_bootstrap.h>
 
 static HO_STATUS KiCreateWaitablePilotHandle(EX_PROCESS *process);
+static HO_STATUS KiDestroyThreadObject(EX_OBJECT_HEADER *objectHeader);
 static HO_STATUS ExBootstrapDestroyNewKernelThread(KTHREAD *thread);
 
 static void
@@ -54,26 +55,33 @@ ExBootstrapInitializeThreadObject(EX_THREAD *thread)
     if (thread == NULL)
         return;
 
-    ExBootstrapInitializeObjectHeader(&thread->Header, EX_OBJECT_TYPE_THREAD);
+    ExObjectInitializeHeader(&thread->Header, EX_OBJECT_TYPE_THREAD, EX_OBJECT_FLAG_NONE, KiDestroyThreadObject);
     thread->Thread = NULL;
     thread->Process = NULL;
-    thread->SelfHandle = EX_PRIVATE_HANDLE_INVALID;
+    thread->SelfHandle = EX_HANDLE_INVALID;
 }
 
 HO_STATUS
 ExBootstrapReleaseThread(EX_THREAD *thread)
 {
-    EX_PROCESS *process = NULL;
     uint32_t remainingReferences = 0;
-    HO_STATUS status = EC_SUCCESS;
 
     if (thread == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    status = ExBootstrapReleaseObject(&thread->Header, EX_OBJECT_TYPE_THREAD, &remainingReferences);
-    if (status != EC_SUCCESS || remainingReferences != 0)
-        return status;
+    return ExObjectRelease(&thread->Header, EX_OBJECT_TYPE_THREAD, &remainingReferences);
+}
 
+static HO_STATUS
+KiDestroyThreadObject(EX_OBJECT_HEADER *objectHeader)
+{
+    EX_THREAD *thread = NULL;
+    EX_PROCESS *process = NULL;
+
+    if (objectHeader == NULL || objectHeader->Type != EX_OBJECT_TYPE_THREAD)
+        return EC_ILLEGAL_ARGUMENT;
+
+    thread = CONTAINING_RECORD(objectHeader, EX_THREAD, Header);
     process = thread->Process;
     thread->Thread = NULL;
     thread->Process = NULL;
@@ -89,12 +97,12 @@ static HO_STATUS
 KiCreateWaitablePilotHandle(EX_PROCESS *process)
 {
     KTHREAD *companionThread = NULL;
-    const EX_PRIVATE_HANDLE_RIGHTS waitRights = EX_PRIVATE_HANDLE_RIGHT_WAIT | EX_PRIVATE_HANDLE_RIGHT_CLOSE;
+    const EX_HANDLE_RIGHTS waitRights = EX_HANDLE_RIGHT_WAIT | EX_HANDLE_RIGHT_CLOSE;
 
     if (process == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (process->WaitHandle != EX_PRIVATE_HANDLE_INVALID || process->WaitObject.CompanionThread != NULL ||
+    if (process->WaitHandle != EX_HANDLE_INVALID || process->WaitObject.CompanionThread != NULL ||
         process->WaitObject.Dispatcher != NULL)
     {
         return EC_INVALID_STATE;
@@ -107,7 +115,7 @@ KiCreateWaitablePilotHandle(EX_PROCESS *process)
     process->WaitObject.Dispatcher = &companionThread->TerminationCompletion;
     process->WaitObject.CompanionThread = companionThread;
 
-    status = ExBootstrapInsertPrivateHandle(process, &process->WaitObject.Header, waitRights, &process->WaitHandle);
+    status = ExHandleInsert(process, &process->WaitObject.Header, waitRights, &process->WaitHandle);
     if (status != EC_SUCCESS)
     {
         HO_STATUS cleanupStatus = ExBootstrapCleanupWaitableBacking(&process->WaitObject);
@@ -117,7 +125,7 @@ KiCreateWaitablePilotHandle(EX_PROCESS *process)
     status = KeThreadStart(companionThread);
     if (status != EC_SUCCESS)
     {
-        HO_STATUS closeStatus = ExBootstrapClosePrivateHandle(process, &process->WaitHandle);
+        HO_STATUS closeStatus = ExHandleClose(process, &process->WaitHandle);
         return closeStatus == EC_SUCCESS ? status : closeStatus;
     }
 
@@ -152,8 +160,8 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
     EX_PROCESS *process = NULL;
     EX_THREAD *thread = NULL;
     KTHREAD *kernelThread = NULL;
-    const EX_PRIVATE_HANDLE_RIGHTS threadSelfRights =
-        EX_PRIVATE_HANDLE_RIGHT_QUERY | EX_PRIVATE_HANDLE_RIGHT_CLOSE | EX_PRIVATE_HANDLE_RIGHT_THREAD_SELF;
+    const EX_HANDLE_RIGHTS threadSelfRights =
+        EX_HANDLE_RIGHT_QUERY | EX_HANDLE_RIGHT_CLOSE | EX_HANDLE_RIGHT_THREAD_SELF;
 
     if (processHandle == NULL || outThread == NULL)
         return EC_ILLEGAL_ARGUMENT;
@@ -201,7 +209,7 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
     thread->Thread = kernelThread;
     thread->Process = process;
 
-    status = ExBootstrapInsertPrivateHandle(process, &thread->Header, threadSelfRights, &thread->SelfHandle);
+    status = ExHandleInsert(process, &thread->Header, threadSelfRights, &thread->SelfHandle);
     if (status != EC_SUCCESS)
         goto FailThreadRuntimeSetup;
 
@@ -229,8 +237,8 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
 FailThreadRuntimeSetup: {
     HO_STATUS detachStatus = KeUserBootstrapDetachThread(kernelThread, process->Staging);
     HO_STATUS destroyStatus = ExBootstrapDestroyNewKernelThread(kernelThread);
-    HO_STATUS waitCloseStatus = ExBootstrapClosePrivateHandle(process, &process->WaitHandle);
-    HO_STATUS closeStatus = ExBootstrapClosePrivateHandle(process, &thread->SelfHandle);
+    HO_STATUS waitCloseStatus = ExHandleClose(process, &process->WaitHandle);
+    HO_STATUS closeStatus = ExHandleClose(process, &thread->SelfHandle);
 
     thread->Thread = NULL;
     thread->Process = NULL;
@@ -324,7 +332,7 @@ ExBootstrapTeardownThread(EX_THREAD *thread)
     if (firstError == EC_SUCCESS)
         firstError = threadStatus;
 
-    HO_STATUS closeStatus = ExBootstrapCloseAllPrivateHandles(process);
+    HO_STATUS closeStatus = ExHandleCloseAll(process);
     if (firstError == EC_SUCCESS)
         firstError = closeStatus;
 

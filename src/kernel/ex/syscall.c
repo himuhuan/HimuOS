@@ -35,16 +35,16 @@ static int64_t KiHandleRawWrite(uint64_t userBuffer, uint64_t length);
 static HO_STATUS KiDispatchRawSyscall(const EX_SYSCALL_ARGUMENTS *args, EX_SYSCALL_DISPATCH_RESULT *result);
 static int64_t KiRejectCapabilitySyscall(const char *operation,
                                          uint64_t syscallNumber,
-                                         EX_PRIVATE_HANDLE handle,
+                                         EX_HANDLE handle,
                                          HO_STATUS status);
 static int64_t KiHandleCapabilityWrite(EX_PROCESS *process,
-                                       EX_PRIVATE_HANDLE handle,
+                                       EX_HANDLE handle,
                                        uint64_t userBuffer,
                                        uint64_t length);
-static int64_t KiHandleCapabilityClose(EX_PROCESS *process, EX_PRIVATE_HANDLE handle);
+static int64_t KiHandleCapabilityClose(EX_PROCESS *process, EX_HANDLE handle);
 static HO_STATUS KiDecodeCapabilityWaitTimeoutNs(uint64_t timeoutMsRaw, uint64_t reserved, uint64_t *outTimeoutNs);
 static int64_t KiHandleCapabilityWaitOne(EX_PROCESS *process,
-                                         EX_PRIVATE_HANDLE handle,
+                                         EX_HANDLE handle,
                                          uint64_t timeoutMsRaw,
                                          uint64_t reserved);
 static int64_t KiDispatchCapabilitySyscall(uint64_t syscallNumber, uint64_t arg0, uint64_t arg1, uint64_t arg2);
@@ -226,7 +226,7 @@ KiDispatchRawSyscall(const EX_SYSCALL_ARGUMENTS *args, EX_SYSCALL_DISPATCH_RESUL
 }
 
 static int64_t
-KiRejectCapabilitySyscall(const char *operation, uint64_t syscallNumber, EX_PRIVATE_HANDLE handle, HO_STATUS status)
+KiRejectCapabilitySyscall(const char *operation, uint64_t syscallNumber, EX_HANDLE handle, HO_STATUS status)
 {
     KTHREAD *thread = KeGetCurrentThread();
 
@@ -238,7 +238,7 @@ KiRejectCapabilitySyscall(const char *operation, uint64_t syscallNumber, EX_PRIV
 }
 
 static int64_t
-KiHandleCapabilityWrite(EX_PROCESS *process, EX_PRIVATE_HANDLE handle, uint64_t userBuffer, uint64_t length)
+KiHandleCapabilityWrite(EX_PROCESS *process, EX_HANDLE handle, uint64_t userBuffer, uint64_t length)
 {
     EX_OBJECT_HEADER *objectHeader = NULL;
     KTHREAD *thread = KeGetCurrentThread();
@@ -255,8 +255,7 @@ KiHandleCapabilityWrite(EX_PROCESS *process, EX_PRIVATE_HANDLE handle, uint64_t 
         return KiRejectCapabilitySyscall("SYS_WRITE", SYS_WRITE, handle, EC_ILLEGAL_ARGUMENT);
     }
 
-    HO_STATUS status = ExBootstrapResolvePrivateHandle(process, handle, EX_OBJECT_TYPE_STDOUT_SERVICE,
-                                                       EX_PRIVATE_HANDLE_RIGHT_WRITE, &objectHeader);
+    HO_STATUS status = ExHandleResolve(process, handle, EX_OBJECT_TYPE_CONSOLE, EX_HANDLE_RIGHT_WRITE, &objectHeader);
     if (status != EC_SUCCESS)
         return KiRejectCapabilitySyscall("SYS_WRITE", SYS_WRITE, handle, status);
 
@@ -267,7 +266,7 @@ KiHandleCapabilityWrite(EX_PROCESS *process, EX_PRIVATE_HANDLE handle, uint64_t 
             status = KeUserBootstrapWriteConsoleBytes(scratch, length, &written);
     }
 
-    HO_STATUS releaseStatus = ExBootstrapReleaseResolvedObject(objectHeader);
+    HO_STATUS releaseStatus = ExHandleReleaseResolvedObject(objectHeader);
     if (status == EC_SUCCESS && releaseStatus != EC_SUCCESS)
         status = releaseStatus;
 
@@ -290,18 +289,18 @@ KiHandleCapabilityWrite(EX_PROCESS *process, EX_PRIVATE_HANDLE handle, uint64_t 
 }
 
 static int64_t
-KiHandleCapabilityClose(EX_PROCESS *process, EX_PRIVATE_HANDLE handle)
+KiHandleCapabilityClose(EX_PROCESS *process, EX_HANDLE handle)
 {
     KTHREAD *thread = KeGetCurrentThread();
 
     if (process == NULL)
         return KiRejectCapabilitySyscall("SYS_CLOSE", SYS_CLOSE, handle, EC_INVALID_STATE);
 
-    if (handle == EX_PRIVATE_HANDLE_INVALID)
+    if (handle == EX_HANDLE_INVALID)
         return KiRejectCapabilitySyscall("SYS_CLOSE", SYS_CLOSE, handle, EC_ILLEGAL_ARGUMENT);
 
-    EX_PRIVATE_HANDLE localHandle = handle;
-    HO_STATUS status = ExBootstrapClosePrivateHandle(process, &localHandle);
+    EX_HANDLE localHandle = handle;
+    HO_STATUS status = ExHandleClose(process, &localHandle);
     if (status != EC_SUCCESS)
         return KiRejectCapabilitySyscall("SYS_CLOSE", SYS_CLOSE, handle, status);
 
@@ -325,7 +324,7 @@ KiDecodeCapabilityWaitTimeoutNs(uint64_t timeoutMsRaw, uint64_t reserved, uint64
 }
 
 static int64_t
-KiHandleCapabilityWaitOne(EX_PROCESS *process, EX_PRIVATE_HANDLE handle, uint64_t timeoutMsRaw, uint64_t reserved)
+KiHandleCapabilityWaitOne(EX_PROCESS *process, EX_HANDLE handle, uint64_t timeoutMsRaw, uint64_t reserved)
 {
     EX_OBJECT_HEADER *objectHeader = NULL;
     EX_WAITABLE_OBJECT *waitObject = NULL;
@@ -335,15 +334,14 @@ KiHandleCapabilityWaitOne(EX_PROCESS *process, EX_PRIVATE_HANDLE handle, uint64_
     if (process == NULL)
         return KiRejectCapabilitySyscall("SYS_WAIT_ONE", SYS_WAIT_ONE, handle, EC_INVALID_STATE);
 
-    if (handle == EX_PRIVATE_HANDLE_INVALID)
+    if (handle == EX_HANDLE_INVALID)
         return KiRejectCapabilitySyscall("SYS_WAIT_ONE", SYS_WAIT_ONE, handle, EC_ILLEGAL_ARGUMENT);
 
     HO_STATUS status = KiDecodeCapabilityWaitTimeoutNs(timeoutMsRaw, reserved, &timeoutNs);
     if (status != EC_SUCCESS)
         return KiRejectCapabilitySyscall("SYS_WAIT_ONE", SYS_WAIT_ONE, handle, status);
 
-    status = ExBootstrapResolvePrivateHandle(process, handle, EX_OBJECT_TYPE_WAITABLE, EX_PRIVATE_HANDLE_RIGHT_WAIT,
-                                             &objectHeader);
+    status = ExHandleResolve(process, handle, EX_OBJECT_TYPE_WAITABLE, EX_HANDLE_RIGHT_WAIT, &objectHeader);
     if (status != EC_SUCCESS)
         return KiRejectCapabilitySyscall("SYS_WAIT_ONE", SYS_WAIT_ONE, handle, status);
 
@@ -357,7 +355,7 @@ KiHandleCapabilityWaitOne(EX_PROCESS *process, EX_PRIVATE_HANDLE handle, uint64_
         status = KeWaitForSingleObject(waitObject->Dispatcher, timeoutNs);
     }
 
-    HO_STATUS releaseStatus = ExBootstrapReleaseResolvedObject(objectHeader);
+    HO_STATUS releaseStatus = ExHandleReleaseResolvedObject(objectHeader);
     if ((status == EC_SUCCESS || status == EC_TIMEOUT) && releaseStatus != EC_SUCCESS)
         status = releaseStatus;
 
@@ -392,11 +390,11 @@ KiDispatchCapabilitySyscall(uint64_t syscallNumber, uint64_t arg0, uint64_t arg1
     switch (syscallNumber)
     {
     case SYS_WRITE:
-        return KiHandleCapabilityWrite(process, (EX_PRIVATE_HANDLE)arg0, arg1, arg2);
+        return KiHandleCapabilityWrite(process, (EX_HANDLE)arg0, arg1, arg2);
     case SYS_CLOSE:
-        return KiHandleCapabilityClose(process, (EX_PRIVATE_HANDLE)arg0);
+        return KiHandleCapabilityClose(process, (EX_HANDLE)arg0);
     case SYS_WAIT_ONE:
-        return KiHandleCapabilityWaitOne(process, (EX_PRIVATE_HANDLE)arg0, arg1, arg2);
+        return KiHandleCapabilityWaitOne(process, (EX_HANDLE)arg0, arg1, arg2);
     case SYS_QUERY_SYSINFO:
         return ExBootstrapHandleQuerySysinfo(process, arg0, arg1, arg2);
     default:
