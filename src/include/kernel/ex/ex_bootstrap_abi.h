@@ -214,7 +214,7 @@ typedef struct EX_SYSINFO_OVERVIEW
 
 /*
  * Bootstrap raw write keeps both rejection and success paths on the same
- * helper family in ke/user_bootstrap_syscall.c:
+ * Ex syscall path, backed by Ke user-copy mechanics:
  * - query the current thread's live bootstrap layout from Ke staging state
  * - validate the supplied range against that live layout
  * - validate that covered pages remain user accessible in the layout owner's root

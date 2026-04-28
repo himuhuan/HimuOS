@@ -50,9 +50,9 @@ HO_KERNEL_API BOOL ExBootstrapAdapterHasWrapper(const struct KTHREAD *thread);
 HO_KERNEL_API struct KE_USER_BOOTSTRAP_STAGING *ExBootstrapAdapterQueryThreadStaging(const struct KTHREAD *thread);
 
 /**
- * Dispatch an Ex-facing bootstrap syscall on behalf of the shared int 0x80
- * trap entry. Handle lookup and rights checks stay inside Ex; the no-return
- * SYS_EXIT handoff uses ExBootstrapAdapterHandleExit().
+ * Compatibility dispatcher for the original Ex-facing capability syscall set.
+ * New trap entry code should call ExDispatchSyscall(); this wrapper preserves
+ * the older capability-only call shape for transitional callers.
  */
 HO_KERNEL_API HO_NODISCARD int64_t ExBootstrapAdapterDispatchSyscall(uint64_t syscallNumber,
                                                                      uint64_t arg0,
