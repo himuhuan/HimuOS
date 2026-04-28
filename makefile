@@ -299,6 +299,15 @@ SRCS_KERNEL_C := \
 	src/kernel/ke/user_bootstrap.c                      \
 	src/kernel/ke/user_bootstrap_syscall.c              \
     src/kernel/ex/ex_bootstrap.c                        \
+    src/kernel/ex/object.c                              \
+    src/kernel/ex/handle.c                              \
+    src/kernel/ex/runtime_alias.c                       \
+    src/kernel/ex/image.c                               \
+    src/kernel/ex/process.c                             \
+    src/kernel/ex/thread.c                              \
+    src/kernel/ex/sysinfo.c                             \
+    src/kernel/ex/syscall.c                             \
+    src/kernel/ex/bootstrap_compat.c                    \
 	src/kernel/ex/ex_bootstrap_adapter.c                \
     src/kernel/ke/input/input.c                         \
     src/kernel/ke/input/sinks/ps2_keyboard_sink.c       \

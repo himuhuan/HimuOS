@@ -94,6 +94,16 @@ struct EX_THREAD
     EX_PRIVATE_HANDLE SelfHandle;
 };
 
+void ExBootstrapInitializeObjectHeader(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE type);
+HO_STATUS ExBootstrapRetainObject(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE expectedType);
+HO_STATUS ExBootstrapReleaseObject(EX_OBJECT_HEADER *header,
+                                   EX_OBJECT_TYPE expectedType,
+                                   uint32_t *remainingReferences);
+void ExBootstrapInitializeStdoutServiceObject(EX_PROCESS *process);
+HO_STATUS ExBootstrapReleaseStdoutServiceOwner(EX_PROCESS *process);
+void ExBootstrapInitializeWaitableObject(EX_PROCESS *process);
+HO_STATUS ExBootstrapReleaseWaitableObjectOwner(EX_PROCESS *process);
+HO_STATUS ExBootstrapCleanupWaitableBacking(EX_WAITABLE_OBJECT *waitObject);
 void ExBootstrapInitializePrivateHandleTable(EX_PRIVATE_HANDLE_TABLE *table);
 void ExBootstrapInitializeProcessObject(EX_PROCESS *process);
 void ExBootstrapInitializeThreadObject(EX_THREAD *thread);
@@ -114,9 +124,15 @@ HO_STATUS ExBootstrapReleaseResolvedObject(EX_OBJECT_HEADER *objectHeader);
 HO_STATUS ExBootstrapClosePrivateHandle(EX_PROCESS *process, EX_PRIVATE_HANDLE *handle);
 HO_STATUS ExBootstrapCloseAllPrivateHandles(EX_PROCESS *process);
 BOOL ExBootstrapHasRuntimeAlias(void);
+BOOL ExBootstrapIsRuntimeAliasObject(const EX_OBJECT_HEADER *objectHeader);
 BOOL ExBootstrapRuntimeAliasMatchesProcess(const EX_PROCESS *process);
 HO_STATUS ExBootstrapCaptureThreadList(EX_SYSINFO_THREAD_LIST *outThreadList);
 HO_STATUS ExBootstrapPublishRuntimeAlias(EX_PROCESS *process, EX_THREAD *thread);
 EX_THREAD *ExBootstrapLookupRuntimeThread(const struct KTHREAD *thread);
 EX_PROCESS *ExBootstrapLookupRuntimeProcess(const struct KTHREAD *thread);
 void ExBootstrapUnpublishRuntimeAlias(const struct KTHREAD *thread, EX_THREAD **outThread, EX_PROCESS **outProcess);
+HO_STATUS ExBootstrapBuildInitialConstBytes(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params,
+                                            uint8_t **outConstBytes,
+                                            uint64_t *outConstLength);
+HO_STATUS ExBootstrapPatchCapabilitySeed(EX_PROCESS *process, EX_THREAD *thread);
+int64_t ExBootstrapHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64_t userBuffer, uint64_t length);
