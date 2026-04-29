@@ -9,12 +9,17 @@
 #include <kernel/ex/ex_bootstrap.h>
 
 #include <kernel/ex/ex_bootstrap_adapter.h>
+#include <kernel/ex/program.h>
 #include <kernel/ke/user_bootstrap.h>
 
 HO_STATUS
 ExBootstrapInit(void)
 {
-    HO_STATUS status = KeUserBootstrapRawSyscallInit();
+    HO_STATUS status = ExProgramValidateBuiltins();
+    if (status != EC_SUCCESS)
+        return status;
+
+    status = KeUserBootstrapRawSyscallInit();
     if (status != EC_SUCCESS)
         return status;
 

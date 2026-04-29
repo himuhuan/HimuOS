@@ -11,6 +11,7 @@
 #include <kernel/demo_shell.h>
 #include <kernel/ex/ex_bootstrap_adapter.h>
 #include <kernel/ex/ex_syscall.h>
+#include <kernel/ex/program.h>
 #include <kernel/hodbg.h>
 #include <kernel/ke/input.h>
 #include <kernel/ke/kthread.h>
@@ -49,7 +50,7 @@ static int64_t KiHandleCapabilityWaitOne(EX_PROCESS *process,
                                          uint64_t reserved);
 static int64_t KiDispatchCapabilitySyscall(uint64_t syscallNumber, uint64_t arg0, uint64_t arg1, uint64_t arg2);
 static int64_t KiHandleReadLine(uint64_t userBuffer, uint64_t capacity, uint64_t reserved);
-static int64_t KiHandleSpawnBuiltin(uint64_t programId, uint64_t flags, uint64_t reserved);
+static int64_t KiHandleSpawnProgram(uint64_t userName, uint64_t nameLength, uint64_t flags);
 static int64_t KiHandleWaitPid(uint64_t pid, uint64_t reserved0, uint64_t reserved1);
 static int64_t KiHandleSleepMs(uint64_t milliseconds, uint64_t reserved0, uint64_t reserved1);
 static int64_t KiHandleKillPid(uint64_t pid, uint64_t reserved0, uint64_t reserved1);
@@ -476,30 +477,50 @@ KiHandleReadLine(uint64_t userBuffer, uint64_t capacity, uint64_t reserved)
 }
 
 static int64_t
-KiHandleSpawnBuiltin(uint64_t programId, uint64_t flags, uint64_t reserved)
+KiHandleSpawnProgram(uint64_t userName, uint64_t nameLength, uint64_t flags)
 {
     KTHREAD *thread = KeGetCurrentThread();
     uint32_t pid = 0;
+    char programName[EX_PROGRAM_NAME_MAX_LENGTH];
 
-    if (reserved != 0 || programId > 0xFFFFFFFFULL || flags > 0xFFFFFFFFULL)
+    if (userName == 0 || nameLength == 0 || nameLength >= EX_PROGRAM_NAME_MAX_LENGTH || flags > 0xFFFFFFFFULL)
     {
         klog(KLOG_LEVEL_WARNING,
-             KE_USER_BOOTSTRAP_LOG_SPAWN_BUILTIN_REJECTED " thread=%u program=%lu flags=%lu status=%s (%d)\n",
+             KE_USER_BOOTSTRAP_LOG_SPAWN_PROGRAM_REJECTED
+             " thread=%u name_len=%lu flags=%lu status=%s (%d)\n",
              thread ? thread->ThreadId : 0U,
-             (unsigned long)programId,
+             (unsigned long)nameLength,
              (unsigned long)flags,
              KrGetStatusMessage(EC_ILLEGAL_ARGUMENT),
              EC_ILLEGAL_ARGUMENT);
         return KiEncodeSyscallStatus(EC_ILLEGAL_ARGUMENT);
     }
 
-    HO_STATUS status = KeDemoShellSpawnBuiltin((uint32_t)programId, (uint32_t)flags, &pid);
+    memset(programName, 0, sizeof(programName));
+
+    HO_STATUS status = KeUserBootstrapCopyInBytes(programName, (HO_VIRTUAL_ADDRESS)userName, nameLength);
     if (status != EC_SUCCESS)
     {
         klog(KLOG_LEVEL_WARNING,
-             KE_USER_BOOTSTRAP_LOG_SPAWN_BUILTIN_REJECTED " thread=%u program=%lu flags=%lu status=%s (%d)\n",
+             KE_USER_BOOTSTRAP_LOG_SPAWN_PROGRAM_REJECTED
+             " thread=%u name_addr=%p name_len=%lu flags=%lu status=%s (%d)\n",
              thread ? thread->ThreadId : 0U,
-             (unsigned long)programId,
+             (void *)(uint64_t)userName,
+             (unsigned long)nameLength,
+             (unsigned long)flags,
+             KrGetStatusMessage(status),
+             status);
+        return KiEncodeSyscallStatus(status);
+    }
+
+    status = KeDemoShellSpawnProgram(programName, (uint32_t)nameLength, (uint32_t)flags, &pid);
+    if (status != EC_SUCCESS)
+    {
+        klog(KLOG_LEVEL_WARNING,
+             KE_USER_BOOTSTRAP_LOG_SPAWN_PROGRAM_REJECTED
+             " thread=%u name=%s flags=%lu status=%s (%d)\n",
+             thread ? thread->ThreadId : 0U,
+             programName,
              (unsigned long)flags,
              KrGetStatusMessage(status),
              status);
@@ -507,9 +528,9 @@ KiHandleSpawnBuiltin(uint64_t programId, uint64_t flags, uint64_t reserved)
     }
 
     klog(KLOG_LEVEL_INFO,
-         KE_USER_BOOTSTRAP_LOG_SPAWN_BUILTIN_SUCCEEDED " thread=%u program=%lu flags=%lu pid=%u\n",
+         KE_USER_BOOTSTRAP_LOG_SPAWN_PROGRAM_SUCCEEDED " thread=%u name=%s flags=%lu pid=%u\n",
          thread ? thread->ThreadId : 0U,
-         (unsigned long)programId,
+         programName,
          (unsigned long)flags,
          pid);
     return (int64_t)pid;
@@ -625,8 +646,8 @@ KiDispatchFormalSyscall(const EX_SYSCALL_ARGUMENTS *args, EX_SYSCALL_DISPATCH_RE
     case SYS_READLINE:
         KiSetReturnResult(result, KiHandleReadLine(args->Arg0, args->Arg1, args->Arg2));
         return EC_SUCCESS;
-    case SYS_SPAWN_BUILTIN:
-        KiSetReturnResult(result, KiHandleSpawnBuiltin(args->Arg0, args->Arg1, args->Arg2));
+    case SYS_SPAWN_PROGRAM:
+        KiSetReturnResult(result, KiHandleSpawnProgram(args->Arg0, args->Arg1, args->Arg2));
         return EC_SUCCESS;
     case SYS_WAIT_PID:
         KiSetReturnResult(result, KiHandleWaitPid(args->Arg0, args->Arg1, args->Arg2));
@@ -646,7 +667,7 @@ KiDispatchFormalSyscall(const EX_SYSCALL_ARGUMENTS *args, EX_SYSCALL_DISPATCH_RE
 static HO_STATUS
 KiObserveKillRequest(EX_SYSCALL_DISPATCH_RESULT *result)
 {
-    uint32_t killedProgramId = KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_NONE;
+    uint32_t killedProgramId = EX_PROGRAM_ID_NONE;
     if (KeDemoShellShouldTerminateCurrentThread(&killedProgramId))
         return KiPrepareBootstrapKillExit(killedProgramId, result);
 

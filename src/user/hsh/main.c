@@ -338,8 +338,7 @@ main(void)
 
         if (HoHshLineEquals(line, (uint64_t)status, "calc"))
         {
-            int64_t pid =
-                HoUserSpawnBuiltin(KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_CALC, KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND);
+            int64_t pid = HoUserSpawnProgramLiteral("calc", KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND);
             if (pid < 0)
             {
                 HoHshMustWriteLiteral(gSpawnFailed);
@@ -354,8 +353,7 @@ main(void)
 
         if (HoHshLineEquals(line, (uint64_t)status, "fault_de"))
         {
-            int64_t pid =
-                HoUserSpawnBuiltin(KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_FAULT_DE, KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND);
+            int64_t pid = HoUserSpawnProgramLiteral("fault_de", KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND);
             if (pid < 0)
             {
                 HoHshMustWriteLiteral(gSpawnFailed);
@@ -370,8 +368,7 @@ main(void)
 
         if (HoHshLineEquals(line, (uint64_t)status, "fault_pf"))
         {
-            int64_t pid =
-                HoUserSpawnBuiltin(KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_FAULT_PF, KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND);
+            int64_t pid = HoUserSpawnProgramLiteral("fault_pf", KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND);
             if (pid < 0)
             {
                 HoHshMustWriteLiteral(gSpawnFailed);
@@ -393,8 +390,7 @@ main(void)
                 continue;
             }
 
-            int64_t pid =
-                HoUserSpawnBuiltin(KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_TICK1S, KE_USER_BOOTSTRAP_SPAWN_FLAG_NONE);
+            int64_t pid = HoUserSpawnProgramLiteral("tick1s", KE_USER_BOOTSTRAP_SPAWN_FLAG_NONE);
             if (pid < 0)
             {
                 HoHshMustWriteLiteral(gSpawnFailed);

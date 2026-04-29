@@ -135,10 +135,12 @@ HoUserReadLine(void *buffer, uint64_t capacity)
     return HoUserSyscall3(SYS_READLINE, (uint64_t)(void *)buffer, capacity, 0);
 }
 
+#define HoUserSpawnProgramLiteral(name, flags) HoUserSpawnProgram((name), sizeof(name) - 1U, (flags))
+
 static inline int64_t
-HoUserSpawnBuiltin(uint64_t programId, uint64_t flags)
+HoUserSpawnProgram(const char *name, uint64_t nameLength, uint64_t flags)
 {
-    return HoUserSyscall3(SYS_SPAWN_BUILTIN, programId, flags, 0);
+    return HoUserSyscall3(SYS_SPAWN_PROGRAM, (uint64_t)(const void *)name, nameLength, flags);
 }
 
 static inline int64_t

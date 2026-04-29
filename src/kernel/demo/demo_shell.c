@@ -11,12 +11,8 @@
 
 #include <kernel/demo_shell.h>
 #include <kernel/ex/ex_bootstrap.h>
+#include <kernel/ex/program.h>
 #include <kernel/ke/input.h>
-
-enum
-{
-    KI_DEMO_SHELL_ENTRY_OFFSET = 0U,
-};
 
 typedef struct KI_DEMO_SHELL_CONTEXT
 {
@@ -65,7 +61,7 @@ KiDemoShellControllerThread(void *arg)
 void
 RunDemoShellDemo(void)
 {
-    KI_USER_EMBEDDED_ARTIFACTS hshArtifacts = {0};
+    const EX_USER_IMAGE *hshImage = NULL;
     EX_BOOTSTRAP_PROCESS_CREATE_PARAMS createParams = {0};
     EX_BOOTSTRAP_THREAD_CREATE_PARAMS threadParams = {
         .EntryPoint = KiUnexpectedDemoShellProfileKernelEntry,
@@ -79,14 +75,13 @@ RunDemoShellDemo(void)
     uint32_t hshThreadId = 0;
     HO_STATUS status = EC_SUCCESS;
 
-    KiHshGetEmbeddedArtifacts(&hshArtifacts);
+    status = ExLookupProgramImageByName("hsh", sizeof("hsh") - 1U, &hshImage);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to resolve demo_shell hsh image");
 
-    createParams.CodeBytes = hshArtifacts.CodeBytes;
-    createParams.CodeLength = hshArtifacts.CodeLength;
-    createParams.EntryOffset = KI_DEMO_SHELL_ENTRY_OFFSET;
-    createParams.ConstBytes = hshArtifacts.ConstBytes;
-    createParams.ConstLength = hshArtifacts.ConstLength;
-    createParams.ProgramId = KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_HSH;
+    status = ExProgramBuildBootstrapCreateParams(hshImage, 0, &createParams);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to build demo_shell hsh params");
 
     status = ExBootstrapCreateProcess(&createParams, &process);
     if (status != EC_SUCCESS)

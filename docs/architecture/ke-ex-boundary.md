@@ -34,7 +34,7 @@ These are the mechanisms later Ex code should consume rather than duplicate.
 ## Current Boundary Debts
 
 - `src/kernel/ke/user_bootstrap_syscall.c` dispatches user-visible policy
-  syscalls: `SYS_READLINE`, `SYS_SPAWN_BUILTIN`, `SYS_WAIT_PID`,
+  syscalls: `SYS_READLINE`, `SYS_SPAWN_PROGRAM`, `SYS_WAIT_PID`,
   `SYS_SLEEP_MS`, and `SYS_KILL_PID`.
 - The same Ke file includes `kernel/demo_shell.h` and checks
   `KeDemoShellShouldTerminateCurrentThread()` after each syscall.
@@ -47,8 +47,8 @@ These are the mechanisms later Ex code should consume rather than duplicate.
   while exporting `KeDemoShell*` functions.
 - `ExBootstrapBorrowKernelThread()` exposes a `KTHREAD *` to demo code so it can
   join bootstrap user threads directly.
-- `ex_bootstrap_abi.h` mixes layout constants, syscall numbers, builtin program
-  identifiers, sysinfo structs, and log anchors.
+- `ex_bootstrap_abi.h` mixes layout constants, syscall numbers, program name
+  limits, sysinfo structs, and log anchors.
 
 These debts are acceptable in Stage 0 because they are part of the current
 working MVP. Later stages should remove them profile by profile.
@@ -84,4 +84,3 @@ Stage 0 must not:
 
 The Stage 0 job is to make the current architecture and regression contracts
 explicit before behavior moves.
-

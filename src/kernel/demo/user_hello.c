@@ -22,11 +22,7 @@
 #include "demo_internal.h"
 
 #include <kernel/ex/ex_bootstrap.h>
-
-enum
-{
-    KI_USER_HELLO_PAYLOAD_ENTRY_OFFSET = 0U,
-};
+#include <kernel/ex/program.h>
 
 static void KiUnexpectedUserHelloKernelEntry(void *arg);
 
@@ -40,7 +36,7 @@ KiUnexpectedUserHelloKernelEntry(void *arg)
 void
 RunUserHelloDemo(void)
 {
-    KI_USER_EMBEDDED_ARTIFACTS artifacts = {0};
+    const EX_USER_IMAGE *image = NULL;
     EX_BOOTSTRAP_PROCESS_CREATE_PARAMS createParams = {0};
     EX_BOOTSTRAP_THREAD_CREATE_PARAMS threadParams = {
         .EntryPoint = KiUnexpectedUserHelloKernelEntry,
@@ -49,15 +45,15 @@ RunUserHelloDemo(void)
     EX_PROCESS *process = NULL;
     EX_THREAD *thread = NULL;
 
-    KiUserHelloGetEmbeddedArtifacts(&artifacts);
+    HO_STATUS status = ExLookupProgramImageByName("user_hello", sizeof("user_hello") - 1U, &image);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to resolve user_hello image");
 
-    createParams.CodeBytes = artifacts.CodeBytes;
-    createParams.CodeLength = artifacts.CodeLength;
-    createParams.EntryOffset = KI_USER_HELLO_PAYLOAD_ENTRY_OFFSET;
-    createParams.ConstBytes = artifacts.ConstBytes;
-    createParams.ConstLength = artifacts.ConstLength;
+    status = ExProgramBuildBootstrapCreateParams(image, 0, &createParams);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to build user_hello create params");
 
-    HO_STATUS status = ExBootstrapCreateProcess(&createParams, &process);
+    status = ExBootstrapCreateProcess(&createParams, &process);
     if (status != EC_SUCCESS)
         HO_KPANIC(status, "Failed to create staged user_hello payload");
 

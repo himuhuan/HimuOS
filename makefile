@@ -252,15 +252,8 @@ SRCS_KERNEL_C := \
 	src/kernel/demo/kthread_pool_race.c                 \
 	src/kernel/demo/semaphore.c                         \
     src/kernel/demo/thread.c                            \
-    src/kernel/demo/user_counter_artifact_bridge.c      \
     src/kernel/demo/demo_shell.c                        \
     src/kernel/demo/demo_shell_runtime.c                \
-    src/kernel/demo/hsh_artifact_bridge.c               \
-    src/kernel/demo/calc_artifact_bridge.c              \
-    src/kernel/demo/tick1s_artifact_bridge.c            \
-    src/kernel/demo/fault_de_artifact_bridge.c          \
-    src/kernel/demo/fault_pf_artifact_bridge.c          \
-    src/kernel/demo/user_hello_artifact_bridge.c        \
 	src/kernel/demo/user_hello.c                        \
     src/kernel/demo/user_dual.c                         \
 	src/kernel/demo/user_caps.c                         \
@@ -303,6 +296,7 @@ SRCS_KERNEL_C := \
     src/kernel/ex/handle.c                              \
     src/kernel/ex/runtime_alias.c                       \
     src/kernel/ex/image.c                               \
+    src/kernel/ex/program.c                             \
     src/kernel/ex/process.c                             \
     src/kernel/ex/thread.c                              \
     src/kernel/ex/sysinfo.c                             \
@@ -349,120 +343,48 @@ TARGET_KERNEL := $(KRN_BINDIR)/kernel.bin
 # ------------------------------------------------------------------------------
 # Userspace bootstrap artifacts
 # ------------------------------------------------------------------------------
-SRCS_USER_HELLO_C := \
-    src/user/user_hello/main.c
+USER_PROGRAMS := user_hello user_counter hsh calc tick1s fault_de fault_pf
 
-SRCS_USER_COUNTER_C := \
-    src/user/user_counter/main.c
-
-SRCS_USER_HSH_C := \
-    src/user/hsh/main.c
-
-SRCS_USER_CALC_C := \
-    src/user/calc/main.c
-
-SRCS_USER_TICK1S_C := \
-    src/user/tick1s/main.c
-
-SRCS_USER_FAULT_DE_C := \
-    src/user/fault_de/main.c
-
-SRCS_USER_FAULT_PF_C := \
-    src/user/fault_pf/main.c
+USER_PROGRAM_SRC_user_hello := src/user/user_hello/main.c
+USER_PROGRAM_SRC_user_counter := src/user/user_counter/main.c
+USER_PROGRAM_SRC_hsh := src/user/hsh/main.c
+USER_PROGRAM_SRC_calc := src/user/calc/main.c
+USER_PROGRAM_SRC_tick1s := src/user/tick1s/main.c
+USER_PROGRAM_SRC_fault_de := src/user/fault_de/main.c
+USER_PROGRAM_SRC_fault_pf := src/user/fault_pf/main.c
 
 SRCS_USER_COMMON_S := \
     src/user/crt0.S
 
-OBJS_USER_HELLO_C := $(patsubst src/%.c,$(USR_OBJDIR)/%.o,$(SRCS_USER_HELLO_C))
-OBJS_USER_COUNTER_C := $(patsubst src/%.c,$(USR_OBJDIR)/%.o,$(SRCS_USER_COUNTER_C))
-OBJS_USER_HSH_C := $(patsubst src/%.c,$(USR_OBJDIR)/%.o,$(SRCS_USER_HSH_C))
-OBJS_USER_CALC_C := $(patsubst src/%.c,$(USR_OBJDIR)/%.o,$(SRCS_USER_CALC_C))
-OBJS_USER_TICK1S_C := $(patsubst src/%.c,$(USR_OBJDIR)/%.o,$(SRCS_USER_TICK1S_C))
-OBJS_USER_FAULT_DE_C := $(patsubst src/%.c,$(USR_OBJDIR)/%.o,$(SRCS_USER_FAULT_DE_C))
-OBJS_USER_FAULT_PF_C := $(patsubst src/%.c,$(USR_OBJDIR)/%.o,$(SRCS_USER_FAULT_PF_C))
-OBJS_USER_HELLO_S := $(patsubst src/%.S,$(USR_OBJDIR)/%.o,$(SRCS_USER_COMMON_S))
-OBJS_USER_HELLO   := $(OBJS_USER_HELLO_C) $(OBJS_USER_HELLO_S)
-OBJS_USER_COUNTER := $(OBJS_USER_COUNTER_C) $(OBJS_USER_HELLO_S)
-OBJS_USER_HSH     := $(OBJS_USER_HSH_C) $(OBJS_USER_HELLO_S)
-OBJS_USER_CALC    := $(OBJS_USER_CALC_C) $(OBJS_USER_HELLO_S)
-OBJS_USER_TICK1S  := $(OBJS_USER_TICK1S_C) $(OBJS_USER_HELLO_S)
-OBJS_USER_FAULT_DE := $(OBJS_USER_FAULT_DE_C) $(OBJS_USER_HELLO_S)
-OBJS_USER_FAULT_PF := $(OBJS_USER_FAULT_PF_C) $(OBJS_USER_HELLO_S)
-
-TARGET_USER_HELLO_ELF       := $(USR_BINDIR)/user_hello.elf
-TARGET_USER_HELLO_CODE_BIN  := $(USR_BINDIR)/user_hello.code.bin
-TARGET_USER_HELLO_CONST_BIN := $(USR_BINDIR)/user_hello.const.bin
-TARGET_USER_HELLO           := $(TARGET_USER_HELLO_ELF) $(TARGET_USER_HELLO_CODE_BIN) $(TARGET_USER_HELLO_CONST_BIN)
-
-TARGET_USER_COUNTER_ELF       := $(USR_BINDIR)/user_counter.elf
-TARGET_USER_COUNTER_CODE_BIN  := $(USR_BINDIR)/user_counter.code.bin
-TARGET_USER_COUNTER_CONST_BIN := $(USR_BINDIR)/user_counter.const.bin
-TARGET_USER_COUNTER           := $(TARGET_USER_COUNTER_ELF) $(TARGET_USER_COUNTER_CODE_BIN) $(TARGET_USER_COUNTER_CONST_BIN)
-
-TARGET_USER_HSH_ELF       := $(USR_BINDIR)/hsh.elf
-TARGET_USER_HSH_CODE_BIN  := $(USR_BINDIR)/hsh.code.bin
-TARGET_USER_HSH_CONST_BIN := $(USR_BINDIR)/hsh.const.bin
-TARGET_USER_HSH           := $(TARGET_USER_HSH_ELF) $(TARGET_USER_HSH_CODE_BIN) $(TARGET_USER_HSH_CONST_BIN)
-
-TARGET_USER_CALC_ELF       := $(USR_BINDIR)/calc.elf
-TARGET_USER_CALC_CODE_BIN  := $(USR_BINDIR)/calc.code.bin
-TARGET_USER_CALC_CONST_BIN := $(USR_BINDIR)/calc.const.bin
-TARGET_USER_CALC           := $(TARGET_USER_CALC_ELF) $(TARGET_USER_CALC_CODE_BIN) $(TARGET_USER_CALC_CONST_BIN)
-
-TARGET_USER_TICK1S_ELF       := $(USR_BINDIR)/tick1s.elf
-TARGET_USER_TICK1S_CODE_BIN  := $(USR_BINDIR)/tick1s.code.bin
-TARGET_USER_TICK1S_CONST_BIN := $(USR_BINDIR)/tick1s.const.bin
-TARGET_USER_TICK1S           := $(TARGET_USER_TICK1S_ELF) $(TARGET_USER_TICK1S_CODE_BIN) $(TARGET_USER_TICK1S_CONST_BIN)
-
-TARGET_USER_FAULT_DE_ELF       := $(USR_BINDIR)/fault_de.elf
-TARGET_USER_FAULT_DE_CODE_BIN  := $(USR_BINDIR)/fault_de.code.bin
-TARGET_USER_FAULT_DE_CONST_BIN := $(USR_BINDIR)/fault_de.const.bin
-TARGET_USER_FAULT_DE           := $(TARGET_USER_FAULT_DE_ELF) $(TARGET_USER_FAULT_DE_CODE_BIN) $(TARGET_USER_FAULT_DE_CONST_BIN)
-
-TARGET_USER_FAULT_PF_ELF       := $(USR_BINDIR)/fault_pf.elf
-TARGET_USER_FAULT_PF_CODE_BIN  := $(USR_BINDIR)/fault_pf.code.bin
-TARGET_USER_FAULT_PF_CONST_BIN := $(USR_BINDIR)/fault_pf.const.bin
-TARGET_USER_FAULT_PF           := $(TARGET_USER_FAULT_PF_ELF) $(TARGET_USER_FAULT_PF_CODE_BIN) $(TARGET_USER_FAULT_PF_CONST_BIN)
-
 path_to_symbol = $(subst -,_,$(subst .,_,$(subst /,_,$(1))))
 
-TARGET_USER_HELLO_CODE_OBJ  := $(KRN_OBJDIR)/demo/user_hello.code.bin.o
-TARGET_USER_HELLO_CONST_OBJ := $(KRN_OBJDIR)/demo/user_hello.const.bin.o
-TARGET_USER_COUNTER_CODE_OBJ  := $(KRN_OBJDIR)/demo/user_counter.code.bin.o
-TARGET_USER_COUNTER_CONST_OBJ := $(KRN_OBJDIR)/demo/user_counter.const.bin.o
-TARGET_USER_HSH_CODE_OBJ      := $(KRN_OBJDIR)/demo/hsh.code.bin.o
-TARGET_USER_HSH_CONST_OBJ     := $(KRN_OBJDIR)/demo/hsh.const.bin.o
-TARGET_USER_CALC_CODE_OBJ     := $(KRN_OBJDIR)/demo/calc.code.bin.o
-TARGET_USER_CALC_CONST_OBJ    := $(KRN_OBJDIR)/demo/calc.const.bin.o
-TARGET_USER_TICK1S_CODE_OBJ   := $(KRN_OBJDIR)/demo/tick1s.code.bin.o
-TARGET_USER_TICK1S_CONST_OBJ  := $(KRN_OBJDIR)/demo/tick1s.const.bin.o
-TARGET_USER_FAULT_DE_CODE_OBJ := $(KRN_OBJDIR)/demo/fault_de.code.bin.o
-TARGET_USER_FAULT_DE_CONST_OBJ := $(KRN_OBJDIR)/demo/fault_de.const.bin.o
-TARGET_USER_FAULT_PF_CODE_OBJ := $(KRN_OBJDIR)/demo/fault_pf.code.bin.o
-TARGET_USER_FAULT_PF_CONST_OBJ := $(KRN_OBJDIR)/demo/fault_pf.const.bin.o
-OBJS_KERNEL_EMBEDDED          := $(TARGET_USER_HELLO_CODE_OBJ) $(TARGET_USER_HELLO_CONST_OBJ) \
-                                 $(TARGET_USER_COUNTER_CODE_OBJ) $(TARGET_USER_COUNTER_CONST_OBJ) \
-                                 $(TARGET_USER_HSH_CODE_OBJ) $(TARGET_USER_HSH_CONST_OBJ) \
-                                 $(TARGET_USER_CALC_CODE_OBJ) $(TARGET_USER_CALC_CONST_OBJ) \
-                                 $(TARGET_USER_TICK1S_CODE_OBJ) $(TARGET_USER_TICK1S_CONST_OBJ) \
-                                 $(TARGET_USER_FAULT_DE_CODE_OBJ) $(TARGET_USER_FAULT_DE_CONST_OBJ) \
-                                 $(TARGET_USER_FAULT_PF_CODE_OBJ) $(TARGET_USER_FAULT_PF_CONST_OBJ)
-OBJS_KERNEL                 := $(OBJS_KERNEL_C) $(OBJS_KERNEL_ASM) $(OBJS_KERNEL_EMBEDDED)
+OBJS_USER_COMMON_S := $(patsubst src/%.S,$(USR_OBJDIR)/%.o,$(SRCS_USER_COMMON_S))
+USER_TARGETS :=
+USER_ELF_TARGETS :=
+USER_DEP_OBJS := $(OBJS_USER_COMMON_S)
+OBJS_KERNEL_EMBEDDED :=
 
-USER_HELLO_CODE_BIN_SYMBOL_BASE  := _binary_$(call path_to_symbol,$(TARGET_USER_HELLO_CODE_BIN))
-USER_HELLO_CONST_BIN_SYMBOL_BASE := _binary_$(call path_to_symbol,$(TARGET_USER_HELLO_CONST_BIN))
-USER_COUNTER_CODE_BIN_SYMBOL_BASE  := _binary_$(call path_to_symbol,$(TARGET_USER_COUNTER_CODE_BIN))
-USER_COUNTER_CONST_BIN_SYMBOL_BASE := _binary_$(call path_to_symbol,$(TARGET_USER_COUNTER_CONST_BIN))
-USER_HSH_CODE_BIN_SYMBOL_BASE      := _binary_$(call path_to_symbol,$(TARGET_USER_HSH_CODE_BIN))
-USER_HSH_CONST_BIN_SYMBOL_BASE     := _binary_$(call path_to_symbol,$(TARGET_USER_HSH_CONST_BIN))
-USER_CALC_CODE_BIN_SYMBOL_BASE     := _binary_$(call path_to_symbol,$(TARGET_USER_CALC_CODE_BIN))
-USER_CALC_CONST_BIN_SYMBOL_BASE    := _binary_$(call path_to_symbol,$(TARGET_USER_CALC_CONST_BIN))
-USER_TICK1S_CODE_BIN_SYMBOL_BASE   := _binary_$(call path_to_symbol,$(TARGET_USER_TICK1S_CODE_BIN))
-USER_TICK1S_CONST_BIN_SYMBOL_BASE  := _binary_$(call path_to_symbol,$(TARGET_USER_TICK1S_CONST_BIN))
-USER_FAULT_DE_CODE_BIN_SYMBOL_BASE := _binary_$(call path_to_symbol,$(TARGET_USER_FAULT_DE_CODE_BIN))
-USER_FAULT_DE_CONST_BIN_SYMBOL_BASE := _binary_$(call path_to_symbol,$(TARGET_USER_FAULT_DE_CONST_BIN))
-USER_FAULT_PF_CODE_BIN_SYMBOL_BASE := _binary_$(call path_to_symbol,$(TARGET_USER_FAULT_PF_CODE_BIN))
-USER_FAULT_PF_CONST_BIN_SYMBOL_BASE := _binary_$(call path_to_symbol,$(TARGET_USER_FAULT_PF_CONST_BIN))
+define USER_PROGRAM_TEMPLATE
+OBJS_USER_$(1) := $$(patsubst src/%.c,$$(USR_OBJDIR)/%.o,$$(USER_PROGRAM_SRC_$(1))) $$(OBJS_USER_COMMON_S)
+TARGET_USER_$(1)_ELF := $$(USR_BINDIR)/$(1).elf
+TARGET_USER_$(1)_CODE_BIN := $$(USR_BINDIR)/$(1).code.bin
+TARGET_USER_$(1)_CONST_BIN := $$(USR_BINDIR)/$(1).const.bin
+TARGET_USER_$(1) := $$(TARGET_USER_$(1)_ELF) $$(TARGET_USER_$(1)_CODE_BIN) $$(TARGET_USER_$(1)_CONST_BIN)
+TARGET_USER_$(1)_CODE_OBJ := $$(KRN_OBJDIR)/ex/program/$(1).code.bin.o
+TARGET_USER_$(1)_CONST_OBJ := $$(KRN_OBJDIR)/ex/program/$(1).const.bin.o
+TARGET_USER_$(1)_CODE_BIN_SYMBOL_BASE := _binary_$$(call path_to_symbol,$$(TARGET_USER_$(1)_CODE_BIN))
+TARGET_USER_$(1)_CONST_BIN_SYMBOL_BASE := _binary_$$(call path_to_symbol,$$(TARGET_USER_$(1)_CONST_BIN))
+
+USER_TARGETS += $$(TARGET_USER_$(1))
+USER_ELF_TARGETS += $$(TARGET_USER_$(1)_ELF)
+USER_DEP_OBJS += $$(OBJS_USER_$(1))
+OBJS_KERNEL_EMBEDDED += $$(TARGET_USER_$(1)_CODE_OBJ) $$(TARGET_USER_$(1)_CONST_OBJ)
+endef
+
+$(foreach program,$(USER_PROGRAMS),$(eval $(call USER_PROGRAM_TEMPLATE,$(program))))
+
+OBJS_USER_ALL := $(sort $(USER_DEP_OBJS))
+OBJS_KERNEL   := $(OBJS_KERNEL_C) $(OBJS_KERNEL_ASM) $(OBJS_KERNEL_EMBEDDED)
 
 .PHONY: all clean copy run efi install clean_code vmware_img kernel user debug run_iso test schedule user_hello user_caps user_dual user_input demo_shell user_fault list
 
@@ -499,239 +421,45 @@ $(KRN_OBJDIR)/%.o: src/%.asm
 	@echo "ASM $<"
 	@nasm $(ASFLAGS) -o $@ $<
 
-user: $(TARGET_USER_HELLO) $(TARGET_USER_COUNTER) $(TARGET_USER_HSH) $(TARGET_USER_CALC) $(TARGET_USER_TICK1S) $(TARGET_USER_FAULT_DE) $(TARGET_USER_FAULT_PF)
-	@echo "User build complete: $(TARGET_USER_HELLO_ELF) $(TARGET_USER_COUNTER_ELF) $(TARGET_USER_HSH_ELF) $(TARGET_USER_CALC_ELF) $(TARGET_USER_TICK1S_ELF) $(TARGET_USER_FAULT_DE_ELF) $(TARGET_USER_FAULT_PF_ELF)"
+user: $(USER_TARGETS)
+	@echo "User build complete: $(USER_ELF_TARGETS)"
 
-$(TARGET_USER_HELLO_ELF): $(OBJS_USER_HELLO) src/user/user.ld
-	@mkdir -p $(dir $@)
-	@echo "USER LD $@"
-	@$(LD) -o $@ $(OBJS_USER_HELLO) $(USER_LDFLAGS) -T src/user/user.ld -Map=$(USR_BINDIR)/user_hello.map
+define USER_PROGRAM_RULES
+$$(TARGET_USER_$(1)_ELF): $$(OBJS_USER_$(1)) src/user/user.ld
+	@mkdir -p $$(dir $$@)
+	@echo "USER LD $$@"
+	@$$(LD) -o $$@ $$(OBJS_USER_$(1)) $$(USER_LDFLAGS) -T src/user/user.ld -Map=$$(USR_BINDIR)/$(1).map
 
-$(TARGET_USER_HELLO_CODE_BIN): $(TARGET_USER_HELLO_ELF)
-	@mkdir -p $(dir $@)
-	@echo "USER OBJCOPY $@"
-	@$(OBJCOPY) -O binary --only-section=.text $< $@
+$$(TARGET_USER_$(1)_CODE_BIN): $$(TARGET_USER_$(1)_ELF)
+	@mkdir -p $$(dir $$@)
+	@echo "USER OBJCOPY $$@"
+	@$$(OBJCOPY) -O binary --only-section=.text $$< $$@
 
-$(TARGET_USER_HELLO_CONST_BIN): $(TARGET_USER_HELLO_ELF)
-	@mkdir -p $(dir $@)
-	@echo "USER OBJCOPY $@"
-	@$(OBJCOPY) -O binary --only-section=.rodata $< $@
+$$(TARGET_USER_$(1)_CONST_BIN): $$(TARGET_USER_$(1)_ELF)
+	@mkdir -p $$(dir $$@)
+	@echo "USER OBJCOPY $$@"
+	@$$(OBJCOPY) -O binary --only-section=.rodata $$< $$@
 
-$(TARGET_USER_COUNTER_ELF): $(OBJS_USER_COUNTER) src/user/user.ld
-	@mkdir -p $(dir $@)
-	@echo "USER LD $@"
-	@$(LD) -o $@ $(OBJS_USER_COUNTER) $(USER_LDFLAGS) -T src/user/user.ld -Map=$(USR_BINDIR)/user_counter.map
+$$(TARGET_USER_$(1)_CODE_OBJ): $$(TARGET_USER_$(1)_CODE_BIN)
+	@mkdir -p $$(dir $$@)
+	@echo "BINOBJ $$@"
+	@$$(LD) -r -b binary -o $$@ $$<
+	@$$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
+		--redefine-sym $$(TARGET_USER_$(1)_CODE_BIN_SYMBOL_BASE)_start=gExBuiltinProgram_$(1)_CodeBytesStart \
+		--redefine-sym $$(TARGET_USER_$(1)_CODE_BIN_SYMBOL_BASE)_end=gExBuiltinProgram_$(1)_CodeBytesEnd \
+		$$@
 
-$(TARGET_USER_COUNTER_CODE_BIN): $(TARGET_USER_COUNTER_ELF)
-	@mkdir -p $(dir $@)
-	@echo "USER OBJCOPY $@"
-	@$(OBJCOPY) -O binary --only-section=.text $< $@
+$$(TARGET_USER_$(1)_CONST_OBJ): $$(TARGET_USER_$(1)_CONST_BIN)
+	@mkdir -p $$(dir $$@)
+	@echo "BINOBJ $$@"
+	@$$(LD) -r -b binary -o $$@ $$<
+	@$$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
+		--redefine-sym $$(TARGET_USER_$(1)_CONST_BIN_SYMBOL_BASE)_start=gExBuiltinProgram_$(1)_ConstBytesStart \
+		--redefine-sym $$(TARGET_USER_$(1)_CONST_BIN_SYMBOL_BASE)_end=gExBuiltinProgram_$(1)_ConstBytesEnd \
+		$$@
+endef
 
-$(TARGET_USER_COUNTER_CONST_BIN): $(TARGET_USER_COUNTER_ELF)
-	@mkdir -p $(dir $@)
-	@echo "USER OBJCOPY $@"
-	@$(OBJCOPY) -O binary --only-section=.rodata $< $@
-
-$(TARGET_USER_HSH_ELF): $(OBJS_USER_HSH) src/user/user.ld
-	@mkdir -p $(dir $@)
-	@echo "USER LD $@"
-	@$(LD) -o $@ $(OBJS_USER_HSH) $(USER_LDFLAGS) -T src/user/user.ld -Map=$(USR_BINDIR)/hsh.map
-
-$(TARGET_USER_HSH_CODE_BIN): $(TARGET_USER_HSH_ELF)
-	@mkdir -p $(dir $@)
-	@echo "USER OBJCOPY $@"
-	@$(OBJCOPY) -O binary --only-section=.text $< $@
-
-$(TARGET_USER_HSH_CONST_BIN): $(TARGET_USER_HSH_ELF)
-	@mkdir -p $(dir $@)
-	@echo "USER OBJCOPY $@"
-	@$(OBJCOPY) -O binary --only-section=.rodata $< $@
-
-$(TARGET_USER_CALC_ELF): $(OBJS_USER_CALC) src/user/user.ld
-	@mkdir -p $(dir $@)
-	@echo "USER LD $@"
-	@$(LD) -o $@ $(OBJS_USER_CALC) $(USER_LDFLAGS) -T src/user/user.ld -Map=$(USR_BINDIR)/calc.map
-
-$(TARGET_USER_CALC_CODE_BIN): $(TARGET_USER_CALC_ELF)
-	@mkdir -p $(dir $@)
-	@echo "USER OBJCOPY $@"
-	@$(OBJCOPY) -O binary --only-section=.text $< $@
-
-$(TARGET_USER_CALC_CONST_BIN): $(TARGET_USER_CALC_ELF)
-	@mkdir -p $(dir $@)
-	@echo "USER OBJCOPY $@"
-	@$(OBJCOPY) -O binary --only-section=.rodata $< $@
-
-$(TARGET_USER_TICK1S_ELF): $(OBJS_USER_TICK1S) src/user/user.ld
-	@mkdir -p $(dir $@)
-	@echo "USER LD $@"
-	@$(LD) -o $@ $(OBJS_USER_TICK1S) $(USER_LDFLAGS) -T src/user/user.ld -Map=$(USR_BINDIR)/tick1s.map
-
-$(TARGET_USER_TICK1S_CODE_BIN): $(TARGET_USER_TICK1S_ELF)
-	@mkdir -p $(dir $@)
-	@echo "USER OBJCOPY $@"
-	@$(OBJCOPY) -O binary --only-section=.text $< $@
-
-$(TARGET_USER_TICK1S_CONST_BIN): $(TARGET_USER_TICK1S_ELF)
-	@mkdir -p $(dir $@)
-	@echo "USER OBJCOPY $@"
-	@$(OBJCOPY) -O binary --only-section=.rodata $< $@
-
-$(TARGET_USER_FAULT_DE_ELF): $(OBJS_USER_FAULT_DE) src/user/user.ld
-	@mkdir -p $(dir $@)
-	@echo "USER LD $@"
-	@$(LD) -o $@ $(OBJS_USER_FAULT_DE) $(USER_LDFLAGS) -T src/user/user.ld -Map=$(USR_BINDIR)/fault_de.map
-
-$(TARGET_USER_FAULT_DE_CODE_BIN): $(TARGET_USER_FAULT_DE_ELF)
-	@mkdir -p $(dir $@)
-	@echo "USER OBJCOPY $@"
-	@$(OBJCOPY) -O binary --only-section=.text $< $@
-
-$(TARGET_USER_FAULT_DE_CONST_BIN): $(TARGET_USER_FAULT_DE_ELF)
-	@mkdir -p $(dir $@)
-	@echo "USER OBJCOPY $@"
-	@$(OBJCOPY) -O binary --only-section=.rodata $< $@
-
-$(TARGET_USER_FAULT_PF_ELF): $(OBJS_USER_FAULT_PF) src/user/user.ld
-	@mkdir -p $(dir $@)
-	@echo "USER LD $@"
-	@$(LD) -o $@ $(OBJS_USER_FAULT_PF) $(USER_LDFLAGS) -T src/user/user.ld -Map=$(USR_BINDIR)/fault_pf.map
-
-$(TARGET_USER_FAULT_PF_CODE_BIN): $(TARGET_USER_FAULT_PF_ELF)
-	@mkdir -p $(dir $@)
-	@echo "USER OBJCOPY $@"
-	@$(OBJCOPY) -O binary --only-section=.text $< $@
-
-$(TARGET_USER_FAULT_PF_CONST_BIN): $(TARGET_USER_FAULT_PF_ELF)
-	@mkdir -p $(dir $@)
-	@echo "USER OBJCOPY $@"
-	@$(OBJCOPY) -O binary --only-section=.rodata $< $@
-
-$(TARGET_USER_HELLO_CODE_OBJ): $(TARGET_USER_HELLO_CODE_BIN)
-	@mkdir -p $(dir $@)
-	@echo "BINOBJ $@"
-	@$(LD) -r -b binary -o $@ $<
-	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
-		--redefine-sym $(USER_HELLO_CODE_BIN_SYMBOL_BASE)_start=gKiUserHelloCodeBytesStart \
-		--redefine-sym $(USER_HELLO_CODE_BIN_SYMBOL_BASE)_end=gKiUserHelloCodeBytesEnd \
-		$@
-
-$(TARGET_USER_HELLO_CONST_OBJ): $(TARGET_USER_HELLO_CONST_BIN)
-	@mkdir -p $(dir $@)
-	@echo "BINOBJ $@"
-	@$(LD) -r -b binary -o $@ $<
-	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
-		--redefine-sym $(USER_HELLO_CONST_BIN_SYMBOL_BASE)_start=gKiUserHelloConstBytesStart \
-		--redefine-sym $(USER_HELLO_CONST_BIN_SYMBOL_BASE)_end=gKiUserHelloConstBytesEnd \
-		$@
-
-$(TARGET_USER_COUNTER_CODE_OBJ): $(TARGET_USER_COUNTER_CODE_BIN)
-	@mkdir -p $(dir $@)
-	@echo "BINOBJ $@"
-	@$(LD) -r -b binary -o $@ $<
-	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
-		--redefine-sym $(USER_COUNTER_CODE_BIN_SYMBOL_BASE)_start=gKiUserCounterCodeBytesStart \
-		--redefine-sym $(USER_COUNTER_CODE_BIN_SYMBOL_BASE)_end=gKiUserCounterCodeBytesEnd \
-		$@
-
-$(TARGET_USER_COUNTER_CONST_OBJ): $(TARGET_USER_COUNTER_CONST_BIN)
-	@mkdir -p $(dir $@)
-	@echo "BINOBJ $@"
-	@$(LD) -r -b binary -o $@ $<
-	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
-		--redefine-sym $(USER_COUNTER_CONST_BIN_SYMBOL_BASE)_start=gKiUserCounterConstBytesStart \
-		--redefine-sym $(USER_COUNTER_CONST_BIN_SYMBOL_BASE)_end=gKiUserCounterConstBytesEnd \
-		$@
-
-$(TARGET_USER_HSH_CODE_OBJ): $(TARGET_USER_HSH_CODE_BIN)
-	@mkdir -p $(dir $@)
-	@echo "BINOBJ $@"
-	@$(LD) -r -b binary -o $@ $<
-	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
-		--redefine-sym $(USER_HSH_CODE_BIN_SYMBOL_BASE)_start=gKiHshCodeBytesStart \
-		--redefine-sym $(USER_HSH_CODE_BIN_SYMBOL_BASE)_end=gKiHshCodeBytesEnd \
-		$@
-
-$(TARGET_USER_HSH_CONST_OBJ): $(TARGET_USER_HSH_CONST_BIN)
-	@mkdir -p $(dir $@)
-	@echo "BINOBJ $@"
-	@$(LD) -r -b binary -o $@ $<
-	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
-		--redefine-sym $(USER_HSH_CONST_BIN_SYMBOL_BASE)_start=gKiHshConstBytesStart \
-		--redefine-sym $(USER_HSH_CONST_BIN_SYMBOL_BASE)_end=gKiHshConstBytesEnd \
-		$@
-
-$(TARGET_USER_CALC_CODE_OBJ): $(TARGET_USER_CALC_CODE_BIN)
-	@mkdir -p $(dir $@)
-	@echo "BINOBJ $@"
-	@$(LD) -r -b binary -o $@ $<
-	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
-		--redefine-sym $(USER_CALC_CODE_BIN_SYMBOL_BASE)_start=gKiCalcCodeBytesStart \
-		--redefine-sym $(USER_CALC_CODE_BIN_SYMBOL_BASE)_end=gKiCalcCodeBytesEnd \
-		$@
-
-$(TARGET_USER_CALC_CONST_OBJ): $(TARGET_USER_CALC_CONST_BIN)
-	@mkdir -p $(dir $@)
-	@echo "BINOBJ $@"
-	@$(LD) -r -b binary -o $@ $<
-	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
-		--redefine-sym $(USER_CALC_CONST_BIN_SYMBOL_BASE)_start=gKiCalcConstBytesStart \
-		--redefine-sym $(USER_CALC_CONST_BIN_SYMBOL_BASE)_end=gKiCalcConstBytesEnd \
-		$@
-
-$(TARGET_USER_TICK1S_CODE_OBJ): $(TARGET_USER_TICK1S_CODE_BIN)
-	@mkdir -p $(dir $@)
-	@echo "BINOBJ $@"
-	@$(LD) -r -b binary -o $@ $<
-	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
-		--redefine-sym $(USER_TICK1S_CODE_BIN_SYMBOL_BASE)_start=gKiTick1sCodeBytesStart \
-		--redefine-sym $(USER_TICK1S_CODE_BIN_SYMBOL_BASE)_end=gKiTick1sCodeBytesEnd \
-		$@
-
-$(TARGET_USER_TICK1S_CONST_OBJ): $(TARGET_USER_TICK1S_CONST_BIN)
-	@mkdir -p $(dir $@)
-	@echo "BINOBJ $@"
-	@$(LD) -r -b binary -o $@ $<
-	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
-		--redefine-sym $(USER_TICK1S_CONST_BIN_SYMBOL_BASE)_start=gKiTick1sConstBytesStart \
-		--redefine-sym $(USER_TICK1S_CONST_BIN_SYMBOL_BASE)_end=gKiTick1sConstBytesEnd \
-		$@
-
-$(TARGET_USER_FAULT_DE_CODE_OBJ): $(TARGET_USER_FAULT_DE_CODE_BIN)
-	@mkdir -p $(dir $@)
-	@echo "BINOBJ $@"
-	@$(LD) -r -b binary -o $@ $<
-	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
-		--redefine-sym $(USER_FAULT_DE_CODE_BIN_SYMBOL_BASE)_start=gKiFaultDeCodeBytesStart \
-		--redefine-sym $(USER_FAULT_DE_CODE_BIN_SYMBOL_BASE)_end=gKiFaultDeCodeBytesEnd \
-		$@
-
-$(TARGET_USER_FAULT_DE_CONST_OBJ): $(TARGET_USER_FAULT_DE_CONST_BIN)
-	@mkdir -p $(dir $@)
-	@echo "BINOBJ $@"
-	@$(LD) -r -b binary -o $@ $<
-	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
-		--redefine-sym $(USER_FAULT_DE_CONST_BIN_SYMBOL_BASE)_start=gKiFaultDeConstBytesStart \
-		--redefine-sym $(USER_FAULT_DE_CONST_BIN_SYMBOL_BASE)_end=gKiFaultDeConstBytesEnd \
-		$@
-
-$(TARGET_USER_FAULT_PF_CODE_OBJ): $(TARGET_USER_FAULT_PF_CODE_BIN)
-	@mkdir -p $(dir $@)
-	@echo "BINOBJ $@"
-	@$(LD) -r -b binary -o $@ $<
-	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
-		--redefine-sym $(USER_FAULT_PF_CODE_BIN_SYMBOL_BASE)_start=gKiFaultPfCodeBytesStart \
-		--redefine-sym $(USER_FAULT_PF_CODE_BIN_SYMBOL_BASE)_end=gKiFaultPfCodeBytesEnd \
-		$@
-
-$(TARGET_USER_FAULT_PF_CONST_OBJ): $(TARGET_USER_FAULT_PF_CONST_BIN)
-	@mkdir -p $(dir $@)
-	@echo "BINOBJ $@"
-	@$(LD) -r -b binary -o $@ $<
-	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
-		--redefine-sym $(USER_FAULT_PF_CONST_BIN_SYMBOL_BASE)_start=gKiFaultPfConstBytesStart \
-		--redefine-sym $(USER_FAULT_PF_CONST_BIN_SYMBOL_BASE)_end=gKiFaultPfConstBytesEnd \
-		$@
+$(foreach program,$(USER_PROGRAMS),$(eval $(call USER_PROGRAM_RULES,$(program))))
 
 $(USR_OBJDIR)/%.o: src/%.c
 	@mkdir -p $(dir $@)
@@ -946,10 +674,5 @@ USER_CFLAGS += -MMD -MP
 # Include auto-generated dependency files (if they exist)
 -include $(OBJS_EFI_C:.o=.d)
 -include $(OBJS_KERNEL_C:.o=.d)
--include $(OBJS_USER_HELLO_C:.o=.d)
--include $(OBJS_USER_COUNTER_C:.o=.d)
--include $(OBJS_USER_HSH_C:.o=.d)
--include $(OBJS_USER_CALC_C:.o=.d)
--include $(OBJS_USER_TICK1S_C:.o=.d)
--include $(OBJS_USER_HELLO_S:.o=.d)
+-include $(OBJS_USER_ALL:.o=.d)
 QEMU_MONITOR_ARG := $(if $(strip $(QEMU_MONITOR_SOCKET)),-monitor unix:$(QEMU_MONITOR_SOCKET)$(comma)server$(comma)nowait)

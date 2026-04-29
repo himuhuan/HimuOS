@@ -9,6 +9,7 @@
 #include "ex_bootstrap_internal.h"
 
 #include <kernel/ex/ex_bootstrap.h>
+#include <kernel/ex/program.h>
 #include <kernel/ke/critical_section.h>
 #include <kernel/ke/kthread.h>
 #include <kernel/ke/scheduler.h>
@@ -52,21 +53,12 @@ KiCopyBootstrapProgramName(char *destination, size_t destinationSize, const char
 static const char *
 KiGetBootstrapProgramName(uint32_t programId)
 {
-    switch (programId)
-    {
-    case KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_HSH:
-        return "hsh";
-    case KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_CALC:
-        return "calc";
-    case KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_TICK1S:
-        return "tick1s";
-    case KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_FAULT_DE:
-        return "fault_de";
-    case KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_FAULT_PF:
-        return "fault_pf";
-    default:
+    const EX_USER_IMAGE *image = NULL;
+
+    if (ExLookupProgramImageById(programId, &image) != EC_SUCCESS || image == NULL || image->Name == NULL)
         return "user";
-    }
+
+    return image->Name;
 }
 
 static uint32_t

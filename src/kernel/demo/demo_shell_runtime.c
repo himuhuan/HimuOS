@@ -10,12 +10,12 @@
 
 #include <kernel/demo_shell.h>
 #include <kernel/ex/ex_bootstrap.h>
+#include <kernel/ex/program.h>
 #include <kernel/ke/input.h>
 #include <kernel/ke/mm.h>
 
 enum
 {
-    KE_DEMO_SHELL_ENTRY_OFFSET = 0U,
     KE_DEMO_SHELL_CHILD_TABLE_CAPACITY = 4U,
 };
 
@@ -34,7 +34,7 @@ typedef struct KE_DEMO_SHELL_CHILD_ENTRY
 
 typedef struct KE_DEMO_SHELL_SPAWN_WORK
 {
-    uint32_t ProgramId;
+    const EX_USER_IMAGE *Image;
     uint32_t Flags;
     uint32_t ParentProcessId;
     uint32_t ParentThreadId;
@@ -50,7 +50,6 @@ static KE_DEMO_SHELL_CHILD_ENTRY gKeDemoShellChildTable[KE_DEMO_SHELL_CHILD_TABL
 
 static void KiUnexpectedDemoShellKernelEntry(void *arg);
 static void KiDemoShellSpawnWorkerThread(void *arg);
-static HO_STATUS KiResolveBuiltinArtifacts(uint32_t programId, KI_USER_EMBEDDED_ARTIFACTS *artifacts);
 static uint32_t KiReserveChildSlot(void);
 static void KiReleaseChildSlot(uint32_t slotIndex);
 static HO_STATUS KiLookupChildSlot(uint32_t parentProcessId,
@@ -72,7 +71,6 @@ static void
 KiDemoShellSpawnWorkerThread(void *arg)
 {
     KE_DEMO_SHELL_SPAWN_WORK *work = (KE_DEMO_SHELL_SPAWN_WORK *)arg;
-    KI_USER_EMBEDDED_ARTIFACTS artifacts = {0};
     EX_BOOTSTRAP_PROCESS_CREATE_PARAMS createParams = {0};
     EX_BOOTSTRAP_THREAD_CREATE_PARAMS threadParams = {
         .EntryPoint = KiUnexpectedDemoShellKernelEntry,
@@ -96,17 +94,15 @@ KiDemoShellSpawnWorkerThread(void *arg)
     work->ChildThreadId = 0;
     work->ChildKernelThread = NULL;
 
-    status = KiResolveBuiltinArtifacts(work->ProgramId, &artifacts);
+    if (work->Image == NULL)
+    {
+        status = EC_ILLEGAL_ARGUMENT;
+        goto Cleanup;
+    }
+
+    status = ExProgramBuildBootstrapCreateParams(work->Image, work->ParentProcessId, &createParams);
     if (status != EC_SUCCESS)
         goto Cleanup;
-
-    createParams.CodeBytes = artifacts.CodeBytes;
-    createParams.CodeLength = artifacts.CodeLength;
-    createParams.EntryOffset = KE_DEMO_SHELL_ENTRY_OFFSET;
-    createParams.ConstBytes = artifacts.ConstBytes;
-    createParams.ConstLength = artifacts.ConstLength;
-    createParams.ProgramId = work->ProgramId;
-    createParams.ParentProcessId = work->ParentProcessId;
 
     foregroundRequested = (work->Flags & KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND) != 0U;
 
@@ -150,7 +146,7 @@ KiDemoShellSpawnWorkerThread(void *arg)
         gKeDemoShellChildTable[work->SlotIndex].ParentProcessId = work->ParentProcessId;
         gKeDemoShellChildTable[work->SlotIndex].ChildProcessId = childProcessId;
         gKeDemoShellChildTable[work->SlotIndex].ChildThreadId = childThreadId;
-        gKeDemoShellChildTable[work->SlotIndex].ProgramId = work->ProgramId;
+        gKeDemoShellChildTable[work->SlotIndex].ProgramId = work->Image->ProgramId;
         gKeDemoShellChildTable[work->SlotIndex].Foreground = foregroundRequested;
         gKeDemoShellChildTable[work->SlotIndex].RestoreForegroundOwnerThreadId = work->ParentThreadId;
         gKeDemoShellChildTable[work->SlotIndex].KernelThread = kernelThread;
@@ -185,36 +181,6 @@ Cleanup:
     }
 
     work->Status = status;
-}
-
-static HO_STATUS
-KiResolveBuiltinArtifacts(uint32_t programId, KI_USER_EMBEDDED_ARTIFACTS *artifacts)
-{
-    if (artifacts == NULL)
-        return EC_ILLEGAL_ARGUMENT;
-
-    memset(artifacts, 0, sizeof(*artifacts));
-
-    switch (programId)
-    {
-    case KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_HSH:
-        KiHshGetEmbeddedArtifacts(artifacts);
-        return EC_SUCCESS;
-    case KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_CALC:
-        KiCalcGetEmbeddedArtifacts(artifacts);
-        return EC_SUCCESS;
-    case KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_TICK1S:
-        KiTick1sGetEmbeddedArtifacts(artifacts);
-        return EC_SUCCESS;
-    case KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_FAULT_DE:
-        KiFaultDeGetEmbeddedArtifacts(artifacts);
-        return EC_SUCCESS;
-    case KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_FAULT_PF:
-        KiFaultPfGetEmbeddedArtifacts(artifacts);
-        return EC_SUCCESS;
-    default:
-        return EC_ILLEGAL_ARGUMENT;
-    }
 }
 
 static uint32_t
@@ -334,9 +300,10 @@ KeDemoShellResetControlPlane(void)
 }
 
 HO_KERNEL_API HO_STATUS
-KeDemoShellSpawnBuiltin(uint32_t programId, uint32_t flags, uint32_t *outPid)
+KeDemoShellSpawnProgram(const char *programName, uint32_t programNameLength, uint32_t flags, uint32_t *outPid)
 {
     KTHREAD *currentThread = KeGetCurrentThread();
+    const EX_USER_IMAGE *image = NULL;
     KE_DEMO_SHELL_SPAWN_WORK work = {0};
     KTHREAD *workerThread = NULL;
     uint32_t slotIndex = KE_DEMO_SHELL_CHILD_TABLE_CAPACITY;
@@ -354,6 +321,10 @@ KeDemoShellSpawnBuiltin(uint32_t programId, uint32_t flags, uint32_t *outPid)
     if ((flags & ~KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND) != 0U)
         return EC_ILLEGAL_ARGUMENT;
 
+    status = ExLookupProgramImageByName(programName, programNameLength, &image);
+    if (status != EC_SUCCESS)
+        return status;
+
     status = ExBootstrapQueryCurrentProcessId(&parentProcessId);
     if (status != EC_SUCCESS)
         return status;
@@ -362,7 +333,7 @@ KeDemoShellSpawnBuiltin(uint32_t programId, uint32_t flags, uint32_t *outPid)
     if (slotIndex >= KE_DEMO_SHELL_CHILD_TABLE_CAPACITY)
         return EC_OUT_OF_RESOURCE;
 
-    work.ProgramId = programId;
+    work.Image = image;
     work.Flags = flags;
     work.ParentProcessId = parentProcessId;
     work.ParentThreadId = currentThread->ThreadId;
@@ -502,7 +473,7 @@ KeDemoShellShouldTerminateCurrentThread(uint32_t *outProgramId)
     HO_STATUS status = EC_SUCCESS;
 
     if (outProgramId != NULL)
-        *outProgramId = KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_NONE;
+        *outProgramId = EX_PROGRAM_ID_NONE;
 
     if (currentThread == NULL)
         return FALSE;

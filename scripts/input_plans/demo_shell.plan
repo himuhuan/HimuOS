@@ -23,7 +23,7 @@ wait_for hsh>
 text & tick1s
 key ret
 
-capture tick_pid \[HSH\] started pid=(\d+) name=tick1s bg=1
+capture tick_pid SYS_SPAWN_PROGRAM succeeded thread=\d+ name=tick1s flags=0 pid=(\d+)
 wait_for hsh> 
 text ps
 key ret

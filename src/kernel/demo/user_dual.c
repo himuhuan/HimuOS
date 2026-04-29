@@ -10,11 +10,7 @@
 #include "demo_internal.h"
 
 #include <kernel/ex/ex_bootstrap.h>
-
-enum
-{
-    KI_USER_DUAL_PAYLOAD_ENTRY_OFFSET = 0U,
-};
+#include <kernel/ex/program.h>
 
 static void KiUnexpectedUserDualHelloKernelEntry(void *arg);
 static void KiUnexpectedUserDualCounterKernelEntry(void *arg);
@@ -36,8 +32,8 @@ KiUnexpectedUserDualCounterKernelEntry(void *arg)
 void
 RunUserDualDemo(void)
 {
-    KI_USER_EMBEDDED_ARTIFACTS helloArtifacts = {0};
-    KI_USER_EMBEDDED_ARTIFACTS counterArtifacts = {0};
+    const EX_USER_IMAGE *helloImage = NULL;
+    const EX_USER_IMAGE *counterImage = NULL;
     EX_BOOTSTRAP_PROCESS_CREATE_PARAMS helloCreateParams = {0};
     EX_BOOTSTRAP_PROCESS_CREATE_PARAMS counterCreateParams = {0};
     EX_BOOTSTRAP_THREAD_CREATE_PARAMS helloThreadParams = {
@@ -56,20 +52,21 @@ RunUserDualDemo(void)
     EX_THREAD *counterThread = NULL;
     HO_STATUS status = EC_SUCCESS;
 
-    KiUserHelloGetEmbeddedArtifacts(&helloArtifacts);
-    KiUserCounterGetEmbeddedArtifacts(&counterArtifacts);
+    status = ExLookupProgramImageByName("user_hello", sizeof("user_hello") - 1U, &helloImage);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to resolve user_dual user_hello image");
 
-    helloCreateParams.CodeBytes = helloArtifacts.CodeBytes;
-    helloCreateParams.CodeLength = helloArtifacts.CodeLength;
-    helloCreateParams.EntryOffset = KI_USER_DUAL_PAYLOAD_ENTRY_OFFSET;
-    helloCreateParams.ConstBytes = helloArtifacts.ConstBytes;
-    helloCreateParams.ConstLength = helloArtifacts.ConstLength;
+    status = ExLookupProgramImageByName("user_counter", sizeof("user_counter") - 1U, &counterImage);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to resolve user_dual user_counter image");
 
-    counterCreateParams.CodeBytes = counterArtifacts.CodeBytes;
-    counterCreateParams.CodeLength = counterArtifacts.CodeLength;
-    counterCreateParams.EntryOffset = KI_USER_DUAL_PAYLOAD_ENTRY_OFFSET;
-    counterCreateParams.ConstBytes = counterArtifacts.ConstBytes;
-    counterCreateParams.ConstLength = counterArtifacts.ConstLength;
+    status = ExProgramBuildBootstrapCreateParams(helloImage, 0, &helloCreateParams);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to build user_dual user_hello params");
+
+    status = ExProgramBuildBootstrapCreateParams(counterImage, 0, &counterCreateParams);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to build user_dual user_counter params");
 
     status = ExBootstrapCreateProcess(&helloCreateParams, &helloProcess);
     if (status != EC_SUCCESS)

@@ -9,13 +9,9 @@
 #include "demo_internal.h"
 
 #include <kernel/ex/ex_bootstrap.h>
+#include <kernel/ex/program.h>
 #include <kernel/ke/input.h>
 #include <kernel/ke/scheduler.h>
-
-enum
-{
-    KI_USER_INPUT_ENTRY_OFFSET = 0U,
-};
 
 typedef struct KI_USER_INPUT_CONTEXT
 {
@@ -91,8 +87,8 @@ KiUserInputControllerThread(void *arg)
 void
 RunUserInputDemo(void)
 {
-    KI_USER_EMBEDDED_ARTIFACTS hshArtifacts = {0};
-    KI_USER_EMBEDDED_ARTIFACTS calcArtifacts = {0};
+    const EX_USER_IMAGE *hshImage = NULL;
+    const EX_USER_IMAGE *calcImage = NULL;
     EX_BOOTSTRAP_PROCESS_CREATE_PARAMS hshCreateParams = {0};
     EX_BOOTSTRAP_PROCESS_CREATE_PARAMS calcCreateParams = {0};
     EX_BOOTSTRAP_THREAD_CREATE_PARAMS hshThreadParams = {
@@ -116,22 +112,21 @@ RunUserInputDemo(void)
     uint32_t calcThreadId = 0;
     HO_STATUS status = EC_SUCCESS;
 
-    KiHshGetEmbeddedArtifacts(&hshArtifacts);
-    KiCalcGetEmbeddedArtifacts(&calcArtifacts);
+    status = ExLookupProgramImageByName("hsh", sizeof("hsh") - 1U, &hshImage);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to resolve user_input hsh image");
 
-    hshCreateParams.CodeBytes = hshArtifacts.CodeBytes;
-    hshCreateParams.CodeLength = hshArtifacts.CodeLength;
-    hshCreateParams.EntryOffset = KI_USER_INPUT_ENTRY_OFFSET;
-    hshCreateParams.ConstBytes = hshArtifacts.ConstBytes;
-    hshCreateParams.ConstLength = hshArtifacts.ConstLength;
-    hshCreateParams.ProgramId = KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_HSH;
+    status = ExLookupProgramImageByName("calc", sizeof("calc") - 1U, &calcImage);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to resolve user_input calc image");
 
-    calcCreateParams.CodeBytes = calcArtifacts.CodeBytes;
-    calcCreateParams.CodeLength = calcArtifacts.CodeLength;
-    calcCreateParams.EntryOffset = KI_USER_INPUT_ENTRY_OFFSET;
-    calcCreateParams.ConstBytes = calcArtifacts.ConstBytes;
-    calcCreateParams.ConstLength = calcArtifacts.ConstLength;
-    calcCreateParams.ProgramId = KE_USER_BOOTSTRAP_BUILTIN_PROGRAM_CALC;
+    status = ExProgramBuildBootstrapCreateParams(hshImage, 0, &hshCreateParams);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to build user_input hsh params");
+
+    status = ExProgramBuildBootstrapCreateParams(calcImage, 0, &calcCreateParams);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to build user_input calc params");
 
     status = ExBootstrapCreateProcess(&hshCreateParams, &hshProcess);
     if (status != EC_SUCCESS)

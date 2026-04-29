@@ -152,6 +152,6 @@ Timing-sensitive profile evidence:
 Harness note:
 
 - `scripts/input_plans/user_fault.plan` was adjusted during Stage 0 to avoid a
-  log-order race between `calc>` and `SYS_SPAWN_BUILTIN`; the plan now waits on
+  log-order race between `calc>` and `SYS_SPAWN_PROGRAM`; the plan now waits on
   stable behavior anchors instead of capturing the child PID from an
   order-sensitive log line.
