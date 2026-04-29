@@ -10,11 +10,31 @@
 
 #include "ex_bootstrap_internal.h"
 
+#include <kernel/ke/critical_section.h>
 #include <kernel/ke/mm.h>
 #include <kernel/ke/user_bootstrap.h>
+#include <kernel/hodbg.h>
 #include <libc/string.h>
 
+static uint32_t gNextBootstrapProcessId = 1;
+
+static uint32_t KiAllocateBootstrapProcessId(void);
 static HO_STATUS KiDestroyProcessObject(EX_OBJECT_HEADER *objectHeader);
+
+static uint32_t
+KiAllocateBootstrapProcessId(void)
+{
+    KE_CRITICAL_SECTION guard = {0};
+    uint32_t processId = 0;
+
+    KeEnterCriticalSection(&guard);
+    HO_KASSERT(gNextBootstrapProcessId != 0, EC_OUT_OF_RESOURCE);
+    processId = gNextBootstrapProcessId++;
+    KeLeaveCriticalSection(&guard);
+
+    return processId;
+}
+
 static HO_STATUS
 KiRestoreImportedRootForProcessTeardown(const EX_PROCESS *process)
 {
@@ -47,6 +67,10 @@ ExBootstrapInitializeProcessObject(EX_PROCESS *process)
     process->SelfHandle = EX_HANDLE_INVALID;
     process->StdoutHandle = EX_HANDLE_INVALID;
     process->WaitHandle = EX_HANDLE_INVALID;
+    process->ProcessId = 0;
+    process->ParentProcessId = 0;
+    process->MainThreadId = 0;
+    process->State = EX_PROCESS_STATE_CREATED;
     ExBootstrapInitializeStdoutServiceObject(process);
     ExBootstrapInitializeWaitableObject(process);
     ExHandleInitializeTable(&process->HandleTable);
@@ -155,6 +179,8 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
         return EC_OUT_OF_RESOURCE;
 
     ExBootstrapInitializeProcessObject(process);
+    process->ProcessId = KiAllocateBootstrapProcessId();
+    process->ParentProcessId = params->ParentProcessId;
     process->ProgramId = params->ProgramId;
 
     HO_STATUS status = KeCreateProcessAddressSpace(&process->AddressSpace);
@@ -257,4 +283,17 @@ ExBootstrapDestroyProcess(EX_PROCESS *process)
         status = releaseStatus;
 
     return status;
+}
+
+HO_STATUS
+ExBootstrapQueryProcessId(const EX_PROCESS *process, uint32_t *outProcessId)
+{
+    if (process == NULL || outProcessId == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (process->ProcessId == 0)
+        return EC_INVALID_STATE;
+
+    *outProcessId = process->ProcessId;
+    return EC_SUCCESS;
 }

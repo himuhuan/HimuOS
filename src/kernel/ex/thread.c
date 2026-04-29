@@ -278,6 +278,9 @@ ExBootstrapStartThread(EX_THREAD **threadHandle)
     if (status != EC_SUCCESS)
         return status;
 
+    if (thread->Process != NULL)
+        thread->Process->State = EX_PROCESS_STATE_READY;
+
     *threadHandle = NULL;
     return EC_SUCCESS;
 }
@@ -325,6 +328,9 @@ ExBootstrapTeardownThread(EX_THREAD *thread)
     process = ExBootstrapLookupRuntimeProcess(thread->Thread);
 
     HO_STATUS firstError = ExBootstrapTeardownProcessPayload(process);
+
+    if (process != NULL)
+        process->State = EX_PROCESS_STATE_TERMINATED;
 
     ExBootstrapUnpublishRuntimeAlias(thread->Thread, NULL, NULL);
 

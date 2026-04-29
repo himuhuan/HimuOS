@@ -13,6 +13,9 @@
 /* Opaque owning handle for bootstrap process staging until transferred. */
 typedef struct EX_PROCESS EX_PROCESS;
 
+#define EX_MAX_PROCESSES           8u
+#define EX_MAX_THREADS_PER_PROCESS 1u
+
 typedef struct EX_BOOTSTRAP_PROCESS_CREATE_PARAMS
 {
     const void *CodeBytes;
@@ -21,4 +24,5 @@ typedef struct EX_BOOTSTRAP_PROCESS_CREATE_PARAMS
     const void *ConstBytes;
     uint64_t ConstLength;
     uint32_t ProgramId;
+    uint32_t ParentProcessId;
 } EX_BOOTSTRAP_PROCESS_CREATE_PARAMS;

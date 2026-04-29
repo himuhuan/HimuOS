@@ -310,17 +310,17 @@ main(void)
 
         if (HoHshLineEquals(line, (uint64_t)status, "ps"))
         {
-            char threadListText[EX_SYSINFO_TEXT_MAX_LENGTH];
-            int64_t threadListLength =
-                HoUserQuerySysinfo(EX_SYSINFO_CLASS_THREAD_LIST_TEXT, threadListText, sizeof(threadListText));
+            char processListText[EX_SYSINFO_TEXT_MAX_LENGTH];
+            int64_t processListLength =
+                HoUserQuerySysinfo(EX_SYSINFO_CLASS_PROCESS_LIST_TEXT, processListText, sizeof(processListText));
 
-            if (threadListLength < 0)
+            if (processListLength < 0)
             {
                 HoHshMustWriteLiteral(gPsFailed);
                 continue;
             }
 
-            HoHshMustWrite(threadListText, (uint64_t)threadListLength);
+            HoHshMustWrite(processListText, (uint64_t)processListLength);
             continue;
         }
 

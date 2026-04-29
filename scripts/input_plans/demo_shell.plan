@@ -29,7 +29,7 @@ text ps
 key ret
 
 wait_for PID  STATE
-wait_for idle
+wait_for hsh
 wait_for tick1s
 wait_for hsh> 
 text calc

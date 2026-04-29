@@ -169,6 +169,8 @@ ExBootstrapAdapterFinalizeThread(KTHREAD *thread)
         return EC_SUCCESS;
 
     process = runtimeThread->Process;
+    if (process != NULL)
+        process->State = EX_PROCESS_STATE_TERMINATED;
 
     HO_STATUS status = ExBootstrapTeardownProcessPayload(process);
     if (status == EC_SUCCESS)

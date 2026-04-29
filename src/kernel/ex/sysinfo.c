@@ -803,6 +803,73 @@ KiBuildSysinfoThreadListText(char *buffer, size_t capacity, const EX_SYSINFO_THR
     return EC_SUCCESS;
 }
 
+static const char *
+KiGetSysinfoProcessStateName(uint32_t state)
+{
+    switch (state)
+    {
+    case EX_SYSINFO_PROCESS_STATE_CREATED:
+        return "CREATED";
+    case EX_SYSINFO_PROCESS_STATE_READY:
+        return "READY";
+    case EX_SYSINFO_PROCESS_STATE_RUNNING:
+        return "RUNNING";
+    case EX_SYSINFO_PROCESS_STATE_BLOCKED:
+        return "BLOCKED";
+    case EX_SYSINFO_PROCESS_STATE_SLEEPING:
+        return "SLEEPING";
+    case EX_SYSINFO_PROCESS_STATE_TERMINATED:
+        return "TERMINATED";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+static HO_STATUS
+KiBuildSysinfoProcessListText(char *buffer,
+                              size_t capacity,
+                              const EX_SYSINFO_PROCESS_LIST *processList,
+                              size_t *outLength)
+{
+    size_t length = 0;
+
+    if (buffer == NULL || processList == NULL || outLength == NULL || capacity == 0)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (!KiAppendSysinfoLiteral(buffer, &length, capacity, "PID  STATE       PPID  TID  NAME\n") ||
+        !KiAppendSysinfoLiteral(buffer, &length, capacity, "---  ----------  ----  ---  ----\n"))
+    {
+        return EC_NOT_ENOUGH_MEMORY;
+    }
+
+    for (uint32_t index = 0; index < processList->ReturnedCount; ++index)
+    {
+        const EX_SYSINFO_PROCESS_ENTRY *entry = &processList->Entries[index];
+        const char *stateName = KiGetSysinfoProcessStateName(entry->State);
+
+        if (!KiAppendSysinfoPaddedUInt64(buffer, &length, capacity, entry->ProcessId, 3U) ||
+            !KiAppendSysinfoLiteral(buffer, &length, capacity, "  ") ||
+            !KiAppendSysinfoPaddedLiteral(buffer, &length, capacity, stateName, 10U) ||
+            !KiAppendSysinfoLiteral(buffer, &length, capacity, "  ") ||
+            !KiAppendSysinfoPaddedUInt64(buffer, &length, capacity, entry->ParentProcessId, 4U) ||
+            !KiAppendSysinfoLiteral(buffer, &length, capacity, "  ") ||
+            !KiAppendSysinfoPaddedUInt64(buffer, &length, capacity, entry->MainThreadId, 3U) ||
+            !KiAppendSysinfoLiteral(buffer, &length, capacity, "  ") ||
+            !KiAppendSysinfoLiteral(buffer, &length, capacity, entry->Name) ||
+            !KiAppendSysinfoLiteral(buffer, &length, capacity, "\n"))
+        {
+            return EC_NOT_ENOUGH_MEMORY;
+        }
+    }
+
+    if (length >= capacity)
+        return EC_NOT_ENOUGH_MEMORY;
+
+    buffer[length] = '\0';
+    *outLength = length;
+    return EC_SUCCESS;
+}
+
 static int64_t
 KiRejectQuerySysinfo(uint64_t infoClassRaw, uint64_t userBuffer, uint64_t length, HO_STATUS status)
 {
@@ -828,8 +895,11 @@ ExBootstrapHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64
 
     if (infoClassRaw != EX_SYSINFO_CLASS_OVERVIEW && infoClassRaw != EX_SYSINFO_CLASS_OVERVIEW_TEXT &&
         infoClassRaw != EX_SYSINFO_CLASS_THREAD_LIST && infoClassRaw != EX_SYSINFO_CLASS_THREAD_LIST_TEXT &&
-        infoClassRaw != EX_SYSINFO_CLASS_MEMMAP_TEXT)
+        infoClassRaw != EX_SYSINFO_CLASS_MEMMAP_TEXT && infoClassRaw != EX_SYSINFO_CLASS_PROCESS_LIST &&
+        infoClassRaw != EX_SYSINFO_CLASS_PROCESS_LIST_TEXT)
+    {
         return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, EC_ILLEGAL_ARGUMENT);
+    }
 
     if (userBuffer == 0)
         return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, EC_ILLEGAL_ARGUMENT);
@@ -901,6 +971,54 @@ ExBootstrapHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64
              (unsigned long)infoClassRaw, (unsigned long)textLength, thread ? thread->ThreadId : 0U);
 
         return (int64_t)textLength;
+    }
+
+    if (infoClassRaw == EX_SYSINFO_CLASS_PROCESS_LIST || infoClassRaw == EX_SYSINFO_CLASS_PROCESS_LIST_TEXT)
+    {
+        EX_SYSINFO_PROCESS_LIST processList = {0};
+        status = ExBootstrapCaptureProcessList(&processList);
+        if (status != EC_SUCCESS)
+            return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, status);
+
+        if (infoClassRaw == EX_SYSINFO_CLASS_PROCESS_LIST)
+        {
+            if (length < sizeof(processList))
+                return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, EC_NOT_ENOUGH_MEMORY);
+
+            status = KeUserBootstrapCopyOutBytes((HO_VIRTUAL_ADDRESS)userBuffer, &processList, sizeof(processList));
+            if (status != EC_SUCCESS)
+                return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, status);
+
+            klog(KLOG_LEVEL_INFO,
+                 KE_USER_BOOTSTRAP_LOG_QUERY_SYSINFO_SUCCEEDED " class=%lu bytes=%lu thread=%u count=%u\n",
+                 (unsigned long)infoClassRaw, (unsigned long)sizeof(processList), thread ? thread->ThreadId : 0U,
+                 processList.ReturnedCount);
+
+            return (int64_t)sizeof(processList);
+        }
+
+        {
+            char text[EX_SYSINFO_TEXT_MAX_LENGTH];
+            size_t textLength = 0;
+
+            status = KiBuildSysinfoProcessListText(text, sizeof(text), &processList, &textLength);
+            if (status != EC_SUCCESS)
+                return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, status);
+
+            if (length < textLength)
+                return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, EC_NOT_ENOUGH_MEMORY);
+
+            status = KeUserBootstrapCopyOutBytes((HO_VIRTUAL_ADDRESS)userBuffer, text, textLength);
+            if (status != EC_SUCCESS)
+                return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, status);
+
+            klog(KLOG_LEVEL_INFO,
+                 KE_USER_BOOTSTRAP_LOG_QUERY_SYSINFO_SUCCEEDED " class=%lu bytes=%lu thread=%u count=%u\n",
+                 (unsigned long)infoClassRaw, (unsigned long)textLength, thread ? thread->ThreadId : 0U,
+                 processList.ReturnedCount);
+
+            return (int64_t)textLength;
+        }
     }
 
     {

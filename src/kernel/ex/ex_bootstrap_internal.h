@@ -19,6 +19,13 @@ struct KTHREAD;
 struct KE_USER_BOOTSTRAP_STAGING;
 struct EX_PROCESS;
 
+typedef enum EX_PROCESS_STATE
+{
+    EX_PROCESS_STATE_CREATED = 0,
+    EX_PROCESS_STATE_READY,
+    EX_PROCESS_STATE_TERMINATED,
+} EX_PROCESS_STATE;
+
 typedef EX_HANDLE EX_PRIVATE_HANDLE;
 typedef EX_HANDLE_RIGHTS EX_PRIVATE_HANDLE_RIGHTS;
 typedef EX_HANDLE_SLOT EX_PRIVATE_HANDLE_SLOT;
@@ -57,6 +64,10 @@ struct EX_PROCESS
     EX_HANDLE SelfHandle;
     EX_HANDLE StdoutHandle;
     EX_HANDLE WaitHandle;
+    uint32_t ProcessId;
+    uint32_t ParentProcessId;
+    uint32_t MainThreadId;
+    EX_PROCESS_STATE State;
     uint32_t ProgramId;
     EX_STDOUT_SERVICE StdoutService;
     EX_WAITABLE_OBJECT WaitObject;
@@ -104,9 +115,11 @@ BOOL ExBootstrapHasRuntimeAlias(void);
 BOOL ExBootstrapIsRuntimeAliasObject(const EX_OBJECT_HEADER *objectHeader);
 BOOL ExBootstrapRuntimeAliasMatchesProcess(const EX_PROCESS *process);
 HO_STATUS ExBootstrapCaptureThreadList(EX_SYSINFO_THREAD_LIST *outThreadList);
+HO_STATUS ExBootstrapCaptureProcessList(EX_SYSINFO_PROCESS_LIST *outProcessList);
 HO_STATUS ExBootstrapPublishRuntimeAlias(EX_PROCESS *process, EX_THREAD *thread);
 EX_THREAD *ExBootstrapLookupRuntimeThread(const struct KTHREAD *thread);
 EX_PROCESS *ExBootstrapLookupRuntimeProcess(const struct KTHREAD *thread);
+EX_PROCESS *ExBootstrapLookupRuntimeProcessByPid(uint32_t processId);
 void ExBootstrapUnpublishRuntimeAlias(const struct KTHREAD *thread, EX_THREAD **outThread, EX_PROCESS **outProcess);
 HO_STATUS ExBootstrapBuildInitialConstBytes(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params,
                                             uint8_t **outConstBytes,

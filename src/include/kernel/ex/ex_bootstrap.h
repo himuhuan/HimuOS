@@ -61,6 +61,17 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS ExBootstrapStartThread(EX_THREAD **threadHa
 HO_KERNEL_API HO_NODISCARD HO_STATUS ExBootstrapQueryThreadId(const EX_THREAD *thread, uint32_t *outThreadId);
 
 /**
+ * Query the Ex-owned PID for a bootstrap process. PIDs are independent from
+ * KTHREAD::ThreadId and are the user-visible identity for process syscalls.
+ */
+HO_KERNEL_API HO_NODISCARD HO_STATUS ExBootstrapQueryProcessId(const EX_PROCESS *process, uint32_t *outProcessId);
+
+/**
+ * Query the Ex-owned PID for the current bootstrap process.
+ */
+HO_KERNEL_API HO_NODISCARD HO_STATUS ExBootstrapQueryCurrentProcessId(uint32_t *outProcessId);
+
+/**
  * Borrow the underlying KTHREAD for a bootstrap thread before runtime
  * ownership is transferred. Intended for narrow kernel-side coordination such
  * as waiting on a joinable bootstrap demo thread.
