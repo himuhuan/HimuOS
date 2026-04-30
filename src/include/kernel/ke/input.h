@@ -9,9 +9,8 @@
 #pragma once
 
 #include <_hobase.h>
-#include <kernel/ex/ex_bootstrap_abi.h>
 
-#define KE_INPUT_LINE_CAPACITY KE_USER_BOOTSTRAP_READLINE_MAX_LENGTH
+#define KE_INPUT_LINE_CAPACITY 128U
 
 HO_KERNEL_API HO_STATUS KeInputInit(void);
 HO_KERNEL_API BOOL KeInputIsReady(void);

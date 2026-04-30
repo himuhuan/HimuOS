@@ -59,13 +59,25 @@ These are the mechanisms Ex should consume rather than duplicate.
 - `src/kernel/demo/user_input.c` still calls `ExBootstrapBorrowKernelThread()`
   directly, and both `user_input` and `user_dual` still build userspace through
   `ExBootstrap*` launch helpers instead of permanent Ex runtime APIs.
-- `src/include/kernel/ex/ex_bootstrap_abi.h` still mixes layout constants,
-  syscall numbers, spawn flags, sysinfo structs, and regression anchors;
-  direct consumers still include `src/arch/amd64/idt.c`,
-  `src/kernel/ex/ex_bootstrap_internal.h`, `src/include/kernel/ex/program.h`,
-  `src/include/kernel/ke/input.h`, `src/include/kernel/ke/user_bootstrap.h`,
-  `src/kernel/demo/demo_internal.h`, `src/user/libsys.h`, and
-  `src/user/crt0.S`.
+
+## Phase B ABI Split
+
+The old `src/include/kernel/ex/ex_bootstrap_abi.h` umbrella is gone. Stable
+user-runtime ABI now lives in focused contracts:
+
+- `src/include/kernel/ex/user_syscall_abi.h`
+- `src/include/kernel/ex/user_sysinfo_abi.h`
+- `src/include/kernel/ex/user_image_abi.h`
+- `src/include/kernel/ex/user_capability_abi.h`
+
+Bring-up-only raw syscall, P1 mailbox, and regression-log anchors are separate:
+
+- `src/include/kernel/ex/user_bringup_sentinel_abi.h`
+- `src/include/kernel/ex/user_regression_anchors.h`
+
+`src/user/libsys.h` is the normal userspace wrapper surface. Raw helpers and
+phase-gate waiting are isolated in `src/user/libsys_bringup.h` until Phase G
+retires or replaces their remaining sentinel value.
 
 The owner phase and deletion condition for each debt are tracked in
 `docs/architecture/bootstrap-debt-index.md`.

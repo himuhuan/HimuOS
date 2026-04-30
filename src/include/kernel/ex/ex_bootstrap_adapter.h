@@ -60,7 +60,7 @@ HO_KERNEL_API HO_NODISCARD int64_t ExBootstrapAdapterDispatchSyscall(uint64_t sy
                                                                      uint64_t arg2);
 
 /**
- * Validate a clean SYS_EXIT / SYS_RAW_EXIT handoff.
+ * Validate a clean EX_USER_SYS_EXIT / EX_USER_BRINGUP_SYS_RAW_EXIT handoff.
  * Exit must not consume bootstrap staging in place; the terminated-thread
  * finalizer remains responsible for payload teardown and final wrapper release.
  */

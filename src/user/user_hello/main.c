@@ -7,9 +7,9 @@
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
-#include "libsys.h"
+#include "libsys_bringup.h"
 
-static const char gKiUserHelloMessage[] = KE_USER_BOOTSTRAP_LOG_HELLO "\n";
+static const char gKiUserHelloMessage[] = EX_USER_REGRESSION_LOG_HELLO "\n";
 
 enum
 {

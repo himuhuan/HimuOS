@@ -7,7 +7,7 @@
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
-#include "libsys.h"
+#include "libsys_bringup.h"
 
 static const char gFaultDeLine[] = "[FAULTDE] triggering #DE\n";
 

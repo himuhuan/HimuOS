@@ -10,8 +10,10 @@
 
 #include <_hobase.h>
 
-#include <kernel/ex/ex_bootstrap_abi.h>
 #include <kernel/ex/ex_process.h>
+#include <kernel/ex/user_image_abi.h>
+
+#define EX_PROGRAM_NAME_MAX_LENGTH 16U
 
 typedef enum EX_PROGRAM_ID
 {

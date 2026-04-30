@@ -11,6 +11,7 @@
 #include <kernel/ex/ex_bootstrap.h>
 
 #include <kernel/ex/program.h>
+#include <kernel/ex/user_syscall_abi.h>
 #include <kernel/hodbg.h>
 #include <kernel/ke/critical_section.h>
 #include <kernel/ke/input.h>
@@ -101,7 +102,7 @@ KiExSpawnWorkerThread(void *arg)
     if (status != EC_SUCCESS)
         goto Cleanup;
 
-    foregroundRequested = (work->Flags & KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND) != 0U;
+    foregroundRequested = (work->Flags & EX_USER_SPAWN_FLAG_FOREGROUND) != 0U;
 
     status = ExBootstrapCreateProcess(&createParams, &process);
     if (status != EC_SUCCESS)
@@ -347,7 +348,7 @@ ExSpawnProgram(const char *name, uint32_t nameLength, uint32_t flags, uint32_t *
     if (currentThread == NULL)
         return EC_INVALID_STATE;
 
-    if ((flags & ~KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND) != 0U)
+    if ((flags & ~EX_USER_SPAWN_FLAG_FOREGROUND) != 0U)
         return EC_ILLEGAL_ARGUMENT;
 
     status = ExLookupProgramImageByName(name, nameLength, &image);

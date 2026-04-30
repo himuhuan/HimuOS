@@ -29,7 +29,7 @@ KiDemoShellControllerThread(void *arg)
     if (context == NULL)
         HO_KPANIC(EC_ILLEGAL_ARGUMENT, "demo_shell context is required");
 
-    status = ExSpawnProgram("hsh", sizeof("hsh") - 1U, KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND, &context->HshPid);
+    status = ExSpawnProgram("hsh", sizeof("hsh") - 1U, EX_USER_SPAWN_FLAG_FOREGROUND, &context->HshPid);
     if (status != EC_SUCCESS)
         HO_KPANIC(status, "Failed to spawn demo_shell hsh process");
 

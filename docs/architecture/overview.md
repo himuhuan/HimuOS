@@ -64,9 +64,10 @@ Current runtime reality:
   permanent Ex runtime APIs.
 - `user_hello` and `user_caps` are explicit legacy bring-up sentinels, not the
   default teaching path.
-- `hsh` and `calc` already use the formal `SYS_*` services, while `tick1s`,
-  `fault_de`, `fault_pf`, `user_counter`, and `user_hello` still wait on the
-  P1 gate before starting normal work.
+- `hsh` and `calc` include the normal `src/user/libsys.h` wrapper surface over
+  the formal `EX_USER_SYS_*` services. `tick1s`, `fault_de`, `fault_pf`,
+  `user_counter`, and `user_hello` still include `src/user/libsys_bringup.h`
+  so their remaining P1 gate waits are explicit Phase G debt.
 
 ## Build And Regression
 

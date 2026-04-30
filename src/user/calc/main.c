@@ -287,7 +287,7 @@ HoCalcTriggerDivideFault(void)
 static HO_NORETURN void
 HoCalcTriggerPageFault(void)
 {
-    volatile const uint8_t *guard = (volatile const uint8_t *)HoUserBootstrapStackGuardBase();
+    volatile const uint8_t *guard = (volatile const uint8_t *)HoUserImageStackGuardBase();
     volatile uint8_t value = *guard;
 
     (void)value;
@@ -298,7 +298,7 @@ HoCalcTriggerPageFault(void)
 int
 main(void)
 {
-    char line[KE_USER_BOOTSTRAP_READLINE_MAX_LENGTH];
+    char line[EX_USER_READLINE_MAX_LENGTH];
     int64_t stack[HO_CALC_STACK_CAPACITY] = {0};
     uint32_t stackDepth = 0;
 
@@ -358,7 +358,7 @@ static const char gNewLine[] = "\n";
 int
 main(void)
 {
-    char line[KE_USER_BOOTSTRAP_READLINE_MAX_LENGTH];
+    char line[EX_USER_READLINE_MAX_LENGTH];
     int64_t status = HoUserWriteStdout(gCalcPrompt, sizeof(gCalcPrompt) - 1U);
 
     if (status != (int64_t)(sizeof(gCalcPrompt) - 1U))

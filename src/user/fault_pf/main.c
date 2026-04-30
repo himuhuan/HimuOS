@@ -7,14 +7,14 @@
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
-#include "libsys.h"
+#include "libsys_bringup.h"
 
 static const char gFaultPfLine[] = "[FAULTPF] triggering #PF\n";
 
 static HO_NORETURN void
 HoFaultPfTrigger(void)
 {
-    volatile const uint8_t *guard = (volatile const uint8_t *)HoUserBootstrapStackGuardBase();
+    volatile const uint8_t *guard = (volatile const uint8_t *)HoUserImageStackGuardBase();
     volatile uint8_t value = *guard;
 
     (void)value;

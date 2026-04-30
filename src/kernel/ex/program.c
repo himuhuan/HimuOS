@@ -58,7 +58,7 @@ typedef struct EX_PROGRAM_REGISTRY_ENTRY
             .ConstBytes = gExBuiltinProgram_##symbol##_ConstBytesStart,                                                \
             .ConstLength = 0,                                                                                          \
             .EntryOffset = 0,                                                                                          \
-            .DefaultStackSize = KE_USER_BOOTSTRAP_PAGE_SIZE,                                                           \
+            .DefaultStackSize = EX_USER_IMAGE_PAGE_SIZE,                                                           \
             .RequestedCapabilities = 0,                                                                                \
         },                                                                                                             \
         .CodeEnd = gExBuiltinProgram_##symbol##_CodeBytesEnd,                                                          \

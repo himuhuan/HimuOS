@@ -8,6 +8,7 @@
 
 #include "ex_bootstrap_internal.h"
 
+#include <kernel/ex/user_regression_anchors.h>
 #include <kernel/ke/kthread.h>
 #include <kernel/ke/mm.h>
 #include <kernel/ke/scheduler.h>
@@ -876,7 +877,7 @@ KiRejectQuerySysinfo(uint64_t infoClassRaw, uint64_t userBuffer, uint64_t length
     KTHREAD *thread = KeGetCurrentThread();
 
     klog(KLOG_LEVEL_WARNING,
-         KE_USER_BOOTSTRAP_LOG_QUERY_SYSINFO_REJECTED " class=%lu addr=%p len=%lu thread=%u status=%s (%d)\n",
+         EX_USER_REGRESSION_LOG_QUERY_SYSINFO_REJECTED " class=%lu addr=%p len=%lu thread=%u status=%s (%d)\n",
          (unsigned long)infoClassRaw, (void *)(uint64_t)userBuffer, (unsigned long)length,
          thread ? thread->ThreadId : 0U, KrGetStatusMessage(status), status);
 
@@ -920,7 +921,7 @@ ExBootstrapHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64
                 return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, status);
 
             klog(KLOG_LEVEL_INFO,
-                 KE_USER_BOOTSTRAP_LOG_QUERY_SYSINFO_SUCCEEDED " class=%lu bytes=%lu thread=%u valid=%p\n",
+                 EX_USER_REGRESSION_LOG_QUERY_SYSINFO_SUCCEEDED " class=%lu bytes=%lu thread=%u valid=%p\n",
                  (unsigned long)infoClassRaw, (unsigned long)sizeof(overview), thread ? thread->ThreadId : 0U,
                  (void *)(uint64_t)overview.ValidMask);
 
@@ -943,7 +944,7 @@ ExBootstrapHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64
                 return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, status);
 
             klog(KLOG_LEVEL_INFO,
-                 KE_USER_BOOTSTRAP_LOG_QUERY_SYSINFO_SUCCEEDED " class=%lu bytes=%lu thread=%u valid=%p\n",
+                 EX_USER_REGRESSION_LOG_QUERY_SYSINFO_SUCCEEDED " class=%lu bytes=%lu thread=%u valid=%p\n",
                  (unsigned long)infoClassRaw, (unsigned long)textLength, thread ? thread->ThreadId : 0U,
                  (void *)(uint64_t)overview.ValidMask);
 
@@ -967,7 +968,7 @@ ExBootstrapHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64
         if (status != EC_SUCCESS)
             return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, status);
 
-        klog(KLOG_LEVEL_INFO, KE_USER_BOOTSTRAP_LOG_QUERY_SYSINFO_SUCCEEDED " class=%lu bytes=%lu thread=%u\n",
+        klog(KLOG_LEVEL_INFO, EX_USER_REGRESSION_LOG_QUERY_SYSINFO_SUCCEEDED " class=%lu bytes=%lu thread=%u\n",
              (unsigned long)infoClassRaw, (unsigned long)textLength, thread ? thread->ThreadId : 0U);
 
         return (int64_t)textLength;
@@ -990,7 +991,7 @@ ExBootstrapHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64
                 return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, status);
 
             klog(KLOG_LEVEL_INFO,
-                 KE_USER_BOOTSTRAP_LOG_QUERY_SYSINFO_SUCCEEDED " class=%lu bytes=%lu thread=%u count=%u\n",
+                 EX_USER_REGRESSION_LOG_QUERY_SYSINFO_SUCCEEDED " class=%lu bytes=%lu thread=%u count=%u\n",
                  (unsigned long)infoClassRaw, (unsigned long)sizeof(processList), thread ? thread->ThreadId : 0U,
                  processList.ReturnedCount);
 
@@ -1013,7 +1014,7 @@ ExBootstrapHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64
                 return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, status);
 
             klog(KLOG_LEVEL_INFO,
-                 KE_USER_BOOTSTRAP_LOG_QUERY_SYSINFO_SUCCEEDED " class=%lu bytes=%lu thread=%u count=%u\n",
+                 EX_USER_REGRESSION_LOG_QUERY_SYSINFO_SUCCEEDED " class=%lu bytes=%lu thread=%u count=%u\n",
                  (unsigned long)infoClassRaw, (unsigned long)textLength, thread ? thread->ThreadId : 0U,
                  processList.ReturnedCount);
 
@@ -1037,7 +1038,7 @@ ExBootstrapHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64
                 return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, status);
 
             klog(KLOG_LEVEL_INFO,
-                 KE_USER_BOOTSTRAP_LOG_QUERY_SYSINFO_SUCCEEDED " class=%lu bytes=%lu thread=%u count=%u\n",
+                 EX_USER_REGRESSION_LOG_QUERY_SYSINFO_SUCCEEDED " class=%lu bytes=%lu thread=%u count=%u\n",
                  (unsigned long)infoClassRaw, (unsigned long)sizeof(threadList), thread ? thread->ThreadId : 0U,
                  threadList.ReturnedCount);
 
@@ -1060,7 +1061,7 @@ ExBootstrapHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64
                 return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, status);
 
             klog(KLOG_LEVEL_INFO,
-                 KE_USER_BOOTSTRAP_LOG_QUERY_SYSINFO_SUCCEEDED " class=%lu bytes=%lu thread=%u count=%u\n",
+                 EX_USER_REGRESSION_LOG_QUERY_SYSINFO_SUCCEEDED " class=%lu bytes=%lu thread=%u count=%u\n",
                  (unsigned long)infoClassRaw, (unsigned long)textLength, thread ? thread->ThreadId : 0U,
                  threadList.ReturnedCount);
 

@@ -8,11 +8,11 @@
 
 #pragma once
 
-#include <kernel/ex/ex_bootstrap_abi.h>
 #include <kernel/ex/handle.h>
 #include <kernel/ex/object.h>
 #include <kernel/ex/ex_process.h>
 #include <kernel/ex/ex_thread.h>
+#include <kernel/ex/user_sysinfo_abi.h>
 #include <kernel/ke/mm.h>
 
 struct KTHREAD;

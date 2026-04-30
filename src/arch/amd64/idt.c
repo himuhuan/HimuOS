@@ -1,7 +1,7 @@
 #include "arch/amd64/idt.h"
 #include "arch/amd64/pm.h"
 #include "kernel/hodbg.h"
-#include <kernel/ex/ex_bootstrap_abi.h>
+#include <kernel/ex/user_syscall_abi.h>
 #include <kernel/init.h>
 #include <kernel/ke/bootstrap_callbacks.h>
 #include <kernel/ke/irql.h>
@@ -78,7 +78,7 @@ GetVectorGateType(uint8_t vectorNumber)
 {
     switch (vectorNumber)
     {
-    case KE_USER_BOOTSTRAP_SYSCALL_VECTOR:
+    case EX_USER_SYSCALL_VECTOR:
         return IDT_FLAG_USER_TRAP_GATE;
     case 3: // #BP Breakpoint
     case 4: // #OF Overflow
@@ -105,7 +105,7 @@ GetVectorIstIndex(uint8_t vectorNumber)
 static BOOL
 IsSynchronousTrapVector(uint8_t vectorNumber)
 {
-    return vectorNumber == KE_USER_BOOTSTRAP_SYSCALL_VECTOR;
+    return vectorNumber == EX_USER_SYSCALL_VECTOR;
 }
 
 static void

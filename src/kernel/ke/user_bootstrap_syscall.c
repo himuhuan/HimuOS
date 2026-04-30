@@ -9,6 +9,8 @@
 #include <arch/amd64/idt.h>
 #include <arch/amd64/pm.h>
 #include <kernel/ex/ex_syscall.h>
+#include <kernel/ex/user_regression_anchors.h>
+#include <kernel/ex/user_syscall_abi.h>
 #include <kernel/hodbg.h>
 #include <kernel/ke/console.h>
 #include <kernel/ke/mm.h>
@@ -85,7 +87,7 @@ KiValidateBootstrapUserPages(const KE_KERNEL_ADDRESS_SPACE *space,
         if (status != EC_SUCCESS)
         {
             klog(KLOG_LEVEL_WARNING,
-                 KE_USER_BOOTSTRAP_LOG_INVALID_USER_BUFFER " query failed addr=%p status=%s (%d)\n",
+                 EX_USER_REGRESSION_LOG_INVALID_USER_BUFFER " query failed addr=%p status=%s (%d)\n",
                  (void *)(uint64_t)pageBase,
                  KrGetStatusMessage(status),
                  status);
@@ -95,7 +97,7 @@ KiValidateBootstrapUserPages(const KE_KERNEL_ADDRESS_SPACE *space,
         if (!mapping.Present || !mapping.UserAccessible)
         {
             klog(KLOG_LEVEL_WARNING,
-                 KE_USER_BOOTSTRAP_LOG_INVALID_USER_BUFFER " addr=%p present=%u userReachable=%u attrs=%p\n",
+                 EX_USER_REGRESSION_LOG_INVALID_USER_BUFFER " addr=%p present=%u userReachable=%u attrs=%p\n",
                  (void *)(uint64_t)pageBase,
                  mapping.Present,
                  mapping.UserAccessible,
@@ -106,7 +108,7 @@ KiValidateBootstrapUserPages(const KE_KERNEL_ADDRESS_SPACE *space,
         if (requireWritable && (mapping.Attributes & PTE_WRITABLE) == 0)
         {
             klog(KLOG_LEVEL_WARNING,
-                 KE_USER_BOOTSTRAP_LOG_INVALID_USER_BUFFER " addr=%p missing-writable attrs=%p\n",
+                 EX_USER_REGRESSION_LOG_INVALID_USER_BUFFER " addr=%p missing-writable attrs=%p\n",
                  (void *)(uint64_t)pageBase,
                  (void *)(uint64_t)mapping.Attributes);
             return EC_ILLEGAL_ARGUMENT;
@@ -140,7 +142,7 @@ KeUserBootstrapCopyInBytes(void *kernelDestination, HO_VIRTUAL_ADDRESS userSourc
     if (status != EC_SUCCESS)
     {
         klog(KLOG_LEVEL_WARNING,
-             KE_USER_BOOTSTRAP_LOG_INVALID_USER_BUFFER " range addr=%p len=%lu status=%s (%d)\n",
+             EX_USER_REGRESSION_LOG_INVALID_USER_BUFFER " range addr=%p len=%lu status=%s (%d)\n",
              (void *)(uint64_t)userSource,
              (unsigned long)length,
              KrGetStatusMessage(status),
@@ -156,7 +158,7 @@ KeUserBootstrapCopyInBytes(void *kernelDestination, HO_VIRTUAL_ADDRESS userSourc
     if (activeRoot != layout.OwnerRootPageTablePhys)
     {
         klog(KLOG_LEVEL_WARNING,
-             KE_USER_BOOTSTRAP_LOG_INVALID_USER_BUFFER " active-root=%p owner-root=%p addr=%p len=%lu\n",
+             EX_USER_REGRESSION_LOG_INVALID_USER_BUFFER " active-root=%p owner-root=%p addr=%p len=%lu\n",
              (void *)(uint64_t)activeRoot,
              (void *)(uint64_t)layout.OwnerRootPageTablePhys,
              (void *)(uint64_t)userSource,
@@ -195,7 +197,7 @@ KeUserBootstrapCopyOutBytes(HO_VIRTUAL_ADDRESS userDestination, const void *kern
     if (status != EC_SUCCESS)
     {
         klog(KLOG_LEVEL_WARNING,
-             KE_USER_BOOTSTRAP_LOG_INVALID_USER_BUFFER " copyout range addr=%p len=%lu status=%s (%d)\n",
+             EX_USER_REGRESSION_LOG_INVALID_USER_BUFFER " copyout range addr=%p len=%lu status=%s (%d)\n",
              (void *)(uint64_t)userDestination,
              (unsigned long)length,
              KrGetStatusMessage(status),
@@ -280,18 +282,18 @@ KeUserBootstrapRawSyscallInit(void)
     if (gKeUserBootstrapRawSyscallInitialized)
         return EC_SUCCESS;
 
-    HO_STATUS status = IdtRegisterInterruptHandler(KE_USER_BOOTSTRAP_SYSCALL_VECTOR, KiHandleRawSyscallTrap, NULL);
+    HO_STATUS status = IdtRegisterInterruptHandler(EX_USER_SYSCALL_VECTOR, KiHandleRawSyscallTrap, NULL);
     if (status != EC_SUCCESS)
     {
         klog(KLOG_LEVEL_ERROR,
              "[USERBOOT] failed to register raw syscall vector=%u status=%s (%d)\n",
-             KE_USER_BOOTSTRAP_SYSCALL_VECTOR,
+             EX_USER_SYSCALL_VECTOR,
              KrGetStatusMessage(status),
              status);
         return status;
     }
 
     gKeUserBootstrapRawSyscallInitialized = TRUE;
-    klog(KLOG_LEVEL_INFO, "[USERBOOT] raw syscall trap ready vector=%u\n", KE_USER_BOOTSTRAP_SYSCALL_VECTOR);
+    klog(KLOG_LEVEL_INFO, "[USERBOOT] raw syscall trap ready vector=%u\n", EX_USER_SYSCALL_VECTOR);
     return EC_SUCCESS;
 }

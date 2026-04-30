@@ -8,6 +8,9 @@
 
 #include <arch/amd64/pm.h>
 #include <kernel/ex/ex_bootstrap_adapter.h>
+#include <kernel/ex/user_bringup_sentinel_abi.h>
+#include <kernel/ex/user_image_abi.h>
+#include <kernel/ex/user_regression_anchors.h>
 #include <kernel/ke/mm.h>
 #include <kernel/ke/scheduler.h>
 #include <kernel/ke/user_bootstrap.h>
@@ -87,13 +90,13 @@ KiValidateCreateParams(const KE_USER_BOOTSTRAP_CREATE_PARAMS *params)
 {
     if (!params)
         return EC_ILLEGAL_ARGUMENT;
-    if (!params->CodeBytes || params->CodeLength == 0 || params->CodeLength > KE_USER_BOOTSTRAP_PAGE_SIZE)
+    if (!params->CodeBytes || params->CodeLength == 0 || params->CodeLength > EX_USER_IMAGE_PAGE_SIZE)
         return EC_ILLEGAL_ARGUMENT;
     if (params->EntryOffset >= params->CodeLength)
         return EC_ILLEGAL_ARGUMENT;
     if ((params->ConstBytes == NULL) != (params->ConstLength == 0))
         return EC_ILLEGAL_ARGUMENT;
-    if (params->ConstLength > KE_USER_BOOTSTRAP_PAGE_SIZE)
+    if (params->ConstLength > EX_USER_IMAGE_PAGE_SIZE)
         return EC_ILLEGAL_ARGUMENT;
 
     return EC_SUCCESS;
@@ -126,7 +129,7 @@ KiPopulatePhysicalPage(HO_PHYSICAL_ADDRESS physAddr, const void *bytes, uint64_t
         return status;
 
     void *tempBuffer = (void *)(uint64_t)tempVirt;
-    memset(tempBuffer, 0, KE_USER_BOOTSTRAP_PAGE_SIZE);
+    memset(tempBuffer, 0, EX_USER_IMAGE_PAGE_SIZE);
     if (bytes && byteCount != 0)
     {
         memcpy(tempBuffer, bytes, (size_t)byteCount);
@@ -266,19 +269,19 @@ KeUserBootstrapCreateStaging(const KE_USER_BOOTSTRAP_CREATE_PARAMS *params,
     if (status != EC_SUCCESS)
         return status;
 
-    status = KiValidateBootstrapHole(space, KE_USER_BOOTSTRAP_CODE_BASE);
+    status = KiValidateBootstrapHole(space, EX_USER_IMAGE_CODE_BASE);
     if (status != EC_SUCCESS)
         return status;
 
-    status = KiValidateBootstrapHole(space, KE_USER_BOOTSTRAP_CONST_BASE);
+    status = KiValidateBootstrapHole(space, EX_USER_IMAGE_CONST_BASE);
     if (status != EC_SUCCESS)
         return status;
 
-    status = KiValidateBootstrapHole(space, KE_USER_BOOTSTRAP_STACK_GUARD_BASE);
+    status = KiValidateBootstrapHole(space, EX_USER_IMAGE_STACK_GUARD_BASE);
     if (status != EC_SUCCESS)
         return status;
 
-    status = KiValidateBootstrapHole(space, KE_USER_BOOTSTRAP_STACK_BASE);
+    status = KiValidateBootstrapHole(space, EX_USER_IMAGE_STACK_BASE);
     if (status != EC_SUCCESS)
         return status;
 
@@ -286,17 +289,17 @@ KeUserBootstrapCreateStaging(const KE_USER_BOOTSTRAP_CREATE_PARAMS *params,
     if (!staging)
         return EC_OUT_OF_RESOURCE;
 
-    staging->EntryPoint = KE_USER_BOOTSTRAP_CODE_BASE + params->EntryOffset;
-    staging->StackBase = KE_USER_BOOTSTRAP_STACK_BASE;
-    staging->StackTop = KE_USER_BOOTSTRAP_STACK_TOP;
-    staging->GuardBase = KE_USER_BOOTSTRAP_STACK_GUARD_BASE;
-    staging->PhaseOneMailboxAddress = KE_USER_BOOTSTRAP_STACK_MAILBOX_ADDRESS;
+    staging->EntryPoint = EX_USER_IMAGE_CODE_BASE + params->EntryOffset;
+    staging->StackBase = EX_USER_IMAGE_STACK_BASE;
+    staging->StackTop = EX_USER_IMAGE_STACK_TOP;
+    staging->GuardBase = EX_USER_IMAGE_STACK_GUARD_BASE;
+    staging->PhaseOneMailboxAddress = EX_USER_BRINGUP_P1_MAILBOX_ADDRESS;
     staging->OwnerRootPageTablePhys = targetSpace->RootPageTablePhys;
 
     status = KiAllocateAndMapUserPage(space,
                                       staging,
                                       KE_USER_BOOTSTRAP_MAPPING_KIND_CODE,
-                                      KE_USER_BOOTSTRAP_CODE_BASE,
+                                      EX_USER_IMAGE_CODE_BASE,
                                       PTE_USER,
                                       params->CodeBytes,
                                       params->CodeLength);
@@ -308,7 +311,7 @@ KeUserBootstrapCreateStaging(const KE_USER_BOOTSTRAP_CREATE_PARAMS *params,
         status = KiAllocateAndMapUserPage(space,
                                           staging,
                                           KE_USER_BOOTSTRAP_MAPPING_KIND_CONST,
-                                          KE_USER_BOOTSTRAP_CONST_BASE,
+                                          EX_USER_IMAGE_CONST_BASE,
                                           PTE_USER | PTE_NO_EXECUTE,
                                           params->ConstBytes,
                                           params->ConstLength);
@@ -319,7 +322,7 @@ KeUserBootstrapCreateStaging(const KE_USER_BOOTSTRAP_CREATE_PARAMS *params,
     status = KiAllocateAndMapUserPage(space,
                                       staging,
                                       KE_USER_BOOTSTRAP_MAPPING_KIND_STACK,
-                                      KE_USER_BOOTSTRAP_STACK_BASE,
+                                      EX_USER_IMAGE_STACK_BASE,
                                       PTE_USER | PTE_WRITABLE | PTE_NO_EXECUTE,
                                       NULL,
                                       0);
@@ -343,8 +346,8 @@ KeUserBootstrapCreateStaging(const KE_USER_BOOTSTRAP_CREATE_PARAMS *params,
     if (status != EC_SUCCESS)
         goto cleanup;
 
-    *(volatile uint32_t *)(uint64_t)(mailboxTempVirt + KE_USER_BOOTSTRAP_STACK_MAILBOX_OFFSET) =
-        KE_USER_BOOTSTRAP_P1_MAILBOX_CLOSED;
+    *(volatile uint32_t *)(uint64_t)(mailboxTempVirt + EX_USER_BRINGUP_P1_MAILBOX_OFFSET) =
+        EX_USER_BRINGUP_P1_MAILBOX_CLOSED;
 
     HO_STATUS mailboxRelease = KeTempPhysMapRelease(&mailboxHandle);
     if (mailboxRelease != EC_SUCCESS)
@@ -468,10 +471,10 @@ KeUserBootstrapPatchConstBytes(KE_USER_BOOTSTRAP_STAGING *staging,
     if (bytes == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (offset > KE_USER_BOOTSTRAP_PAGE_SIZE || length > KE_USER_BOOTSTRAP_PAGE_SIZE)
+    if (offset > EX_USER_IMAGE_PAGE_SIZE || length > EX_USER_IMAGE_PAGE_SIZE)
         return EC_ILLEGAL_ARGUMENT;
 
-    if ((offset + length) < offset || (offset + length) > KE_USER_BOOTSTRAP_PAGE_SIZE)
+    if ((offset + length) < offset || (offset + length) > EX_USER_IMAGE_PAGE_SIZE)
         return EC_ILLEGAL_ARGUMENT;
 
     const KE_USER_BOOTSTRAP_MAPPING_RECORD *constRecord =
@@ -544,7 +547,7 @@ KeUserBootstrapObserveCurrentThreadUserTimerPreemption(void)
         return;
 
     HO_KASSERT(KiFindMappedPage(staging, KE_USER_BOOTSTRAP_MAPPING_KIND_STACK) != NULL, EC_INVALID_STATE);
-    HO_KASSERT(staging->PhaseOneMailboxAddress == KE_USER_BOOTSTRAP_STACK_MAILBOX_ADDRESS, EC_INVALID_STATE);
+    HO_KASSERT(staging->PhaseOneMailboxAddress == EX_USER_BRINGUP_P1_MAILBOX_ADDRESS, EC_INVALID_STATE);
 
     if (staging->PhaseOneUserTimerHitCount < 2)
     {
@@ -552,17 +555,17 @@ KeUserBootstrapObserveCurrentThreadUserTimerPreemption(void)
     }
 
     klog(KLOG_LEVEL_INFO,
-         KE_USER_BOOTSTRAP_LOG_TIMER_FROM_USER_FORMAT " thread=%u\n",
+         EX_USER_REGRESSION_LOG_TIMER_FROM_USER_FORMAT " thread=%u\n",
          staging->PhaseOneUserTimerHitCount,
          thread->ThreadId);
 
     if (staging->PhaseOneUserTimerHitCount >= 2)
     {
-        *(volatile uint32_t *)(uint64_t)staging->PhaseOneMailboxAddress = KE_USER_BOOTSTRAP_P1_MAILBOX_GATE_OPEN;
+        *(volatile uint32_t *)(uint64_t)staging->PhaseOneMailboxAddress = EX_USER_BRINGUP_P1_MAILBOX_GATE_OPEN;
         staging->PhaseOneGateArmed = TRUE;
 
         klog(KLOG_LEVEL_INFO,
-             KE_USER_BOOTSTRAP_LOG_P1_GATE_ARMED " thread=%u mailbox=%p\n",
+             EX_USER_REGRESSION_LOG_P1_GATE_ARMED " thread=%u mailbox=%p\n",
              thread->ThreadId,
              (void *)(uint64_t)staging->PhaseOneMailboxAddress);
     }
@@ -579,15 +582,15 @@ KeUserBootstrapEnterCurrentThread(void)
     HO_KASSERT(staging->AttachedThread == thread, EC_INVALID_STATE);
     HO_KASSERT(KiFindMappedPage(staging, KE_USER_BOOTSTRAP_MAPPING_KIND_CODE) != NULL, EC_INVALID_STATE);
     HO_KASSERT(KiFindMappedPage(staging, KE_USER_BOOTSTRAP_MAPPING_KIND_STACK) != NULL, EC_INVALID_STATE);
-    HO_KASSERT(staging->EntryPoint >= KE_USER_BOOTSTRAP_CODE_BASE, EC_INVALID_STATE);
-    HO_KASSERT(staging->EntryPoint < (KE_USER_BOOTSTRAP_CODE_BASE + KE_USER_BOOTSTRAP_PAGE_SIZE), EC_INVALID_STATE);
-    HO_KASSERT(staging->StackBase == KE_USER_BOOTSTRAP_STACK_BASE, EC_INVALID_STATE);
-    HO_KASSERT(staging->StackTop == KE_USER_BOOTSTRAP_STACK_TOP, EC_INVALID_STATE);
-    HO_KASSERT(staging->PhaseOneMailboxAddress == KE_USER_BOOTSTRAP_STACK_MAILBOX_ADDRESS, EC_INVALID_STATE);
+    HO_KASSERT(staging->EntryPoint >= EX_USER_IMAGE_CODE_BASE, EC_INVALID_STATE);
+    HO_KASSERT(staging->EntryPoint < (EX_USER_IMAGE_CODE_BASE + EX_USER_IMAGE_PAGE_SIZE), EC_INVALID_STATE);
+    HO_KASSERT(staging->StackBase == EX_USER_IMAGE_STACK_BASE, EC_INVALID_STATE);
+    HO_KASSERT(staging->StackTop == EX_USER_IMAGE_STACK_TOP, EC_INVALID_STATE);
+    HO_KASSERT(staging->PhaseOneMailboxAddress == EX_USER_BRINGUP_P1_MAILBOX_ADDRESS, EC_INVALID_STATE);
 
     staging->PhaseOneFirstEntryObserved = TRUE;
 
-    klog(KLOG_LEVEL_INFO, KE_USER_BOOTSTRAP_LOG_P1_FIRST_ENTRY "\n");
+    klog(KLOG_LEVEL_INFO, EX_USER_REGRESSION_LOG_P1_FIRST_ENTRY "\n");
 
     KiUserBootstrapIretq(
         staging->EntryPoint, staging->StackTop, KE_USER_BOOTSTRAP_INITIAL_RFLAGS, GDT_USER_CODE_SEL, GDT_USER_DATA_SEL);

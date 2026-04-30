@@ -11,11 +11,16 @@
 #include <kernel/ex/ex_bootstrap_adapter.h>
 #include <kernel/ex/ex_syscall.h>
 #include <kernel/ex/program.h>
+#include <kernel/ex/user_bringup_sentinel_abi.h>
+#include <kernel/ex/user_regression_anchors.h>
+#include <kernel/ex/user_syscall_abi.h>
 #include <kernel/hodbg.h>
 #include <kernel/ke/input.h>
 #include <kernel/ke/kthread.h>
 #include <kernel/ke/scheduler.h>
 #include <kernel/ke/user_bootstrap.h>
+
+typedef char KI_INPUT_LINE_CAPACITY_MATCHES_USER_ABI[(KE_INPUT_LINE_CAPACITY == EX_USER_READLINE_MAX_LENGTH) ? 1 : -1];
 
 static int64_t KiEncodeSyscallStatus(HO_STATUS status);
 static void KiSetReturnResult(EX_SYSCALL_DISPATCH_RESULT *result, int64_t returnValue);
@@ -74,7 +79,7 @@ static HO_NORETURN void
 KiAbortBootstrapExit(KTHREAD *thread, uint64_t exitCode, HO_STATUS status, const char *exitKind, const char *reason)
 {
     klog(KLOG_LEVEL_ERROR,
-         KE_USER_BOOTSTRAP_LOG_TEARDOWN_FAILED " exit=%s unrecoverable thread=%u code=%lu reason=%s status=%s (%d)\n",
+         EX_USER_REGRESSION_LOG_TEARDOWN_FAILED " exit=%s unrecoverable thread=%u code=%lu reason=%s status=%s (%d)\n",
          exitKind, thread ? thread->ThreadId : 0U, (unsigned long)exitCode, reason, KrGetStatusMessage(status), status);
     HO_KPANIC(status, reason);
 }
@@ -107,7 +112,7 @@ KiPrepareBootstrapKillExit(uint32_t programId, EX_SYSCALL_DISPATCH_RESULT *resul
     if (!thread || ExBootstrapAdapterQueryThreadStaging(thread) == NULL)
         KiAbortBootstrapExit(thread, 0, EC_INVALID_STATE, "kill", "Bootstrap kill exit missing staging");
 
-    klog(KLOG_LEVEL_INFO, KE_USER_BOOTSTRAP_LOG_KILL_EXIT " thread=%u program=%u\n", thread->ThreadId, programId);
+    klog(KLOG_LEVEL_INFO, EX_USER_REGRESSION_LOG_KILL_EXIT " thread=%u program=%u\n", thread->ThreadId, programId);
 
     HO_STATUS status = ExBootstrapAdapterHandleExit(thread);
     if (status != EC_SUCCESS)
@@ -120,7 +125,7 @@ KiPrepareBootstrapKillExit(uint32_t programId, EX_SYSCALL_DISPATCH_RESULT *resul
 static int64_t
 KiRejectRawWrite(uint64_t userBuffer, uint64_t length, HO_STATUS status)
 {
-    klog(KLOG_LEVEL_WARNING, KE_USER_BOOTSTRAP_LOG_INVALID_RAW_WRITE " addr=%p len=%lu status=%s (%d)\n",
+    klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_INVALID_RAW_WRITE " addr=%p len=%lu status=%s (%d)\n",
          (void *)(uint64_t)userBuffer, (unsigned long)length, KrGetStatusMessage(status), status);
     return KiEncodeSyscallStatus(status);
 }
@@ -128,17 +133,17 @@ KiRejectRawWrite(uint64_t userBuffer, uint64_t length, HO_STATUS status)
 static int64_t
 KiHandleRawWrite(uint64_t userBuffer, uint64_t length)
 {
-    if (length > KE_USER_BOOTSTRAP_SYS_RAW_WRITE_MAX_LENGTH)
+    if (length > EX_USER_SYSCALL_WRITE_MAX_LENGTH)
     {
-        klog(KLOG_LEVEL_WARNING, KE_USER_BOOTSTRAP_LOG_INVALID_USER_BUFFER " raw=write addr=%p len=%lu exceeds=%u\n",
-             (void *)(uint64_t)userBuffer, (unsigned long)length, KE_USER_BOOTSTRAP_SYS_RAW_WRITE_MAX_LENGTH);
+        klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_INVALID_USER_BUFFER " raw=write addr=%p len=%lu exceeds=%u\n",
+             (void *)(uint64_t)userBuffer, (unsigned long)length, EX_USER_SYSCALL_WRITE_MAX_LENGTH);
         return KiRejectRawWrite(userBuffer, length, EC_ILLEGAL_ARGUMENT);
     }
 
     if (length == 0)
         return 0;
 
-    char scratch[KE_USER_BOOTSTRAP_SYS_RAW_WRITE_MAX_LENGTH];
+    char scratch[EX_USER_SYSCALL_WRITE_MAX_LENGTH];
     HO_STATUS status = KeUserBootstrapCopyInBytes(scratch, (HO_VIRTUAL_ADDRESS)userBuffer, length);
     if (status != EC_SUCCESS)
         return KiRejectRawWrite(userBuffer, length, status);
@@ -153,7 +158,7 @@ KiHandleRawWrite(uint64_t userBuffer, uint64_t length)
         return KiEncodeSyscallStatus(status);
     }
 
-    klog(KLOG_LEVEL_INFO, KE_USER_BOOTSTRAP_LOG_HELLO_WRITE_SUCCEEDED " bytes=%lu thread=%u\n", (unsigned long)written,
+    klog(KLOG_LEVEL_INFO, EX_USER_REGRESSION_LOG_HELLO_WRITE_SUCCEEDED " bytes=%lu thread=%u\n", (unsigned long)written,
          thread ? thread->ThreadId : 0U);
 
     return (int64_t)written;
@@ -165,10 +170,10 @@ KiDispatchRawSyscall(const EX_SYSCALL_ARGUMENTS *args, EX_SYSCALL_DISPATCH_RESUL
     KTHREAD *thread = KeGetCurrentThread();
     if (!thread || ExBootstrapAdapterQueryThreadStaging(thread) == NULL)
     {
-        if (args->Number == SYS_RAW_EXIT)
+        if (args->Number == EX_USER_BRINGUP_SYS_RAW_EXIT)
             KiAbortBootstrapExit(thread, args->Arg0, EC_INVALID_STATE, "raw", "Bootstrap raw exit missing staging");
 
-        klog(KLOG_LEVEL_ERROR, KE_USER_BOOTSTRAP_LOG_INVALID_SYSCALL " nr=%lu thread=%u missing bootstrap staging\n",
+        klog(KLOG_LEVEL_ERROR, EX_USER_REGRESSION_LOG_INVALID_SYSCALL " nr=%lu thread=%u missing bootstrap staging\n",
              (unsigned long)args->Number, thread ? thread->ThreadId : 0U);
         KiSetReturnResult(result, KiEncodeSyscallStatus(EC_INVALID_STATE));
         return EC_SUCCESS;
@@ -176,13 +181,13 @@ KiDispatchRawSyscall(const EX_SYSCALL_ARGUMENTS *args, EX_SYSCALL_DISPATCH_RESUL
 
     switch (args->Number)
     {
-    case SYS_RAW_WRITE:
+    case EX_USER_BRINGUP_SYS_RAW_WRITE:
         KiSetReturnResult(result, KiHandleRawWrite(args->Arg0, args->Arg1));
         return EC_SUCCESS;
-    case SYS_RAW_EXIT:
-        return KiPrepareBootstrapExit(args->Arg0, KE_USER_BOOTSTRAP_LOG_SYS_RAW_EXIT, "raw", result);
+    case EX_USER_BRINGUP_SYS_RAW_EXIT:
+        return KiPrepareBootstrapExit(args->Arg0, EX_USER_REGRESSION_LOG_SYS_RAW_EXIT, "raw", result);
     default:
-        klog(KLOG_LEVEL_WARNING, KE_USER_BOOTSTRAP_LOG_INVALID_SYSCALL " nr=%lu thread=%u args=(%p,%p,%p)\n",
+        klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_INVALID_SYSCALL " nr=%lu thread=%u args=(%p,%p,%p)\n",
              (unsigned long)args->Number, thread->ThreadId, (void *)(uint64_t)args->Arg0, (void *)(uint64_t)args->Arg1,
              (void *)(uint64_t)args->Arg2);
         KiSetReturnResult(result, KiEncodeSyscallStatus(EC_NOT_SUPPORTED));
@@ -195,7 +200,7 @@ KiRejectCapabilitySyscall(const char *operation, uint64_t syscallNumber, EX_HAND
 {
     KTHREAD *thread = KeGetCurrentThread();
 
-    klog(KLOG_LEVEL_WARNING, KE_USER_BOOTSTRAP_LOG_CAP_REJECTED " op=%s nr=%lu handle=%u thread=%u status=%s (%d)\n",
+    klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_CAP_REJECTED " op=%s nr=%lu handle=%u thread=%u status=%s (%d)\n",
          operation, (unsigned long)syscallNumber, handle, thread ? thread->ThreadId : 0U, KrGetStatusMessage(status),
          status);
 
@@ -208,21 +213,21 @@ KiHandleCapabilityWrite(EX_PROCESS *process, EX_HANDLE handle, uint64_t userBuff
     EX_OBJECT_HEADER *objectHeader = NULL;
     KTHREAD *thread = KeGetCurrentThread();
     uint64_t written = 0;
-    char scratch[KE_USER_BOOTSTRAP_SYS_RAW_WRITE_MAX_LENGTH];
+    char scratch[EX_USER_SYSCALL_WRITE_MAX_LENGTH];
 
     if (process == NULL)
-        return KiRejectCapabilitySyscall("SYS_WRITE", SYS_WRITE, handle, EC_INVALID_STATE);
+        return KiRejectCapabilitySyscall("SYS_WRITE", EX_USER_SYS_WRITE, handle, EC_INVALID_STATE);
 
-    if (length > KE_USER_BOOTSTRAP_SYS_RAW_WRITE_MAX_LENGTH)
+    if (length > EX_USER_SYSCALL_WRITE_MAX_LENGTH)
     {
-        klog(KLOG_LEVEL_WARNING, KE_USER_BOOTSTRAP_LOG_INVALID_USER_BUFFER " cap=write addr=%p len=%lu exceeds=%u\n",
-             (void *)(uint64_t)userBuffer, (unsigned long)length, KE_USER_BOOTSTRAP_SYS_RAW_WRITE_MAX_LENGTH);
-        return KiRejectCapabilitySyscall("SYS_WRITE", SYS_WRITE, handle, EC_ILLEGAL_ARGUMENT);
+        klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_INVALID_USER_BUFFER " cap=write addr=%p len=%lu exceeds=%u\n",
+             (void *)(uint64_t)userBuffer, (unsigned long)length, EX_USER_SYSCALL_WRITE_MAX_LENGTH);
+        return KiRejectCapabilitySyscall("SYS_WRITE", EX_USER_SYS_WRITE, handle, EC_ILLEGAL_ARGUMENT);
     }
 
     HO_STATUS status = ExHandleResolve(process, handle, EX_OBJECT_TYPE_CONSOLE, EX_HANDLE_RIGHT_WRITE, &objectHeader);
     if (status != EC_SUCCESS)
-        return KiRejectCapabilitySyscall("SYS_WRITE", SYS_WRITE, handle, status);
+        return KiRejectCapabilitySyscall("SYS_WRITE", EX_USER_SYS_WRITE, handle, status);
 
     if (length != 0)
     {
@@ -244,10 +249,10 @@ KiHandleCapabilityWrite(EX_PROCESS *process, EX_HANDLE handle, uint64_t userBuff
             return KiEncodeSyscallStatus(status);
         }
 
-        return KiRejectCapabilitySyscall("SYS_WRITE", SYS_WRITE, handle, status);
+        return KiRejectCapabilitySyscall("SYS_WRITE", EX_USER_SYS_WRITE, handle, status);
     }
 
-    klog(KLOG_LEVEL_INFO, KE_USER_BOOTSTRAP_LOG_CAP_WRITE_SUCCEEDED " bytes=%lu thread=%u handle=%u\n",
+    klog(KLOG_LEVEL_INFO, EX_USER_REGRESSION_LOG_CAP_WRITE_SUCCEEDED " bytes=%lu thread=%u handle=%u\n",
          (unsigned long)written, thread ? thread->ThreadId : 0U, handle);
 
     return (int64_t)written;
@@ -259,17 +264,17 @@ KiHandleCapabilityClose(EX_PROCESS *process, EX_HANDLE handle)
     KTHREAD *thread = KeGetCurrentThread();
 
     if (process == NULL)
-        return KiRejectCapabilitySyscall("SYS_CLOSE", SYS_CLOSE, handle, EC_INVALID_STATE);
+        return KiRejectCapabilitySyscall("SYS_CLOSE", EX_USER_SYS_CLOSE, handle, EC_INVALID_STATE);
 
     if (handle == EX_HANDLE_INVALID)
-        return KiRejectCapabilitySyscall("SYS_CLOSE", SYS_CLOSE, handle, EC_ILLEGAL_ARGUMENT);
+        return KiRejectCapabilitySyscall("SYS_CLOSE", EX_USER_SYS_CLOSE, handle, EC_ILLEGAL_ARGUMENT);
 
     EX_HANDLE localHandle = handle;
     HO_STATUS status = ExHandleClose(process, &localHandle);
     if (status != EC_SUCCESS)
-        return KiRejectCapabilitySyscall("SYS_CLOSE", SYS_CLOSE, handle, status);
+        return KiRejectCapabilitySyscall("SYS_CLOSE", EX_USER_SYS_CLOSE, handle, status);
 
-    klog(KLOG_LEVEL_INFO, KE_USER_BOOTSTRAP_LOG_CAP_CLOSE_SUCCEEDED " handle=%u thread=%u\n", handle,
+    klog(KLOG_LEVEL_INFO, EX_USER_REGRESSION_LOG_CAP_CLOSE_SUCCEEDED " handle=%u thread=%u\n", handle,
          thread ? thread->ThreadId : 0U);
 
     return 0;
@@ -281,10 +286,10 @@ KiDecodeCapabilityWaitTimeoutNs(uint64_t timeoutMsRaw, uint64_t reserved, uint64
     if (outTimeoutNs == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (reserved != 0 || timeoutMsRaw > KE_USER_BOOTSTRAP_WAIT_ONE_TIMEOUT_MAX_MS)
+    if (reserved != 0 || timeoutMsRaw > EX_USER_WAIT_ONE_TIMEOUT_MAX_MS)
         return EC_ILLEGAL_ARGUMENT;
 
-    *outTimeoutNs = timeoutMsRaw * KE_USER_BOOTSTRAP_WAIT_ONE_TIMEOUT_NS_PER_MS;
+    *outTimeoutNs = timeoutMsRaw * EX_USER_WAIT_ONE_TIMEOUT_NS_PER_MS;
     return EC_SUCCESS;
 }
 
@@ -297,18 +302,18 @@ KiHandleCapabilityWaitOne(EX_PROCESS *process, EX_HANDLE handle, uint64_t timeou
     uint64_t timeoutNs = 0;
 
     if (process == NULL)
-        return KiRejectCapabilitySyscall("SYS_WAIT_ONE", SYS_WAIT_ONE, handle, EC_INVALID_STATE);
+        return KiRejectCapabilitySyscall("SYS_WAIT_ONE", EX_USER_SYS_WAIT_ONE, handle, EC_INVALID_STATE);
 
     if (handle == EX_HANDLE_INVALID)
-        return KiRejectCapabilitySyscall("SYS_WAIT_ONE", SYS_WAIT_ONE, handle, EC_ILLEGAL_ARGUMENT);
+        return KiRejectCapabilitySyscall("SYS_WAIT_ONE", EX_USER_SYS_WAIT_ONE, handle, EC_ILLEGAL_ARGUMENT);
 
     HO_STATUS status = KiDecodeCapabilityWaitTimeoutNs(timeoutMsRaw, reserved, &timeoutNs);
     if (status != EC_SUCCESS)
-        return KiRejectCapabilitySyscall("SYS_WAIT_ONE", SYS_WAIT_ONE, handle, status);
+        return KiRejectCapabilitySyscall("SYS_WAIT_ONE", EX_USER_SYS_WAIT_ONE, handle, status);
 
     status = ExHandleResolve(process, handle, EX_OBJECT_TYPE_WAITABLE, EX_HANDLE_RIGHT_WAIT, &objectHeader);
     if (status != EC_SUCCESS)
-        return KiRejectCapabilitySyscall("SYS_WAIT_ONE", SYS_WAIT_ONE, handle, status);
+        return KiRejectCapabilitySyscall("SYS_WAIT_ONE", EX_USER_SYS_WAIT_ONE, handle, status);
 
     waitObject = CONTAINING_RECORD(objectHeader, EX_WAITABLE_OBJECT, Header);
     if (waitObject->Dispatcher == NULL)
@@ -329,10 +334,10 @@ KiHandleCapabilityWaitOne(EX_PROCESS *process, EX_HANDLE handle, uint64_t timeou
         if (status == EC_TIMEOUT)
             return KiEncodeSyscallStatus(status);
 
-        return KiRejectCapabilitySyscall("SYS_WAIT_ONE", SYS_WAIT_ONE, handle, status);
+        return KiRejectCapabilitySyscall("SYS_WAIT_ONE", EX_USER_SYS_WAIT_ONE, handle, status);
     }
 
-    klog(KLOG_LEVEL_INFO, KE_USER_BOOTSTRAP_LOG_CAP_WAIT_SUCCEEDED " handle=%u thread=%u timeout_ms=%lu\n", handle,
+    klog(KLOG_LEVEL_INFO, EX_USER_REGRESSION_LOG_CAP_WAIT_SUCCEEDED " handle=%u thread=%u timeout_ms=%lu\n", handle,
          thread ? thread->ThreadId : 0U, (unsigned long)timeoutMsRaw);
 
     return 0;
@@ -347,23 +352,23 @@ KiDispatchCapabilitySyscall(uint64_t syscallNumber, uint64_t arg0, uint64_t arg1
     if (thread == NULL || process == NULL || process->Staging == NULL)
     {
         klog(KLOG_LEVEL_ERROR,
-             KE_USER_BOOTSTRAP_LOG_INVALID_CAP_SYSCALL " nr=%lu thread=%u missing bootstrap staging\n",
+             EX_USER_REGRESSION_LOG_INVALID_CAP_SYSCALL " nr=%lu thread=%u missing bootstrap staging\n",
              (unsigned long)syscallNumber, thread ? thread->ThreadId : 0U);
         return KiEncodeSyscallStatus(EC_INVALID_STATE);
     }
 
     switch (syscallNumber)
     {
-    case SYS_WRITE:
+    case EX_USER_SYS_WRITE:
         return KiHandleCapabilityWrite(process, (EX_HANDLE)arg0, arg1, arg2);
-    case SYS_CLOSE:
+    case EX_USER_SYS_CLOSE:
         return KiHandleCapabilityClose(process, (EX_HANDLE)arg0);
-    case SYS_WAIT_ONE:
+    case EX_USER_SYS_WAIT_ONE:
         return KiHandleCapabilityWaitOne(process, (EX_HANDLE)arg0, arg1, arg2);
-    case SYS_QUERY_SYSINFO:
+    case EX_USER_SYS_QUERY_SYSINFO:
         return ExBootstrapHandleQuerySysinfo(process, arg0, arg1, arg2);
     default:
-        klog(KLOG_LEVEL_WARNING, KE_USER_BOOTSTRAP_LOG_INVALID_CAP_SYSCALL " nr=%lu thread=%u args=(%p,%p,%p)\n",
+        klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_INVALID_CAP_SYSCALL " nr=%lu thread=%u args=(%p,%p,%p)\n",
              (unsigned long)syscallNumber, thread->ThreadId, (void *)(uint64_t)arg0, (void *)(uint64_t)arg1,
              (void *)(uint64_t)arg2);
         return KiEncodeSyscallStatus(EC_NOT_SUPPORTED);
@@ -380,7 +385,7 @@ KiHandleReadLine(uint64_t userBuffer, uint64_t capacity, uint64_t reserved)
     if (reserved != 0 || capacity == 0 || capacity > KE_INPUT_LINE_CAPACITY)
     {
         klog(KLOG_LEVEL_WARNING,
-             KE_USER_BOOTSTRAP_LOG_READLINE_REJECTED " thread=%u addr=%p cap=%lu reserved=%lu status=%s (%d)\n",
+             EX_USER_REGRESSION_LOG_READLINE_REJECTED " thread=%u addr=%p cap=%lu reserved=%lu status=%s (%d)\n",
              thread ? thread->ThreadId : 0U, (void *)(uint64_t)userBuffer, (unsigned long)capacity,
              (unsigned long)reserved, KrGetStatusMessage(EC_ILLEGAL_ARGUMENT), EC_ILLEGAL_ARGUMENT);
         return KiEncodeSyscallStatus(EC_ILLEGAL_ARGUMENT);
@@ -389,7 +394,7 @@ KiHandleReadLine(uint64_t userBuffer, uint64_t capacity, uint64_t reserved)
     HO_STATUS status = KeInputWaitForForegroundLine();
     if (status != EC_SUCCESS)
     {
-        klog(KLOG_LEVEL_WARNING, KE_USER_BOOTSTRAP_LOG_READLINE_REJECTED " thread=%u addr=%p cap=%lu status=%s (%d)\n",
+        klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_READLINE_REJECTED " thread=%u addr=%p cap=%lu status=%s (%d)\n",
              thread ? thread->ThreadId : 0U, (void *)(uint64_t)userBuffer, (unsigned long)capacity,
              KrGetStatusMessage(status), status);
         return KiEncodeSyscallStatus(status);
@@ -398,7 +403,7 @@ KiHandleReadLine(uint64_t userBuffer, uint64_t capacity, uint64_t reserved)
     status = KeInputCopyCompletedLineForCurrentThread(scratch, (uint32_t)capacity, &copiedLength);
     if (status != EC_SUCCESS)
     {
-        klog(KLOG_LEVEL_WARNING, KE_USER_BOOTSTRAP_LOG_READLINE_REJECTED " thread=%u addr=%p cap=%lu status=%s (%d)\n",
+        klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_READLINE_REJECTED " thread=%u addr=%p cap=%lu status=%s (%d)\n",
              thread ? thread->ThreadId : 0U, (void *)(uint64_t)userBuffer, (unsigned long)capacity,
              KrGetStatusMessage(status), status);
         return KiEncodeSyscallStatus(status);
@@ -407,7 +412,7 @@ KiHandleReadLine(uint64_t userBuffer, uint64_t capacity, uint64_t reserved)
     status = KeUserBootstrapCopyOutBytes((HO_VIRTUAL_ADDRESS)userBuffer, scratch, copiedLength);
     if (status != EC_SUCCESS)
     {
-        klog(KLOG_LEVEL_WARNING, KE_USER_BOOTSTRAP_LOG_READLINE_REJECTED " thread=%u addr=%p cap=%lu status=%s (%d)\n",
+        klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_READLINE_REJECTED " thread=%u addr=%p cap=%lu status=%s (%d)\n",
              thread ? thread->ThreadId : 0U, (void *)(uint64_t)userBuffer, (unsigned long)capacity,
              KrGetStatusMessage(status), status);
         return KiEncodeSyscallStatus(status);
@@ -417,7 +422,7 @@ KiHandleReadLine(uint64_t userBuffer, uint64_t capacity, uint64_t reserved)
     if (status != EC_SUCCESS)
         return KiEncodeSyscallStatus(status);
 
-    klog(KLOG_LEVEL_INFO, KE_USER_BOOTSTRAP_LOG_READLINE_SUCCEEDED " bytes=%u thread=%u\n", copiedLength,
+    klog(KLOG_LEVEL_INFO, EX_USER_REGRESSION_LOG_READLINE_SUCCEEDED " bytes=%u thread=%u\n", copiedLength,
          thread ? thread->ThreadId : 0U);
     return (int64_t)copiedLength;
 }
@@ -432,7 +437,7 @@ KiHandleSpawnProgram(uint64_t userName, uint64_t nameLength, uint64_t flags)
     if (userName == 0 || nameLength == 0 || nameLength >= EX_PROGRAM_NAME_MAX_LENGTH || flags > 0xFFFFFFFFULL)
     {
         klog(KLOG_LEVEL_WARNING,
-             KE_USER_BOOTSTRAP_LOG_SPAWN_PROGRAM_REJECTED " thread=%u name_len=%lu flags=%lu status=%s (%d)\n",
+             EX_USER_REGRESSION_LOG_SPAWN_PROGRAM_REJECTED " thread=%u name_len=%lu flags=%lu status=%s (%d)\n",
              thread ? thread->ThreadId : 0U, (unsigned long)nameLength, (unsigned long)flags,
              KrGetStatusMessage(EC_ILLEGAL_ARGUMENT), EC_ILLEGAL_ARGUMENT);
         return KiEncodeSyscallStatus(EC_ILLEGAL_ARGUMENT);
@@ -444,7 +449,7 @@ KiHandleSpawnProgram(uint64_t userName, uint64_t nameLength, uint64_t flags)
     if (status != EC_SUCCESS)
     {
         klog(KLOG_LEVEL_WARNING,
-             KE_USER_BOOTSTRAP_LOG_SPAWN_PROGRAM_REJECTED
+             EX_USER_REGRESSION_LOG_SPAWN_PROGRAM_REJECTED
              " thread=%u name_addr=%p name_len=%lu flags=%lu status=%s (%d)\n",
              thread ? thread->ThreadId : 0U, (void *)(uint64_t)userName, (unsigned long)nameLength,
              (unsigned long)flags, KrGetStatusMessage(status), status);
@@ -455,12 +460,12 @@ KiHandleSpawnProgram(uint64_t userName, uint64_t nameLength, uint64_t flags)
     if (status != EC_SUCCESS)
     {
         klog(KLOG_LEVEL_WARNING,
-             KE_USER_BOOTSTRAP_LOG_SPAWN_PROGRAM_REJECTED " thread=%u name=%s flags=%lu status=%s (%d)\n",
+             EX_USER_REGRESSION_LOG_SPAWN_PROGRAM_REJECTED " thread=%u name=%s flags=%lu status=%s (%d)\n",
              thread ? thread->ThreadId : 0U, programName, (unsigned long)flags, KrGetStatusMessage(status), status);
         return KiEncodeSyscallStatus(status);
     }
 
-    klog(KLOG_LEVEL_INFO, KE_USER_BOOTSTRAP_LOG_SPAWN_PROGRAM_SUCCEEDED " thread=%u name=%s flags=%lu pid=%u\n",
+    klog(KLOG_LEVEL_INFO, EX_USER_REGRESSION_LOG_SPAWN_PROGRAM_SUCCEEDED " thread=%u name=%s flags=%lu pid=%u\n",
          thread ? thread->ThreadId : 0U, programName, (unsigned long)flags, pid);
     return (int64_t)pid;
 }
@@ -472,7 +477,7 @@ KiHandleWaitPid(uint64_t pid, uint64_t reserved0, uint64_t reserved1)
 
     if (reserved0 != 0 || reserved1 != 0 || pid == 0 || pid > 0xFFFFFFFFULL)
     {
-        klog(KLOG_LEVEL_WARNING, KE_USER_BOOTSTRAP_LOG_WAIT_PID_REJECTED " thread=%u pid=%lu status=%s (%d)\n",
+        klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_WAIT_PID_REJECTED " thread=%u pid=%lu status=%s (%d)\n",
              thread ? thread->ThreadId : 0U, (unsigned long)pid, KrGetStatusMessage(EC_ILLEGAL_ARGUMENT),
              EC_ILLEGAL_ARGUMENT);
         return KiEncodeSyscallStatus(EC_ILLEGAL_ARGUMENT);
@@ -481,12 +486,12 @@ KiHandleWaitPid(uint64_t pid, uint64_t reserved0, uint64_t reserved1)
     HO_STATUS status = ExWaitProcess((uint32_t)pid);
     if (status != EC_SUCCESS)
     {
-        klog(KLOG_LEVEL_WARNING, KE_USER_BOOTSTRAP_LOG_WAIT_PID_REJECTED " thread=%u pid=%lu status=%s (%d)\n",
+        klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_WAIT_PID_REJECTED " thread=%u pid=%lu status=%s (%d)\n",
              thread ? thread->ThreadId : 0U, (unsigned long)pid, KrGetStatusMessage(status), status);
         return KiEncodeSyscallStatus(status);
     }
 
-    klog(KLOG_LEVEL_INFO, KE_USER_BOOTSTRAP_LOG_WAIT_PID_SUCCEEDED " thread=%u pid=%lu\n",
+    klog(KLOG_LEVEL_INFO, EX_USER_REGRESSION_LOG_WAIT_PID_SUCCEEDED " thread=%u pid=%lu\n",
          thread ? thread->ThreadId : 0U, (unsigned long)pid);
     return 0;
 }
@@ -496,16 +501,16 @@ KiHandleSleepMs(uint64_t milliseconds, uint64_t reserved0, uint64_t reserved1)
 {
     KTHREAD *thread = KeGetCurrentThread();
 
-    if (reserved0 != 0 || reserved1 != 0 || milliseconds > KE_USER_BOOTSTRAP_SLEEP_MS_MAX)
+    if (reserved0 != 0 || reserved1 != 0 || milliseconds > EX_USER_SLEEP_MS_MAX)
     {
-        klog(KLOG_LEVEL_WARNING, KE_USER_BOOTSTRAP_LOG_SLEEP_MS_REJECTED " thread=%u milliseconds=%lu status=%s (%d)\n",
+        klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_SLEEP_MS_REJECTED " thread=%u milliseconds=%lu status=%s (%d)\n",
              thread ? thread->ThreadId : 0U, (unsigned long)milliseconds, KrGetStatusMessage(EC_ILLEGAL_ARGUMENT),
              EC_ILLEGAL_ARGUMENT);
         return KiEncodeSyscallStatus(EC_ILLEGAL_ARGUMENT);
     }
 
-    KeSleep(milliseconds * KE_USER_BOOTSTRAP_SLEEP_NS_PER_MS);
-    klog(KLOG_LEVEL_INFO, KE_USER_BOOTSTRAP_LOG_SLEEP_MS_SUCCEEDED " thread=%u milliseconds=%lu\n",
+    KeSleep(milliseconds * EX_USER_SLEEP_NS_PER_MS);
+    klog(KLOG_LEVEL_INFO, EX_USER_REGRESSION_LOG_SLEEP_MS_SUCCEEDED " thread=%u milliseconds=%lu\n",
          thread ? thread->ThreadId : 0U, (unsigned long)milliseconds);
     return 0;
 }
@@ -517,7 +522,7 @@ KiHandleKillPid(uint64_t pid, uint64_t reserved0, uint64_t reserved1)
 
     if (reserved0 != 0 || reserved1 != 0 || pid == 0 || pid > 0xFFFFFFFFULL)
     {
-        klog(KLOG_LEVEL_WARNING, KE_USER_BOOTSTRAP_LOG_KILL_PID_REJECTED " thread=%u pid=%lu status=%s (%d)\n",
+        klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_KILL_PID_REJECTED " thread=%u pid=%lu status=%s (%d)\n",
              thread ? thread->ThreadId : 0U, (unsigned long)pid, KrGetStatusMessage(EC_ILLEGAL_ARGUMENT),
              EC_ILLEGAL_ARGUMENT);
         return KiEncodeSyscallStatus(EC_ILLEGAL_ARGUMENT);
@@ -526,12 +531,12 @@ KiHandleKillPid(uint64_t pid, uint64_t reserved0, uint64_t reserved1)
     HO_STATUS status = ExKillProcess((uint32_t)pid);
     if (status != EC_SUCCESS)
     {
-        klog(KLOG_LEVEL_WARNING, KE_USER_BOOTSTRAP_LOG_KILL_PID_REJECTED " thread=%u pid=%lu status=%s (%d)\n",
+        klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_KILL_PID_REJECTED " thread=%u pid=%lu status=%s (%d)\n",
              thread ? thread->ThreadId : 0U, (unsigned long)pid, KrGetStatusMessage(status), status);
         return KiEncodeSyscallStatus(status);
     }
 
-    klog(KLOG_LEVEL_INFO, KE_USER_BOOTSTRAP_LOG_KILL_PID_SUCCEEDED " pid=%lu thread=%u\n", (unsigned long)pid,
+    klog(KLOG_LEVEL_INFO, EX_USER_REGRESSION_LOG_KILL_PID_SUCCEEDED " pid=%lu thread=%u\n", (unsigned long)pid,
          thread ? thread->ThreadId : 0U);
     return 0;
 }
@@ -541,27 +546,27 @@ KiDispatchFormalSyscall(const EX_SYSCALL_ARGUMENTS *args, EX_SYSCALL_DISPATCH_RE
 {
     switch (args->Number)
     {
-    case SYS_EXIT:
+    case EX_USER_SYS_EXIT:
         if (args->Arg1 != 0 || args->Arg2 != 0)
         {
             KiSetReturnResult(result, KiEncodeSyscallStatus(EC_ILLEGAL_ARGUMENT));
             return EC_SUCCESS;
         }
 
-        return KiPrepareBootstrapExit(args->Arg0, KE_USER_BOOTSTRAP_LOG_SYS_EXIT, "formal", result);
-    case SYS_READLINE:
+        return KiPrepareBootstrapExit(args->Arg0, EX_USER_REGRESSION_LOG_SYS_EXIT, "formal", result);
+    case EX_USER_SYS_READLINE:
         KiSetReturnResult(result, KiHandleReadLine(args->Arg0, args->Arg1, args->Arg2));
         return EC_SUCCESS;
-    case SYS_SPAWN_PROGRAM:
+    case EX_USER_SYS_SPAWN_PROGRAM:
         KiSetReturnResult(result, KiHandleSpawnProgram(args->Arg0, args->Arg1, args->Arg2));
         return EC_SUCCESS;
-    case SYS_WAIT_PID:
+    case EX_USER_SYS_WAIT_PID:
         KiSetReturnResult(result, KiHandleWaitPid(args->Arg0, args->Arg1, args->Arg2));
         return EC_SUCCESS;
-    case SYS_SLEEP_MS:
+    case EX_USER_SYS_SLEEP_MS:
         KiSetReturnResult(result, KiHandleSleepMs(args->Arg0, args->Arg1, args->Arg2));
         return EC_SUCCESS;
-    case SYS_KILL_PID:
+    case EX_USER_SYS_KILL_PID:
         KiSetReturnResult(result, KiHandleKillPid(args->Arg0, args->Arg1, args->Arg2));
         return EC_SUCCESS;
     default:
@@ -589,7 +594,7 @@ ExDispatchSyscall(const EX_SYSCALL_ARGUMENTS *args, EX_SYSCALL_DISPATCH_RESULT *
     KiSetReturnResult(outResult, 0);
 
     HO_STATUS status;
-    if (args->Number < KE_USER_BOOTSTRAP_CAPABILITY_SYSCALL_BASE)
+    if (args->Number < EX_USER_SYSCALL_BASE)
     {
         status = KiDispatchRawSyscall(args, outResult);
     }

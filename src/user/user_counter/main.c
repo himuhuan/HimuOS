@@ -7,7 +7,7 @@
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
-#include "libsys.h"
+#include "libsys_bringup.h"
 
 static const char gKiUserCounterLine0[] = "[USERCOUNTER] count=0\n";
 static const char gKiUserCounterLine1[] = "[USERCOUNTER] count=1\n";

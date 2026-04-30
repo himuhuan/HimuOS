@@ -3,7 +3,7 @@
  *
  * Keep .text at the staged code page base and start .rodata at the const-page
  * payload slot so the runtime-owned capability seed block can be prepended at
- * KE_USER_BOOTSTRAP_CONST_BASE without requiring a runtime ELF loader.
+ * EX_USER_IMAGE_CONST_BASE without requiring a runtime ELF loader.
  */
 
 OUTPUT_FORMAT(elf64-x86-64)

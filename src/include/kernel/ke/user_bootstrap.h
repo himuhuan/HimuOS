@@ -10,7 +10,6 @@
 
 #include <_hobase.h>
 
-#include <kernel/ex/ex_bootstrap_abi.h>
 #include <kernel/ke/mm.h>
 #include <kernel/ke/kthread.h>
 

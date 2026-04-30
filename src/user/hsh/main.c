@@ -60,8 +60,8 @@ HoHshMustWrite(const char *buffer, uint64_t length)
     while (length != 0U)
     {
         uint64_t chunkLength = length;
-        if (chunkLength > KE_USER_BOOTSTRAP_SYS_RAW_WRITE_MAX_LENGTH)
-            chunkLength = KE_USER_BOOTSTRAP_SYS_RAW_WRITE_MAX_LENGTH;
+        if (chunkLength > EX_USER_SYSCALL_WRITE_MAX_LENGTH)
+            chunkLength = EX_USER_SYSCALL_WRITE_MAX_LENGTH;
 
         if (HoUserWriteStdout(buffer, chunkLength) != (int64_t)chunkLength)
             HoUserAbort();
@@ -255,7 +255,7 @@ HoHshWriteKilled(uint32_t pid)
 int
 main(void)
 {
-    char line[KE_USER_BOOTSTRAP_READLINE_MAX_LENGTH];
+    char line[EX_USER_READLINE_MAX_LENGTH];
     HO_HSH_JOB jobs[HO_HSH_MAX_JOBS] = {0};
 
     for (;;)
@@ -338,7 +338,7 @@ main(void)
 
         if (HoHshLineEquals(line, (uint64_t)status, "calc"))
         {
-            int64_t pid = HoUserSpawnProgramLiteral("calc", KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND);
+            int64_t pid = HoUserSpawnProgramLiteral("calc", EX_USER_SPAWN_FLAG_FOREGROUND);
             if (pid < 0)
             {
                 HoHshMustWriteLiteral(gSpawnFailed);
@@ -353,7 +353,7 @@ main(void)
 
         if (HoHshLineEquals(line, (uint64_t)status, "fault_de"))
         {
-            int64_t pid = HoUserSpawnProgramLiteral("fault_de", KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND);
+            int64_t pid = HoUserSpawnProgramLiteral("fault_de", EX_USER_SPAWN_FLAG_FOREGROUND);
             if (pid < 0)
             {
                 HoHshMustWriteLiteral(gSpawnFailed);
@@ -368,7 +368,7 @@ main(void)
 
         if (HoHshLineEquals(line, (uint64_t)status, "fault_pf"))
         {
-            int64_t pid = HoUserSpawnProgramLiteral("fault_pf", KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND);
+            int64_t pid = HoUserSpawnProgramLiteral("fault_pf", EX_USER_SPAWN_FLAG_FOREGROUND);
             if (pid < 0)
             {
                 HoHshMustWriteLiteral(gSpawnFailed);
@@ -390,7 +390,7 @@ main(void)
                 continue;
             }
 
-            int64_t pid = HoUserSpawnProgramLiteral("tick1s", KE_USER_BOOTSTRAP_SPAWN_FLAG_NONE);
+            int64_t pid = HoUserSpawnProgramLiteral("tick1s", EX_USER_SPAWN_FLAG_NONE);
             if (pid < 0)
             {
                 HoHshMustWriteLiteral(gSpawnFailed);
@@ -438,7 +438,7 @@ static const char gNewLine[] = "\n";
 int
 main(void)
 {
-    char line[KE_USER_BOOTSTRAP_READLINE_MAX_LENGTH];
+    char line[EX_USER_READLINE_MAX_LENGTH];
     int64_t status = HoUserWriteStdout(gHshPrompt, sizeof(gHshPrompt) - 1U);
     if (status != (int64_t)(sizeof(gHshPrompt) - 1U))
         HoUserAbort();

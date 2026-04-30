@@ -12,7 +12,7 @@
 /*
  * Refactor anchor: keep the user_hello clean-pass evidence chain fixed as
  * first entry, timer round-trip, rejected raw write, hello write,
- * SYS_RAW_EXIT, thread terminated, bootstrap teardown complete, and
+ * EX_USER_BRINGUP_SYS_RAW_EXIT, thread terminated, bootstrap teardown complete, and
  * idle/reaper reclaim.
  * This change only permits boundary refactoring around ownership and
  * registration seams for the compiled userspace bring-up path.

@@ -9,6 +9,7 @@
 #include "ex_bootstrap_internal.h"
 
 #include <kernel/ex/ex_bootstrap_adapter.h>
+#include <kernel/ex/user_regression_anchors.h>
 #include <kernel/ke/bootstrap_callbacks.h>
 #include <kernel/ke/kthread.h>
 #include <kernel/ke/mm.h>
@@ -175,7 +176,7 @@ ExBootstrapAdapterFinalizeThread(KTHREAD *thread)
     HO_STATUS status = ExBootstrapTeardownProcessPayload(process);
     if (status == EC_SUCCESS)
     {
-        klog(KLOG_LEVEL_INFO, KE_USER_BOOTSTRAP_LOG_TEARDOWN_COMPLETE " thread=%u\n", thread->ThreadId);
+        klog(KLOG_LEVEL_INFO, EX_USER_REGRESSION_LOG_TEARDOWN_COMPLETE " thread=%u\n", thread->ThreadId);
     }
 
     HO_STATUS releaseStatus = KiDestroyBootstrapWrapperObjects(thread);
