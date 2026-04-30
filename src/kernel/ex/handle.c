@@ -126,7 +126,7 @@ KiValidateCloseHandleSlot(const EX_HANDLE_SLOT *slot)
         return EC_INVALID_STATE;
 
     objectHeader = slot->Object;
-    if (ExBootstrapIsRuntimeAliasObject(objectHeader))
+    if (ExRuntimeIsPublishedObject(objectHeader))
         return EC_INVALID_STATE;
 
     if (!ExObjectIsValidType(objectHeader->Type))

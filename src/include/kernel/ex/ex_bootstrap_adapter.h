@@ -29,8 +29,8 @@ HO_KERNEL_API HO_STATUS ExBootstrapAdapterWrapThread(struct KTHREAD *thread);
 
 /**
  * Finalize the Ex ownership for a terminated user-runtime thread: destroy the
- * staging through ExProcess ownership, then clear the non-owning runtime alias
- * and free Ex objects through the existing final release path.
+ * staging through ExProcess ownership, then clear non-owning runtime table
+ * entries and free Ex objects through the existing final release path.
  * Called by the registered user-runtime finalize hook.
  * Returns EC_SUCCESS if the thread had no Ex wrapper (non-user-runtime path).
  */
@@ -38,14 +38,14 @@ HO_KERNEL_API HO_STATUS ExBootstrapAdapterFinalizeThread(struct KTHREAD *thread)
 
 /**
  * Query whether a KTHREAD currently has an Ex user-runtime wrapper.
- * Returns TRUE if the runtime registry currently exposes a non-owning
- * EX_THREAD alias for this KTHREAD.
+ * Returns TRUE if the runtime table currently exposes this KTHREAD through an
+ * EX_THREAD entry.
  */
 HO_KERNEL_API BOOL ExBootstrapAdapterHasWrapper(const struct KTHREAD *thread);
 
 /**
  * Query the Ex-owned bootstrap staging associated with a KTHREAD.
- * Returns NULL if the runtime registry has no alias for the thread.
+ * Returns NULL if the runtime table has no entry for the thread.
  */
 HO_KERNEL_API struct KE_USER_BOOTSTRAP_STAGING *ExBootstrapAdapterQueryThreadStaging(const struct KTHREAD *thread);
 

@@ -59,6 +59,7 @@ ExBootstrapInitializeThreadObject(EX_THREAD *thread)
     thread->Thread = NULL;
     thread->Process = NULL;
     thread->SelfHandle = EX_HANDLE_INVALID;
+    thread->ThreadId = 0;
 }
 
 HO_STATUS
@@ -208,6 +209,7 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
 
     thread->Thread = kernelThread;
     thread->Process = process;
+    thread->ThreadId = kernelThread->ThreadId;
 
     status = ExHandleInsert(process, &thread->Header, threadSelfRights, &thread->SelfHandle);
     if (status != EC_SUCCESS)
@@ -224,7 +226,7 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
     if (status != EC_SUCCESS)
         goto FailThreadRuntimeSetup;
 
-    status = ExBootstrapPublishRuntimeAlias(process, thread);
+    status = ExRuntimePublishThread(process, thread);
     if (status != EC_SUCCESS)
     {
         goto FailThreadRuntimeSetup;
@@ -294,7 +296,7 @@ ExBootstrapQueryThreadId(const EX_THREAD *thread, uint32_t *outThreadId)
     if (thread->Thread == NULL)
         return EC_INVALID_STATE;
 
-    *outThreadId = thread->Thread->ThreadId;
+    *outThreadId = thread->ThreadId;
     return EC_SUCCESS;
 }
 
@@ -319,20 +321,20 @@ ExBootstrapTeardownThread(EX_THREAD *thread)
     if (thread == NULL || thread->Thread == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (ExBootstrapLookupRuntimeThread(thread->Thread) != thread)
+    if (ExRuntimeLookupThreadByKernelThread(thread->Thread) != thread)
         return EC_INVALID_STATE;
 
     if (thread->Thread->State != KTHREAD_STATE_NEW)
         return EC_INVALID_STATE;
 
-    process = ExBootstrapLookupRuntimeProcess(thread->Thread);
+    process = ExRuntimeLookupProcessByKernelThread(thread->Thread);
 
     HO_STATUS firstError = ExBootstrapTeardownProcessPayload(process);
 
     if (process != NULL)
         process->State = EX_PROCESS_STATE_TERMINATED;
 
-    ExBootstrapUnpublishRuntimeAlias(thread->Thread, NULL, NULL);
+    ExRuntimeUnpublishByKernelThread(thread->Thread, NULL, NULL);
 
     HO_STATUS threadStatus = ExBootstrapDestroyNewKernelThread(thread->Thread);
     if (firstError == EC_SUCCESS)

@@ -71,6 +71,11 @@ ExBootstrapInitializeProcessObject(EX_PROCESS *process)
     process->ParentProcessId = 0;
     process->MainThreadId = 0;
     process->State = EX_PROCESS_STATE_CREATED;
+    process->ExitStatus = 0;
+    process->TerminationReason = EX_PROCESS_TERMINATION_REASON_NONE;
+    process->KillRequested = FALSE;
+    process->Foreground = FALSE;
+    process->RestoreForegroundOwnerThreadId = 0;
     ExBootstrapInitializeStdoutServiceObject(process);
     ExBootstrapInitializeWaitableObject(process);
     ExHandleInitializeTable(&process->HandleTable);
@@ -269,7 +274,7 @@ ExBootstrapDestroyProcess(EX_PROCESS *process)
     if (process == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    if (ExBootstrapRuntimeAliasMatchesProcess(process))
+    if (ExRuntimeIsProcessPublished(process))
         return EC_INVALID_STATE;
 
     HO_STATUS status = ExBootstrapTeardownProcessPayload(process);

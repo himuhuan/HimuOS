@@ -94,9 +94,13 @@ KiPrepareBootstrapExit(uint64_t exitCode,
     if (!thread || ExBootstrapAdapterQueryThreadStaging(thread) == NULL)
         KiAbortBootstrapExit(thread, exitCode, EC_INVALID_STATE, exitKind, "Bootstrap exit missing staging");
 
+    HO_STATUS status = ExRuntimeMarkCurrentProcessTerminating(EX_PROCESS_TERMINATION_REASON_EXIT, (uint64_t)exitCode);
+    if (status != EC_SUCCESS)
+        KiAbortBootstrapExit(thread, exitCode, status, exitKind, "Failed to mark process exit");
+
     klog(KLOG_LEVEL_INFO, "%s code=%lu thread=%u\n", successLog, (unsigned long)exitCode, thread->ThreadId);
 
-    HO_STATUS status = ExBootstrapAdapterHandleExit(thread);
+    status = ExBootstrapAdapterHandleExit(thread);
     if (status != EC_SUCCESS)
         KiAbortBootstrapExit(thread, exitCode, status, exitKind,
                              "Bootstrap exit handoff validation failed after no-return transition");
@@ -112,9 +116,13 @@ KiPrepareBootstrapKillExit(uint32_t programId, EX_SYSCALL_DISPATCH_RESULT *resul
     if (!thread || ExBootstrapAdapterQueryThreadStaging(thread) == NULL)
         KiAbortBootstrapExit(thread, 0, EC_INVALID_STATE, "kill", "Bootstrap kill exit missing staging");
 
+    HO_STATUS status = ExRuntimeMarkCurrentProcessTerminating(EX_PROCESS_TERMINATION_REASON_KILL, 0);
+    if (status != EC_SUCCESS)
+        KiAbortBootstrapExit(thread, 0, status, "kill", "Failed to mark process kill exit");
+
     klog(KLOG_LEVEL_INFO, EX_USER_REGRESSION_LOG_KILL_EXIT " thread=%u program=%u\n", thread->ThreadId, programId);
 
-    HO_STATUS status = ExBootstrapAdapterHandleExit(thread);
+    status = ExBootstrapAdapterHandleExit(thread);
     if (status != EC_SUCCESS)
         KiAbortBootstrapExit(thread, 0, status, "kill", "Bootstrap kill exit handoff validation failed");
 
@@ -347,7 +355,7 @@ static int64_t
 KiDispatchCapabilitySyscall(uint64_t syscallNumber, uint64_t arg0, uint64_t arg1, uint64_t arg2)
 {
     KTHREAD *thread = KeGetCurrentThread();
-    EX_PROCESS *process = ExBootstrapLookupRuntimeProcess(thread);
+    EX_PROCESS *process = ExRuntimeLookupProcessByKernelThread(thread);
 
     if (thread == NULL || process == NULL || process->Staging == NULL)
     {
@@ -503,7 +511,8 @@ KiHandleSleepMs(uint64_t milliseconds, uint64_t reserved0, uint64_t reserved1)
 
     if (reserved0 != 0 || reserved1 != 0 || milliseconds > EX_USER_SLEEP_MS_MAX)
     {
-        klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_SLEEP_MS_REJECTED " thread=%u milliseconds=%lu status=%s (%d)\n",
+        klog(KLOG_LEVEL_WARNING,
+             EX_USER_REGRESSION_LOG_SLEEP_MS_REJECTED " thread=%u milliseconds=%lu status=%s (%d)\n",
              thread ? thread->ThreadId : 0U, (unsigned long)milliseconds, KrGetStatusMessage(EC_ILLEGAL_ARGUMENT),
              EC_ILLEGAL_ARGUMENT);
         return KiEncodeSyscallStatus(EC_ILLEGAL_ARGUMENT);
@@ -579,7 +588,7 @@ static HO_STATUS
 KiObserveKillRequest(EX_SYSCALL_DISPATCH_RESULT *result)
 {
     uint32_t killedProgramId = EX_PROGRAM_ID_NONE;
-    if (ExShouldTerminateCurrentProcess(&killedProgramId))
+    if (ExRuntimeShouldTerminateCurrentProcess(&killedProgramId))
         return KiPrepareBootstrapKillExit(killedProgramId, result);
 
     return EC_SUCCESS;

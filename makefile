@@ -293,7 +293,7 @@ SRCS_KERNEL_C := \
     src/kernel/ex/ex_bootstrap.c                        \
     src/kernel/ex/object.c                              \
     src/kernel/ex/handle.c                              \
-    src/kernel/ex/runtime_alias.c                       \
+    src/kernel/ex/runtime_table.c                       \
     src/kernel/ex/image.c                               \
     src/kernel/ex/program.c                             \
     src/kernel/ex/process.c                             \

@@ -1,7 +1,7 @@
 # HimuOS Architecture Overview
 
-This document records the Phase A cleanup baseline: what is true in-tree now,
-before later cleanup phases remove Bootstrap-era runtime names.
+This document records the current cleanup baseline: what is true in-tree now
+while later phases continue removing Bootstrap-era runtime names.
 
 ## Boot And Handoff
 
@@ -32,8 +32,8 @@ Ex owns the current user-runtime policy surface:
 - object, handle, process, and thread scaffolding in
   `src/kernel/ex/object.c`, `src/kernel/ex/handle.c`,
   `src/kernel/ex/process.c`, and `src/kernel/ex/thread.c`
-- runtime alias and sysinfo glue in `src/kernel/ex/runtime_alias.c` and
-  `src/kernel/ex/sysinfo.c`
+- runtime process/thread tables in `src/kernel/ex/runtime_table.c`, with
+  user-facing sysinfo rendering in `src/kernel/ex/sysinfo.c`
 - syscall dispatch in `src/kernel/ex/syscall.c`
 - the current spawn/wait/kill/foreground control plane in
   `src/kernel/ex/process_control.c`
@@ -57,6 +57,9 @@ Current runtime reality:
 - `demo_shell` is the visible vertical slice: boot, launch `hsh`, then drive
   `sysinfo`, `memmap`, `ps`, foreground `calc`, background `tick1s`, `kill`,
   and `exit`.
+- Ex process/thread identity now flows through the runtime process and thread
+  tables. The old runtime alias registry and process-control child table are
+  retired.
 - `demo_shell` and `user_fault` already exercise the Ex-owned
   `ExSpawnProgram()` / `ExWaitProcess()` / `ExKillProcess()` control plane.
 - `user_input` and `user_dual` are still official contract profiles, but they
@@ -88,7 +91,7 @@ The timing-sensitive safety net is `demo_shell`, `user_input`, `user_dual`, and
 `QEMU_CAPTURE_MODE=tcg` evidence before behavior-changing cleanup is considered
 safe. The canonical contract/sentinel index is `docs/regression-profiles.md`.
 
-## Phase A Documentation Baseline
+## Documentation Baseline
 
 The cleanup baseline is healthy when:
 

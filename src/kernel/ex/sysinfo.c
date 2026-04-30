@@ -428,7 +428,7 @@ KiCaptureSysinfoThreadList(EX_SYSINFO_THREAD_LIST *threadList)
     if (threadList == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    HO_STATUS status = ExBootstrapCaptureThreadList(&userThreads);
+    HO_STATUS status = ExRuntimeCaptureThreadList(&userThreads);
     if (status != EC_SUCCESS)
         return status;
 
@@ -977,7 +977,7 @@ ExBootstrapHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64
     if (infoClassRaw == EX_SYSINFO_CLASS_PROCESS_LIST || infoClassRaw == EX_SYSINFO_CLASS_PROCESS_LIST_TEXT)
     {
         EX_SYSINFO_PROCESS_LIST processList = {0};
-        status = ExBootstrapCaptureProcessList(&processList);
+        status = ExRuntimeCaptureProcessList(&processList);
         if (status != EC_SUCCESS)
             return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, status);
 

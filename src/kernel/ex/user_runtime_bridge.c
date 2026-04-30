@@ -38,7 +38,7 @@ ExUserRuntimeEnterHook(KTHREAD *thread)
         HO_KPANIC(status, "Failed to wrap user-runtime thread in Ex adapter");
     }
 
-    process = ExBootstrapLookupRuntimeProcess(thread);
+    process = ExRuntimeLookupProcessByKernelThread(thread);
     if (process == NULL || !process->AddressSpace.Initialized)
     {
         HO_KPANIC(EC_INVALID_STATE, "User-runtime enter: process root not initialized");
@@ -84,7 +84,7 @@ ExUserRuntimeResolveRootHook(const KTHREAD *thread, HO_PHYSICAL_ADDRESS *outRoot
 
     *outRootPageTablePhys = kernelSpace->RootPageTablePhys;
 
-    runtimeThread = ExBootstrapLookupRuntimeThread(thread);
+    runtimeThread = ExRuntimeLookupThreadByKernelThread(thread);
     if (runtimeThread != NULL)
     {
         EX_PROCESS *process = runtimeThread->Process;
@@ -125,6 +125,10 @@ ExUserRuntimeFaultHook(KTHREAD *thread, const KE_USER_RUNTIME_FAULT_CONTEXT *con
 
     KiLogUserRuntimeFaultEvidence(thread, process, context);
 
+    status = ExRuntimeMarkProcessTerminating(process, EX_PROCESS_TERMINATION_REASON_FAULT, context->VectorNumber);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "User-runtime fault termination marking failed");
+
     status = ExBootstrapAdapterHandleExit(thread);
     if (status != EC_SUCCESS)
         HO_KPANIC(status, "User-runtime fault exit handoff validation failed");
@@ -148,7 +152,7 @@ ExBootstrapAdapterWrapThread(KTHREAD *thread)
     if (thread == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    process = ExBootstrapLookupRuntimeProcess(thread);
+    process = ExRuntimeLookupProcessByKernelThread(thread);
     if (process == NULL)
         return EC_INVALID_STATE;
 
@@ -164,13 +168,17 @@ ExBootstrapAdapterFinalizeThread(KTHREAD *thread)
     EX_PROCESS *process = NULL;
     EX_THREAD *runtimeThread = NULL;
 
-    runtimeThread = ExBootstrapLookupRuntimeThread(thread);
+    runtimeThread = ExRuntimeLookupThreadByKernelThread(thread);
     if (runtimeThread == NULL)
         return EC_SUCCESS;
 
     process = runtimeThread->Process;
     if (process != NULL)
-        process->State = EX_PROCESS_STATE_TERMINATED;
+    {
+        HO_STATUS markStatus = ExRuntimeMarkProcessTerminated(process);
+        if (markStatus != EC_SUCCESS)
+            return markStatus;
+    }
 
     HO_STATUS status = ExBootstrapTeardownProcessPayload(process);
     if (status == EC_SUCCESS)
@@ -188,13 +196,13 @@ ExBootstrapAdapterFinalizeThread(KTHREAD *thread)
 BOOL
 ExBootstrapAdapterHasWrapper(const KTHREAD *thread)
 {
-    return ExBootstrapLookupRuntimeThread(thread) != NULL;
+    return ExRuntimeLookupThreadByKernelThread(thread) != NULL;
 }
 
 struct KE_USER_BOOTSTRAP_STAGING *
 ExBootstrapAdapterQueryThreadStaging(const KTHREAD *thread)
 {
-    EX_PROCESS *process = ExBootstrapLookupRuntimeProcess(thread);
+    EX_PROCESS *process = ExRuntimeLookupProcessByKernelThread(thread);
 
     if (process == NULL)
         return NULL;
@@ -215,7 +223,7 @@ KiDestroyUserRuntimeWrapperObjects(KTHREAD *thread)
     EX_PROCESS *process = NULL;
     HO_STATUS status = EC_SUCCESS;
 
-    ExBootstrapUnpublishRuntimeAlias(thread, &exThread, &process);
+    ExRuntimeUnpublishByKernelThread(thread, &exThread, &process);
 
     if (exThread != NULL && process == NULL)
         process = exThread->Process;
@@ -253,7 +261,7 @@ KiValidateUserRuntimeTerminationHandoff(KTHREAD *thread, EX_THREAD **outRuntimeT
     if (thread == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    runtimeThread = ExBootstrapLookupRuntimeThread(thread);
+    runtimeThread = ExRuntimeLookupThreadByKernelThread(thread);
     if (runtimeThread == NULL || runtimeThread->Thread != thread)
         return EC_INVALID_STATE;
 

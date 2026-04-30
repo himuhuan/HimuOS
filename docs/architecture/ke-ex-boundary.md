@@ -1,6 +1,6 @@
 # Ke / Ex Boundary Notes
 
-This document records the Phase A cleanup baseline for the Ke mechanism layer
+This document records the current cleanup baseline for the Ke mechanism layer
 and the Ex user-runtime layer.
 
 ## Working Rule
@@ -36,6 +36,8 @@ These are the mechanisms Ex should consume rather than duplicate.
   `src/kernel/ex/process.c`, and `src/kernel/ex/thread.c` host the current
   object, handle, process, and thread scaffolding.
 - `src/kernel/ex/syscall.c` dispatches the formal `SYS_*` user-runtime ABI.
+- `src/kernel/ex/runtime_table.c` owns the live Ex process/thread lookup model
+  used by sysinfo, wait/kill lookup, fault handling, and foreground metadata.
 - `src/kernel/ex/process_control.c` owns the current spawn/wait/kill/
   foreground policy surface used by `demo_shell` and `user_fault`.
 - `src/kernel/ex/program.c` maps embedded program names and IDs to user images.
@@ -48,13 +50,23 @@ These are the mechanisms Ex should consume rather than duplicate.
 - `src/include/kernel/ke/user_bootstrap.h` and
   `src/kernel/ke/user_bootstrap_syscall.c` still own low-level trap, user-copy,
   and user-entry helpers with bootstrap names.
-- `src/kernel/ex/runtime_alias.c` still maps runtime process/thread identity
-  through temporary bootstrap alias slots keyed by `KTHREAD *`.
-- `src/kernel/ex/process_control.c` still keeps an ad hoc child table with a
-  borrowed `KTHREAD *` as the wait/kill anchor.
+- Phase E still needs real Ex waitables. Until then, `ExWaitProcess()` and
+  `ExKillProcess()` borrow the process main backing `KTHREAD` through the Ex
+  runtime table and join it as the wait mechanism.
 - `src/kernel/demo/user_input.c` still calls `ExBootstrapBorrowKernelThread()`
   directly, and both `user_input` and `user_dual` still build userspace through
   `ExBootstrap*` launch helpers instead of permanent Ex runtime APIs.
+
+## Phase D Runtime Tables
+
+The runtime alias registry and process-control child table are retired.
+`src/kernel/ex/runtime_table.c` now publishes bounded Ex process and thread
+tables. Process objects carry parent PID, main TID, lifecycle state, exit
+status, termination reason, kill request, and foreground restore metadata.
+
+The remaining borrowed `KTHREAD` use is no longer identity ownership; it is the
+Phase E waitability mechanism for joining a process main thread until Ex
+process/thread objects own completion state directly.
 
 ## Phase C User-Runtime Hooks
 

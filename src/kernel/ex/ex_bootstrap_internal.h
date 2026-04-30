@@ -26,6 +26,14 @@ typedef enum EX_PROCESS_STATE
     EX_PROCESS_STATE_TERMINATED,
 } EX_PROCESS_STATE;
 
+typedef enum EX_PROCESS_TERMINATION_REASON
+{
+    EX_PROCESS_TERMINATION_REASON_NONE = 0,
+    EX_PROCESS_TERMINATION_REASON_EXIT,
+    EX_PROCESS_TERMINATION_REASON_KILL,
+    EX_PROCESS_TERMINATION_REASON_FAULT,
+} EX_PROCESS_TERMINATION_REASON;
+
 typedef EX_HANDLE EX_PRIVATE_HANDLE;
 typedef EX_HANDLE_RIGHTS EX_PRIVATE_HANDLE_RIGHTS;
 typedef EX_HANDLE_SLOT EX_PRIVATE_HANDLE_SLOT;
@@ -68,6 +76,11 @@ struct EX_PROCESS
     uint32_t ParentProcessId;
     uint32_t MainThreadId;
     EX_PROCESS_STATE State;
+    uint64_t ExitStatus;
+    EX_PROCESS_TERMINATION_REASON TerminationReason;
+    BOOL KillRequested;
+    BOOL Foreground;
+    uint32_t RestoreForegroundOwnerThreadId;
     uint32_t ProgramId;
     EX_STDOUT_SERVICE StdoutService;
     EX_WAITABLE_OBJECT WaitObject;
@@ -80,6 +93,7 @@ struct EX_THREAD
     struct KTHREAD *Thread;
     EX_PROCESS *Process;
     EX_HANDLE SelfHandle;
+    uint32_t ThreadId;
 };
 
 void ExBootstrapInitializeObjectHeader(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE type);
@@ -111,16 +125,26 @@ HO_STATUS ExBootstrapResolvePrivateHandle(EX_PROCESS *process,
 HO_STATUS ExBootstrapReleaseResolvedObject(EX_OBJECT_HEADER *objectHeader);
 HO_STATUS ExBootstrapClosePrivateHandle(EX_PROCESS *process, EX_PRIVATE_HANDLE *handle);
 HO_STATUS ExBootstrapCloseAllPrivateHandles(EX_PROCESS *process);
-BOOL ExBootstrapHasRuntimeAlias(void);
-BOOL ExBootstrapIsRuntimeAliasObject(const EX_OBJECT_HEADER *objectHeader);
-BOOL ExBootstrapRuntimeAliasMatchesProcess(const EX_PROCESS *process);
-HO_STATUS ExBootstrapCaptureThreadList(EX_SYSINFO_THREAD_LIST *outThreadList);
-HO_STATUS ExBootstrapCaptureProcessList(EX_SYSINFO_PROCESS_LIST *outProcessList);
-HO_STATUS ExBootstrapPublishRuntimeAlias(EX_PROCESS *process, EX_THREAD *thread);
-EX_THREAD *ExBootstrapLookupRuntimeThread(const struct KTHREAD *thread);
-EX_PROCESS *ExBootstrapLookupRuntimeProcess(const struct KTHREAD *thread);
-EX_PROCESS *ExBootstrapLookupRuntimeProcessByPid(uint32_t processId);
-void ExBootstrapUnpublishRuntimeAlias(const struct KTHREAD *thread, EX_THREAD **outThread, EX_PROCESS **outProcess);
+BOOL ExRuntimeIsPublishedObject(const EX_OBJECT_HEADER *objectHeader);
+BOOL ExRuntimeIsProcessPublished(const EX_PROCESS *process);
+HO_STATUS ExRuntimeCaptureThreadList(EX_SYSINFO_THREAD_LIST *outThreadList);
+HO_STATUS ExRuntimeCaptureProcessList(EX_SYSINFO_PROCESS_LIST *outProcessList);
+HO_STATUS ExRuntimePublishThread(EX_PROCESS *process, EX_THREAD *thread);
+EX_THREAD *ExRuntimeLookupThreadByKernelThread(const struct KTHREAD *thread);
+EX_PROCESS *ExRuntimeLookupProcessByKernelThread(const struct KTHREAD *thread);
+EX_PROCESS *ExRuntimeLookupProcessByPid(uint32_t processId);
+HO_STATUS ExRuntimeRetainChildProcess(uint32_t parentProcessId, uint32_t childProcessId, EX_PROCESS **outProcess);
+HO_STATUS ExRuntimeBorrowProcessMainKernelThread(EX_PROCESS *process, struct KTHREAD **outThread);
+HO_STATUS ExRuntimeQueryCurrentProcessId(uint32_t *outProcessId);
+HO_STATUS ExRuntimeRequestProcessKill(EX_PROCESS *process);
+BOOL ExRuntimeShouldTerminateCurrentProcess(uint32_t *outProgramId);
+HO_STATUS ExRuntimeMarkProcessControl(EX_PROCESS *process, BOOL foreground, uint32_t restoreForegroundOwnerThreadId);
+HO_STATUS ExRuntimeMarkCurrentProcessTerminating(EX_PROCESS_TERMINATION_REASON reason, uint64_t exitStatus);
+HO_STATUS ExRuntimeMarkProcessTerminating(EX_PROCESS *process,
+                                          EX_PROCESS_TERMINATION_REASON reason,
+                                          uint64_t exitStatus);
+HO_STATUS ExRuntimeMarkProcessTerminated(EX_PROCESS *process);
+void ExRuntimeUnpublishByKernelThread(const struct KTHREAD *thread, EX_THREAD **outThread, EX_PROCESS **outProcess);
 HO_STATUS ExBootstrapBuildInitialConstBytes(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params,
                                             uint8_t **outConstBytes,
                                             uint64_t *outConstLength);

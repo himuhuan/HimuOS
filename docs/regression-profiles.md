@@ -1,7 +1,7 @@
 # Regression Profiles
 
-This index is the Phase A cleanup baseline for HimuOS profile-driven
-regression. It records which profiles are official cleanup contracts, which
+This index tracks HimuOS profile-driven regression for the cleanup plan. It
+records which profiles are official cleanup contracts, which
 ones are legacy bring-up sentinels, and which anchors prove the expected
 behavior.
 
@@ -163,6 +163,27 @@ For failures, keep the log path and record:
 - last matched anchor
 - first failure or panic anchor
 - whether the failure appears host-only, TCG-only, or common
+
+## Phase D Runtime Table Evidence 2026-04-30
+
+Build and list sanity:
+
+- `make all`: passed for the default build.
+- `make test TEST_MODULE=list`: passed and listed the expected profile set.
+
+Timing-sensitive profile evidence after replacing the runtime alias registry
+and process-control child table with Ex runtime process/thread tables:
+
+| Profile | Mode | Log | Result |
+| --- | --- | --- | --- |
+| `demo_shell` | host | `/tmp/himuos-demo-shell-host.log` | Matched sysinfo, memmap, `ps`, foreground `calc`, kill, and `[HSH] HSH exited`; no panic/STOP anchors. |
+| `demo_shell` | TCG | `/tmp/himuos-demo-shell-tcg.log` | Matched the same anchors as host; no panic/STOP anchors. |
+| `user_fault` | host | `/tmp/himuos-user-fault-host.log` | Matched user-mode `#DE`, user-mode `#PF`, `CR2`, foreground restore, wait completion, `ps`, and `[HSH] HSH exited`; no panic/STOP anchors. |
+| `user_fault` | TCG | `/tmp/himuos-user-fault-tcg.log` | Matched the same anchors as host; no panic/STOP anchors. |
+| `user_dual` | host | `/tmp/himuos-user-dual-host.log` | Matched user-mode entry, P1 gate, `user_hello`, `user_counter`, `SYS_RAW_EXIT`, `SYS_EXIT`, teardown, and reaper anchors; capture ended by watchdog after anchors. |
+| `user_dual` | TCG | `/tmp/himuos-user-dual-tcg.log` | Matched the same anchors as host; capture ended by watchdog after anchors. |
+| `user_input` | host | `/tmp/himuos-user-input-host.log` | Matched foreground handoff to `hsh`, `hsh` echo/handoff, foreground handoff to `calc`, `[CALC] 3 4 +`, teardown, and foreground owner reset anchors; capture ended by watchdog after anchors. |
+| `user_input` | TCG | `/tmp/himuos-user-input-tcg.log` | Matched the same anchors as host; capture ended by watchdog after anchors. |
 
 ## Phase C Hook Rename Evidence 2026-04-30
 
