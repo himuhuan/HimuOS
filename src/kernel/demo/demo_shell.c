@@ -9,29 +9,16 @@
 
 #include "demo_internal.h"
 
-#include <kernel/demo_shell.h>
-#include <kernel/ex/ex_bootstrap.h>
-#include <kernel/ex/program.h>
-#include <kernel/ke/input.h>
+#include <kernel/ex/ex_process.h>
 
 typedef struct KI_DEMO_SHELL_CONTEXT
 {
-    EX_THREAD *HshThread;
-    KTHREAD *HshKernelThread;
-    uint32_t HshThreadId;
+    uint32_t HshPid;
 } KI_DEMO_SHELL_CONTEXT;
 
 static KI_DEMO_SHELL_CONTEXT gKiDemoShellContext;
 
-static void KiUnexpectedDemoShellProfileKernelEntry(void *arg);
 static void KiDemoShellControllerThread(void *arg);
-
-static void
-KiUnexpectedDemoShellProfileKernelEntry(void *arg)
-{
-    (void)arg;
-    HO_KPANIC(EC_INVALID_STATE, "demo_shell hsh bootstrap thread unexpectedly executed the kernel entry point");
-}
 
 static void
 KiDemoShellControllerThread(void *arg)
@@ -39,69 +26,25 @@ KiDemoShellControllerThread(void *arg)
     KI_DEMO_SHELL_CONTEXT *context = (KI_DEMO_SHELL_CONTEXT *)arg;
     HO_STATUS status = EC_SUCCESS;
 
-    KeDemoShellResetControlPlane();
+    if (context == NULL)
+        HO_KPANIC(EC_ILLEGAL_ARGUMENT, "demo_shell context is required");
 
-    status = KeInputSetForegroundOwnerThreadId(context->HshThreadId);
+    status = ExSpawnProgram("hsh", sizeof("hsh") - 1U, KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND, &context->HshPid);
     if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to set demo_shell foreground owner");
+        HO_KPANIC(status, "Failed to spawn demo_shell hsh process");
 
-    status = ExBootstrapStartThread(&context->HshThread);
+    status = ExWaitProcess(context->HshPid);
     if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to start demo_shell hsh thread");
-
-    status = KeThreadJoin(context->HshKernelThread, KE_WAIT_INFINITE);
-    if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to join demo_shell hsh thread");
-
-    status = KeInputSetForegroundOwnerThreadId(0U);
-    if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to clear demo_shell foreground owner");
+        HO_KPANIC(status, "Failed to wait demo_shell hsh process");
 }
 
 void
 RunDemoShellDemo(void)
 {
-    const EX_USER_IMAGE *hshImage = NULL;
-    EX_BOOTSTRAP_PROCESS_CREATE_PARAMS createParams = {0};
-    EX_BOOTSTRAP_THREAD_CREATE_PARAMS threadParams = {
-        .EntryPoint = KiUnexpectedDemoShellProfileKernelEntry,
-        .EntryArg = NULL,
-        .Flags = EX_BOOTSTRAP_THREAD_CREATE_FLAG_JOINABLE,
-    };
-    EX_PROCESS *process = NULL;
-    EX_THREAD *thread = NULL;
-    KTHREAD *kernelThread = NULL;
     KTHREAD *controllerThread = NULL;
-    uint32_t hshThreadId = 0;
     HO_STATUS status = EC_SUCCESS;
 
-    status = ExLookupProgramImageByName("hsh", sizeof("hsh") - 1U, &hshImage);
-    if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to resolve demo_shell hsh image");
-
-    status = ExProgramBuildBootstrapCreateParams(hshImage, 0, &createParams);
-    if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to build demo_shell hsh params");
-
-    status = ExBootstrapCreateProcess(&createParams, &process);
-    if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to create demo_shell hsh process");
-
-    status = ExBootstrapCreateThread(&process, &threadParams, &thread);
-    if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to create demo_shell hsh thread");
-
-    status = ExBootstrapBorrowKernelThread(thread, &kernelThread);
-    if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to borrow demo_shell hsh kernel thread");
-
-    status = ExBootstrapQueryThreadId(thread, &hshThreadId);
-    if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to query demo_shell hsh thread id");
-
-    gKiDemoShellContext.HshThread = thread;
-    gKiDemoShellContext.HshKernelThread = kernelThread;
-    gKiDemoShellContext.HshThreadId = hshThreadId;
+    gKiDemoShellContext.HshPid = 0;
 
     status = KeThreadCreate(&controllerThread, KiDemoShellControllerThread, &gKiDemoShellContext);
     if (status != EC_SUCCESS)

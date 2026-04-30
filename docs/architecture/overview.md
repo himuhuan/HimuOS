@@ -1,7 +1,7 @@
 # HimuOS Architecture Overview
 
-This document freezes the current New Era baseline before the Executive Lite
-refactor. It describes the branch as it exists today, not the final target.
+This document tracks the current New Era refactor state. It describes the
+branch as it exists today, not the final target.
 
 ## Boot And Handoff
 
@@ -31,11 +31,9 @@ The strongest current subsystem is memory management:
 Boot memory map -> PMM -> imported kernel address space -> PT HAL -> KVA ->
 heap foundation -> allocator and pool consumers.
 
-The main Stage 0 boundary issue is that Ke still contains user-visible policy in
-`src/kernel/ke/user_bootstrap_syscall.c`: `readline`, `spawn_builtin`,
-`wait_pid`, `sleep_ms`, and `kill_pid` are dispatched from the Ke syscall file,
-and that file includes `kernel/demo_shell.h`. This is baseline behavior to
-preserve for now and refactor later.
+Ke still owns the low-level bootstrap syscall trap and user-copy mechanics in
+`src/kernel/ke/user_bootstrap_syscall.c`, but user-visible syscall policy now
+enters the Ex dispatcher in `src/kernel/ex/syscall.c`.
 
 ## Ex Bootstrap Facade
 
@@ -59,10 +57,9 @@ rights bits, stdout and waitable pilot objects, process-private address spaces,
 sysinfo text rendering, capability syscalls, user-fault handling, and callback
 bridges into Ke.
 
-Stage 0 does not split these files. It records that this concentration is the
-current baseline and that later stages should extract object, handle, process,
-thread, syscall, program, image, and sysinfo modules without changing profile
-behavior first.
+Later stages should continue extracting object, handle, process, thread,
+syscall, program, image, and sysinfo modules without changing profile behavior
+first.
 
 ## Demo And User Programs
 
@@ -81,9 +78,10 @@ bridge files. `demo_shell` is the visible MVP vertical slice: the kernel boots,
 launches user-mode `hsh`, and the shell drives `sysinfo`, `memmap`, `ps`,
 foreground `calc`, background `tick1s`, `kill`, and `exit`.
 
-The demo shell control plane is still under `src/kernel/demo` and exports
-`KeDemoShell*` APIs. That is intentional baseline behavior in Stage 0 and one of
-the first policy moves for Executive Lite.
+The demo shell launcher under `src/kernel/demo` is now a thin profile wrapper.
+The temporary shell lifecycle control plane lives in
+`src/kernel/ex/process_control.c`, where `spawn`, `wait`, `kill`, cooperative
+kill observation, and foreground restoration are Ex-owned.
 
 ## Build And Regression
 
@@ -103,9 +101,9 @@ Timing-sensitive user/process profiles require both `QEMU_CAPTURE_MODE=host`
 and `QEMU_CAPTURE_MODE=tcg` evidence before later refactors are considered
 safe. The canonical profile contract index is `docs/regression-profiles.md`.
 
-## Stage 0 Exit Criteria
+## Regression Criteria
 
-Stage 0 is complete when:
+Refactor checkpoints are healthy when:
 
 - this architecture map exists and matches the checked-in baseline
 - `new_era_plan.md` is tracked as the New Era roadmap source
@@ -117,4 +115,3 @@ Stage 0 is complete when:
   recorded
 - host and TCG evidence for timing-sensitive user/process profiles is captured,
   or the blocker is recorded
-

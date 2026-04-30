@@ -253,7 +253,6 @@ SRCS_KERNEL_C := \
 	src/kernel/demo/semaphore.c                         \
     src/kernel/demo/thread.c                            \
     src/kernel/demo/demo_shell.c                        \
-    src/kernel/demo/demo_shell_runtime.c                \
 	src/kernel/demo/user_hello.c                        \
     src/kernel/demo/user_dual.c                         \
 	src/kernel/demo/user_caps.c                         \
@@ -298,6 +297,7 @@ SRCS_KERNEL_C := \
     src/kernel/ex/image.c                               \
     src/kernel/ex/program.c                             \
     src/kernel/ex/process.c                             \
+    src/kernel/ex/process_control.c                     \
     src/kernel/ex/thread.c                              \
     src/kernel/ex/sysinfo.c                             \
     src/kernel/ex/syscall.c                             \

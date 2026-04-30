@@ -1,8 +1,7 @@
-# Ke / Ex Boundary Baseline
+# Ke / Ex Boundary Notes
 
 This document records the current boundary between the Ke mechanism layer and
-the Ex policy layer before the New Era refactor. Stage 0 preserves behavior; it
-does not move code.
+the Ex policy layer during the New Era refactor.
 
 ## Intended Rule
 
@@ -33,30 +32,29 @@ These are the mechanisms later Ex code should consume rather than duplicate.
 
 ## Current Boundary Debts
 
-- `src/kernel/ke/user_bootstrap_syscall.c` dispatches user-visible policy
-  syscalls: `SYS_READLINE`, `SYS_SPAWN_PROGRAM`, `SYS_WAIT_PID`,
-  `SYS_SLEEP_MS`, and `SYS_KILL_PID`.
-- The same Ke file includes `kernel/demo_shell.h` and checks
-  `KeDemoShellShouldTerminateCurrentThread()` after each syscall.
+- `src/kernel/ke/user_bootstrap_syscall.c` still owns the low-level trap and
+  user-copy mechanics, but user-visible syscall policy now enters
+  `src/kernel/ex/syscall.c`.
 - `src/kernel/ke/input/input.c` depends on `ex_bootstrap_abi.h` for the
   bootstrap line capacity.
 - `src/include/kernel/ke/bootstrap_callbacks.h` names the ownership,
   address-space-root, finalize, timer-observe, and user-exception callbacks as
   bootstrap callbacks even though they now describe the user-runtime bridge.
-- `src/kernel/demo/demo_shell_runtime.c` implements process-control policy
-  while exporting `KeDemoShell*` functions.
+- `src/kernel/ex/process_control.c` owns the temporary spawn/wait/kill child
+  table, but it still tracks joinable `KTHREAD *` pointers until Ex has
+  first-class process wait handles.
 - `ExBootstrapBorrowKernelThread()` exposes a `KTHREAD *` to demo code so it can
-  join bootstrap user threads directly.
+  join bootstrap user threads directly in older profiles such as `user_input`.
 - `ex_bootstrap_abi.h` mixes layout constants, syscall numbers, program name
   limits, sysinfo structs, and log anchors.
 
-These debts are acceptable in Stage 0 because they are part of the current
-working MVP. Later stages should remove them profile by profile.
+These debts remain acceptable only while they are part of the current working
+MVP. Later stages should remove them profile by profile.
 
-## Target Direction After Stage 0
+## Target Direction
 
-The first refactor stage should preserve the existing profiles while moving
-policy behind Ex-owned APIs:
+Refactor stages should preserve the existing profiles while moving policy behind
+Ex-owned APIs:
 
 - Keep the `int 0x80` trap registration in Ke while making the trap call an
   Ex syscall dispatcher.
@@ -70,17 +68,17 @@ policy behind Ex-owned APIs:
 - Rename bootstrap callback concepts only after equivalent generic owner/root
   contracts exist.
 
-## Non-Goals For Stage 0
+## Non-Goals For Near-Term Refactors
 
-Stage 0 must not:
+Near-term refactors must not:
 
 - change syscall numbers, return values, or register ABI
 - change user program layout or embedded artifact rules
 - split `ex_bootstrap.c` or `ex_bootstrap_adapter.c`
 - remove raw bootstrap syscalls
-- replace demo shell control-plane behavior
+- replace demo shell lifecycle behavior with full TTY-lite or POSIX job control
 - alter QEMU profile input plans or expected anchors unless the existing profile
   is already failing and the failure is documented
 
-The Stage 0 job is to make the current architecture and regression contracts
-explicit before behavior moves.
+The near-term job is to keep the current architecture and regression contracts
+explicit while behavior moves behind Ex-owned APIs.

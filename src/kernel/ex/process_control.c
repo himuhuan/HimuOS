@@ -1,25 +1,23 @@
 /**
  * HimuOperatingSystem
  *
- * File: demo/demo_shell_runtime.c
- * Description: Narrow demo-shell P2 runtime helper for builtin spawn/wait.
+ * File: ex/process_control.c
+ * Description: Ex-owned bootstrap process lifecycle control for spawn/wait/kill.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
-#include "demo_internal.h"
+#include "ex_bootstrap_internal.h"
 
-#include <kernel/demo_shell.h>
 #include <kernel/ex/ex_bootstrap.h>
+
 #include <kernel/ex/program.h>
+#include <kernel/hodbg.h>
+#include <kernel/ke/critical_section.h>
 #include <kernel/ke/input.h>
-#include <kernel/ke/mm.h>
+#include <kernel/ke/scheduler.h>
+#include <libc/string.h>
 
-enum
-{
-    KE_DEMO_SHELL_CHILD_TABLE_CAPACITY = 4U,
-};
-
-typedef struct KE_DEMO_SHELL_CHILD_ENTRY
+typedef struct EX_CHILD_PROCESS_ENTRY
 {
     BOOL Active;
     uint32_t ParentProcessId;
@@ -30,50 +28,50 @@ typedef struct KE_DEMO_SHELL_CHILD_ENTRY
     uint32_t RestoreForegroundOwnerThreadId;
     KTHREAD *KernelThread;
     BOOL KillRequested;
-} KE_DEMO_SHELL_CHILD_ENTRY;
+} EX_CHILD_PROCESS_ENTRY;
 
-typedef struct KE_DEMO_SHELL_SPAWN_WORK
+typedef struct EX_PROCESS_SPAWN_WORK
 {
     const EX_USER_IMAGE *Image;
     uint32_t Flags;
     uint32_t ParentProcessId;
-    uint32_t ParentThreadId;
     uint32_t SlotIndex;
     uint32_t PreviousForegroundOwnerThreadId;
     uint32_t ChildProcessId;
     uint32_t ChildThreadId;
-    KTHREAD *ChildKernelThread;
     HO_STATUS Status;
-} KE_DEMO_SHELL_SPAWN_WORK;
+} EX_PROCESS_SPAWN_WORK;
 
-static KE_DEMO_SHELL_CHILD_ENTRY gKeDemoShellChildTable[KE_DEMO_SHELL_CHILD_TABLE_CAPACITY];
+static EX_CHILD_PROCESS_ENTRY gExChildProcessTable[EX_MAX_PROCESSES];
 
-static void KiUnexpectedDemoShellKernelEntry(void *arg);
-static void KiDemoShellSpawnWorkerThread(void *arg);
+static void KiUnexpectedExProcessControlKernelEntry(void *arg);
+static void KiExSpawnWorkerThread(void *arg);
+static HO_STATUS KiResolveCallerParentProcessId(uint32_t *outParentProcessId);
 static uint32_t KiReserveChildSlot(void);
 static void KiReleaseChildSlot(uint32_t slotIndex);
 static HO_STATUS KiLookupChildSlot(uint32_t parentProcessId,
                                    uint32_t childProcessId,
                                    uint32_t *outSlotIndex,
-                                   KE_DEMO_SHELL_CHILD_ENTRY *outEntry);
+                                   EX_CHILD_PROCESS_ENTRY *outEntry);
 static HO_STATUS KiLookupChildSlotByThreadId(uint32_t childThreadId,
                                              uint32_t *outSlotIndex,
-                                             KE_DEMO_SHELL_CHILD_ENTRY *outEntry);
+                                             EX_CHILD_PROCESS_ENTRY *outEntry);
+static HO_STATUS KiRestoreForegroundOwner(const EX_CHILD_PROCESS_ENTRY *childEntry);
 
 static void
-KiUnexpectedDemoShellKernelEntry(void *arg)
+KiUnexpectedExProcessControlKernelEntry(void *arg)
 {
     (void)arg;
-    HO_KPANIC(EC_INVALID_STATE, "demo-shell bootstrap thread unexpectedly executed the kernel entry point");
+    HO_KPANIC(EC_INVALID_STATE, "Ex process-control bootstrap thread unexpectedly executed the kernel entry point");
 }
 
 static void
-KiDemoShellSpawnWorkerThread(void *arg)
+KiExSpawnWorkerThread(void *arg)
 {
-    KE_DEMO_SHELL_SPAWN_WORK *work = (KE_DEMO_SHELL_SPAWN_WORK *)arg;
+    EX_PROCESS_SPAWN_WORK *work = (EX_PROCESS_SPAWN_WORK *)arg;
     EX_BOOTSTRAP_PROCESS_CREATE_PARAMS createParams = {0};
     EX_BOOTSTRAP_THREAD_CREATE_PARAMS threadParams = {
-        .EntryPoint = KiUnexpectedDemoShellKernelEntry,
+        .EntryPoint = KiUnexpectedExProcessControlKernelEntry,
         .EntryArg = NULL,
         .Flags = EX_BOOTSTRAP_THREAD_CREATE_FLAG_JOINABLE,
     };
@@ -87,12 +85,11 @@ KiDemoShellSpawnWorkerThread(void *arg)
     HO_STATUS status = EC_SUCCESS;
 
     if (work == NULL)
-        HO_KPANIC(EC_ILLEGAL_ARGUMENT, "demo-shell spawn work is required");
+        HO_KPANIC(EC_ILLEGAL_ARGUMENT, "Ex process-control spawn work is required");
 
     work->Status = EC_INVALID_STATE;
     work->ChildProcessId = 0;
     work->ChildThreadId = 0;
-    work->ChildKernelThread = NULL;
 
     if (work->Image == NULL)
     {
@@ -142,20 +139,19 @@ KiDemoShellSpawnWorkerThread(void *arg)
     {
         KE_CRITICAL_SECTION guard = {0};
         KeEnterCriticalSection(&guard);
-        gKeDemoShellChildTable[work->SlotIndex].Active = TRUE;
-        gKeDemoShellChildTable[work->SlotIndex].ParentProcessId = work->ParentProcessId;
-        gKeDemoShellChildTable[work->SlotIndex].ChildProcessId = childProcessId;
-        gKeDemoShellChildTable[work->SlotIndex].ChildThreadId = childThreadId;
-        gKeDemoShellChildTable[work->SlotIndex].ProgramId = work->Image->ProgramId;
-        gKeDemoShellChildTable[work->SlotIndex].Foreground = foregroundRequested;
-        gKeDemoShellChildTable[work->SlotIndex].RestoreForegroundOwnerThreadId = work->ParentThreadId;
-        gKeDemoShellChildTable[work->SlotIndex].KernelThread = kernelThread;
+        gExChildProcessTable[work->SlotIndex].Active = TRUE;
+        gExChildProcessTable[work->SlotIndex].ParentProcessId = work->ParentProcessId;
+        gExChildProcessTable[work->SlotIndex].ChildProcessId = childProcessId;
+        gExChildProcessTable[work->SlotIndex].ChildThreadId = childThreadId;
+        gExChildProcessTable[work->SlotIndex].ProgramId = work->Image->ProgramId;
+        gExChildProcessTable[work->SlotIndex].Foreground = foregroundRequested;
+        gExChildProcessTable[work->SlotIndex].RestoreForegroundOwnerThreadId = work->PreviousForegroundOwnerThreadId;
+        gExChildProcessTable[work->SlotIndex].KernelThread = kernelThread;
         KeLeaveCriticalSection(&guard);
     }
 
     work->ChildProcessId = childProcessId;
     work->ChildThreadId = childThreadId;
-    work->ChildKernelThread = kernelThread;
     work->Status = EC_SUCCESS;
     return;
 
@@ -183,21 +179,45 @@ Cleanup:
     work->Status = status;
 }
 
+static HO_STATUS
+KiResolveCallerParentProcessId(uint32_t *outParentProcessId)
+{
+    KTHREAD *currentThread = KeGetCurrentThread();
+    EX_PROCESS *process = NULL;
+    HO_STATUS status = EC_SUCCESS;
+
+    if (outParentProcessId == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    *outParentProcessId = 0;
+
+    if (currentThread == NULL)
+        return EC_INVALID_STATE;
+
+    process = ExBootstrapLookupRuntimeProcess(currentThread);
+    if (process == NULL)
+        return EC_SUCCESS;
+
+    status = ExBootstrapQueryProcessId(process, outParentProcessId);
+
+    return status;
+}
+
 static uint32_t
 KiReserveChildSlot(void)
 {
     KE_CRITICAL_SECTION guard = {0};
-    uint32_t slotIndex = KE_DEMO_SHELL_CHILD_TABLE_CAPACITY;
+    uint32_t slotIndex = EX_MAX_PROCESSES;
 
     KeEnterCriticalSection(&guard);
 
-    for (uint32_t index = 0; index < KE_DEMO_SHELL_CHILD_TABLE_CAPACITY; ++index)
+    for (uint32_t index = 0; index < EX_MAX_PROCESSES; ++index)
     {
-        if (gKeDemoShellChildTable[index].Active)
+        if (gExChildProcessTable[index].Active)
             continue;
 
-        memset(&gKeDemoShellChildTable[index], 0, sizeof(gKeDemoShellChildTable[index]));
-        gKeDemoShellChildTable[index].Active = TRUE;
+        memset(&gExChildProcessTable[index], 0, sizeof(gExChildProcessTable[index]));
+        gExChildProcessTable[index].Active = TRUE;
         slotIndex = index;
         break;
     }
@@ -211,11 +231,11 @@ KiReleaseChildSlot(uint32_t slotIndex)
 {
     KE_CRITICAL_SECTION guard = {0};
 
-    if (slotIndex >= KE_DEMO_SHELL_CHILD_TABLE_CAPACITY)
+    if (slotIndex >= EX_MAX_PROCESSES)
         return;
 
     KeEnterCriticalSection(&guard);
-    memset(&gKeDemoShellChildTable[slotIndex], 0, sizeof(gKeDemoShellChildTable[slotIndex]));
+    memset(&gExChildProcessTable[slotIndex], 0, sizeof(gExChildProcessTable[slotIndex]));
     KeLeaveCriticalSection(&guard);
 }
 
@@ -223,7 +243,7 @@ static HO_STATUS
 KiLookupChildSlot(uint32_t parentProcessId,
                   uint32_t childProcessId,
                   uint32_t *outSlotIndex,
-                  KE_DEMO_SHELL_CHILD_ENTRY *outEntry)
+                  EX_CHILD_PROCESS_ENTRY *outEntry)
 {
     KE_CRITICAL_SECTION guard = {0};
     HO_STATUS status = EC_INVALID_STATE;
@@ -231,24 +251,24 @@ KiLookupChildSlot(uint32_t parentProcessId,
     if (outSlotIndex == NULL || outEntry == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    *outSlotIndex = KE_DEMO_SHELL_CHILD_TABLE_CAPACITY;
+    *outSlotIndex = EX_MAX_PROCESSES;
     memset(outEntry, 0, sizeof(*outEntry));
 
     KeEnterCriticalSection(&guard);
 
-    for (uint32_t index = 0; index < KE_DEMO_SHELL_CHILD_TABLE_CAPACITY; ++index)
+    for (uint32_t index = 0; index < EX_MAX_PROCESSES; ++index)
     {
-        if (!gKeDemoShellChildTable[index].Active)
+        if (!gExChildProcessTable[index].Active)
             continue;
 
-        if (gKeDemoShellChildTable[index].ParentProcessId != parentProcessId ||
-            gKeDemoShellChildTable[index].ChildProcessId != childProcessId)
+        if (gExChildProcessTable[index].ParentProcessId != parentProcessId ||
+            gExChildProcessTable[index].ChildProcessId != childProcessId)
         {
             continue;
         }
 
         *outSlotIndex = index;
-        *outEntry = gKeDemoShellChildTable[index];
+        *outEntry = gExChildProcessTable[index];
         status = EC_SUCCESS;
         break;
     }
@@ -258,7 +278,7 @@ KiLookupChildSlot(uint32_t parentProcessId,
 }
 
 static HO_STATUS
-KiLookupChildSlotByThreadId(uint32_t childThreadId, uint32_t *outSlotIndex, KE_DEMO_SHELL_CHILD_ENTRY *outEntry)
+KiLookupChildSlotByThreadId(uint32_t childThreadId, uint32_t *outSlotIndex, EX_CHILD_PROCESS_ENTRY *outEntry)
 {
     KE_CRITICAL_SECTION guard = {0};
     HO_STATUS status = EC_INVALID_STATE;
@@ -266,21 +286,21 @@ KiLookupChildSlotByThreadId(uint32_t childThreadId, uint32_t *outSlotIndex, KE_D
     if (outSlotIndex == NULL || outEntry == NULL || childThreadId == 0U)
         return EC_ILLEGAL_ARGUMENT;
 
-    *outSlotIndex = KE_DEMO_SHELL_CHILD_TABLE_CAPACITY;
+    *outSlotIndex = EX_MAX_PROCESSES;
     memset(outEntry, 0, sizeof(*outEntry));
 
     KeEnterCriticalSection(&guard);
 
-    for (uint32_t index = 0; index < KE_DEMO_SHELL_CHILD_TABLE_CAPACITY; ++index)
+    for (uint32_t index = 0; index < EX_MAX_PROCESSES; ++index)
     {
-        if (!gKeDemoShellChildTable[index].Active)
+        if (!gExChildProcessTable[index].Active)
             continue;
 
-        if (gKeDemoShellChildTable[index].ChildThreadId != childThreadId)
+        if (gExChildProcessTable[index].ChildThreadId != childThreadId)
             continue;
 
         *outSlotIndex = index;
-        *outEntry = gKeDemoShellChildTable[index];
+        *outEntry = gExChildProcessTable[index];
         status = EC_SUCCESS;
         break;
     }
@@ -289,24 +309,33 @@ KiLookupChildSlotByThreadId(uint32_t childThreadId, uint32_t *outSlotIndex, KE_D
     return status;
 }
 
-HO_KERNEL_API void
-KeDemoShellResetControlPlane(void)
+static HO_STATUS
+KiRestoreForegroundOwner(const EX_CHILD_PROCESS_ENTRY *childEntry)
 {
-    KE_CRITICAL_SECTION guard = {0};
+    if (childEntry == NULL)
+        return EC_ILLEGAL_ARGUMENT;
 
-    KeEnterCriticalSection(&guard);
-    memset(gKeDemoShellChildTable, 0, sizeof(gKeDemoShellChildTable));
-    KeLeaveCriticalSection(&guard);
+    if (!childEntry->Foreground)
+        return EC_SUCCESS;
+
+    HO_STATUS status = KeInputSetForegroundOwnerThreadId(childEntry->RestoreForegroundOwnerThreadId);
+    if (status == EC_SUCCESS)
+    {
+        klog(KLOG_LEVEL_INFO, "[DEMOSHELL] foreground restored pid=%u owner=%u\n", childEntry->ChildProcessId,
+             childEntry->RestoreForegroundOwnerThreadId);
+    }
+
+    return status;
 }
 
 HO_KERNEL_API HO_STATUS
-KeDemoShellSpawnProgram(const char *programName, uint32_t programNameLength, uint32_t flags, uint32_t *outPid)
+ExSpawnProgram(const char *name, uint32_t nameLength, uint32_t flags, uint32_t *outPid)
 {
     KTHREAD *currentThread = KeGetCurrentThread();
     const EX_USER_IMAGE *image = NULL;
-    KE_DEMO_SHELL_SPAWN_WORK work = {0};
+    EX_PROCESS_SPAWN_WORK work = {0};
     KTHREAD *workerThread = NULL;
-    uint32_t slotIndex = KE_DEMO_SHELL_CHILD_TABLE_CAPACITY;
+    uint32_t slotIndex = EX_MAX_PROCESSES;
     uint32_t parentProcessId = 0;
     HO_STATUS status = EC_SUCCESS;
 
@@ -321,27 +350,26 @@ KeDemoShellSpawnProgram(const char *programName, uint32_t programNameLength, uin
     if ((flags & ~KE_USER_BOOTSTRAP_SPAWN_FLAG_FOREGROUND) != 0U)
         return EC_ILLEGAL_ARGUMENT;
 
-    status = ExLookupProgramImageByName(programName, programNameLength, &image);
+    status = ExLookupProgramImageByName(name, nameLength, &image);
     if (status != EC_SUCCESS)
         return status;
 
-    status = ExBootstrapQueryCurrentProcessId(&parentProcessId);
+    status = KiResolveCallerParentProcessId(&parentProcessId);
     if (status != EC_SUCCESS)
         return status;
 
     slotIndex = KiReserveChildSlot();
-    if (slotIndex >= KE_DEMO_SHELL_CHILD_TABLE_CAPACITY)
+    if (slotIndex >= EX_MAX_PROCESSES)
         return EC_OUT_OF_RESOURCE;
 
     work.Image = image;
     work.Flags = flags;
     work.ParentProcessId = parentProcessId;
-    work.ParentThreadId = currentThread->ThreadId;
     work.SlotIndex = slotIndex;
     work.PreviousForegroundOwnerThreadId = KeInputGetForegroundOwnerThreadId();
     work.Status = EC_INVALID_STATE;
 
-    status = KeThreadCreateJoinable(&workerThread, KiDemoShellSpawnWorkerThread, &work);
+    status = KeThreadCreateJoinable(&workerThread, KiExSpawnWorkerThread, &work);
     if (status != EC_SUCCESS)
         goto Cleanup;
 
@@ -368,18 +396,18 @@ Cleanup:
 }
 
 HO_KERNEL_API HO_STATUS
-KeDemoShellWaitPid(uint32_t pid)
+ExWaitProcess(uint32_t pid)
 {
     KTHREAD *currentThread = KeGetCurrentThread();
-    KE_DEMO_SHELL_CHILD_ENTRY childEntry = {0};
-    uint32_t slotIndex = KE_DEMO_SHELL_CHILD_TABLE_CAPACITY;
+    EX_CHILD_PROCESS_ENTRY childEntry = {0};
+    uint32_t slotIndex = EX_MAX_PROCESSES;
     uint32_t parentProcessId = 0;
     HO_STATUS status = EC_SUCCESS;
 
     if (currentThread == NULL || pid == 0U)
         return EC_ILLEGAL_ARGUMENT;
 
-    status = ExBootstrapQueryCurrentProcessId(&parentProcessId);
+    status = KiResolveCallerParentProcessId(&parentProcessId);
     if (status != EC_SUCCESS)
         return status;
 
@@ -394,33 +422,24 @@ KeDemoShellWaitPid(uint32_t pid)
     if (status != EC_SUCCESS)
         return status;
 
-    if (childEntry.Foreground && childEntry.RestoreForegroundOwnerThreadId != 0U)
-    {
-        status = KeInputSetForegroundOwnerThreadId(childEntry.RestoreForegroundOwnerThreadId);
-        if (status == EC_SUCCESS)
-        {
-            klog(KLOG_LEVEL_INFO, "[DEMOSHELL] foreground restored pid=%u owner=%u\n", pid,
-                 childEntry.RestoreForegroundOwnerThreadId);
-        }
-    }
-
+    status = KiRestoreForegroundOwner(&childEntry);
     KiReleaseChildSlot(slotIndex);
     return status;
 }
 
 HO_KERNEL_API HO_STATUS
-KeDemoShellKillPid(uint32_t pid)
+ExKillProcess(uint32_t pid)
 {
     KTHREAD *currentThread = KeGetCurrentThread();
-    KE_DEMO_SHELL_CHILD_ENTRY childEntry = {0};
-    uint32_t slotIndex = KE_DEMO_SHELL_CHILD_TABLE_CAPACITY;
+    EX_CHILD_PROCESS_ENTRY childEntry = {0};
+    uint32_t slotIndex = EX_MAX_PROCESSES;
     uint32_t parentProcessId = 0;
     HO_STATUS status = EC_SUCCESS;
 
     if (currentThread == NULL || pid == 0U)
         return EC_ILLEGAL_ARGUMENT;
 
-    status = ExBootstrapQueryCurrentProcessId(&parentProcessId);
+    status = KiResolveCallerParentProcessId(&parentProcessId);
     if (status != EC_SUCCESS)
         return status;
 
@@ -434,15 +453,15 @@ KeDemoShellKillPid(uint32_t pid)
     {
         KE_CRITICAL_SECTION guard = {0};
         KeEnterCriticalSection(&guard);
-        if (!gKeDemoShellChildTable[slotIndex].Active ||
-            gKeDemoShellChildTable[slotIndex].ParentProcessId != parentProcessId ||
-            gKeDemoShellChildTable[slotIndex].ChildProcessId != pid || gKeDemoShellChildTable[slotIndex].KillRequested)
+        if (!gExChildProcessTable[slotIndex].Active ||
+            gExChildProcessTable[slotIndex].ParentProcessId != parentProcessId ||
+            gExChildProcessTable[slotIndex].ChildProcessId != pid || gExChildProcessTable[slotIndex].KillRequested)
         {
             KeLeaveCriticalSection(&guard);
             return EC_INVALID_STATE;
         }
 
-        gKeDemoShellChildTable[slotIndex].KillRequested = TRUE;
+        gExChildProcessTable[slotIndex].KillRequested = TRUE;
         KeLeaveCriticalSection(&guard);
     }
 
@@ -450,26 +469,17 @@ KeDemoShellKillPid(uint32_t pid)
     if (status != EC_SUCCESS)
         return status;
 
-    if (childEntry.Foreground && childEntry.RestoreForegroundOwnerThreadId != 0U)
-    {
-        status = KeInputSetForegroundOwnerThreadId(childEntry.RestoreForegroundOwnerThreadId);
-        if (status != EC_SUCCESS)
-            return status;
-
-        klog(KLOG_LEVEL_INFO, "[DEMOSHELL] foreground restored pid=%u owner=%u\n", pid,
-             childEntry.RestoreForegroundOwnerThreadId);
-    }
-
+    status = KiRestoreForegroundOwner(&childEntry);
     KiReleaseChildSlot(slotIndex);
-    return EC_SUCCESS;
+    return status;
 }
 
 HO_KERNEL_API BOOL
-KeDemoShellShouldTerminateCurrentThread(uint32_t *outProgramId)
+ExShouldTerminateCurrentProcess(uint32_t *outProgramId)
 {
     KTHREAD *currentThread = KeGetCurrentThread();
-    KE_DEMO_SHELL_CHILD_ENTRY childEntry = {0};
-    uint32_t slotIndex = KE_DEMO_SHELL_CHILD_TABLE_CAPACITY;
+    EX_CHILD_PROCESS_ENTRY childEntry = {0};
+    uint32_t slotIndex = EX_MAX_PROCESSES;
     HO_STATUS status = EC_SUCCESS;
 
     if (outProgramId != NULL)
