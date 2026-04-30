@@ -40,11 +40,11 @@ Ex owns the current user-runtime policy surface:
 - `src/kernel/ex/ex_bootstrap.c` is the init facade, while
   `src/kernel/ex/ex_bootstrap_adapter.c` is only a compatibility translation
   unit
-- user-fault handoff and Ke bridge glue in `src/kernel/ex/bootstrap_compat.c`
+- user-fault handoff and Ke bridge glue in `src/kernel/ex/user_runtime_bridge.c`
 
-The split is real, but not clean yet. Ke still exposes bootstrap-named runtime
-hooks and low-level user-bootstrap helpers, while Ex still carries
-bootstrap-named launch and ABI surfaces. The explicit debt list is
+The split is real, but not clean yet. Ke still exposes low-level
+user-bootstrap helpers, while Ex still carries bootstrap-named launch and
+adapter surfaces. The explicit debt list is
 `docs/architecture/bootstrap-debt-index.md`.
 
 ## Current User-Runtime Shape

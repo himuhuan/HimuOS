@@ -45,10 +45,6 @@ These are the mechanisms Ex should consume rather than duplicate.
 
 ## Named Boundary Debts
 
-- `src/include/kernel/ke/bootstrap_callbacks.h` still names the ownership,
-  address-space-root, finalize, timer-observe, and user-fault hooks as
-  bootstrap callbacks even though they now describe the user-runtime bridge;
-  `src/arch/amd64/idt.c` still dispatches through those callback names.
 - `src/include/kernel/ke/user_bootstrap.h` and
   `src/kernel/ke/user_bootstrap_syscall.c` still own low-level trap, user-copy,
   and user-entry helpers with bootstrap names.
@@ -59,6 +55,19 @@ These are the mechanisms Ex should consume rather than duplicate.
 - `src/kernel/demo/user_input.c` still calls `ExBootstrapBorrowKernelThread()`
   directly, and both `user_input` and `user_dual` still build userspace through
   `ExBootstrap*` launch helpers instead of permanent Ex runtime APIs.
+
+## Phase C User-Runtime Hooks
+
+Ke now exposes the permanent user-runtime hook contract through
+`src/include/kernel/ke/user_runtime_hooks.h` and
+`src/kernel/ke/user_runtime_hooks.c`. Scheduler dispatch, timer observation,
+and IDT user-fault handoff call user-runtime owner/root/finalize/timer/fault
+hooks instead of bootstrap callback names.
+
+Ex implements that hook contract in `src/kernel/ex/user_runtime_bridge.c`.
+The bridge still calls transitional `ExBootstrapAdapter*()` helpers because the
+process/thread identity and launch surfaces are later-phase debts, but those
+helper names are no longer part of the Ke callback boundary.
 
 ## Phase B ABI Split
 

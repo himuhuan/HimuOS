@@ -164,6 +164,28 @@ For failures, keep the log path and record:
 - first failure or panic anchor
 - whether the failure appears host-only, TCG-only, or common
 
+## Phase C Hook Rename Evidence 2026-04-30
+
+Build and list sanity:
+
+- `make clean`: passed.
+- `bear -- make all`: passed for the default build.
+- `make test list`: passed and listed the expected profile set.
+
+Timing-sensitive profile evidence after renaming the Ke/Ex runtime hook
+contract:
+
+| Profile | Mode | Log | Result |
+| --- | --- | --- | --- |
+| `demo_shell` | host | `/tmp/himuos-demo-shell-host.log` | Matched sysinfo, memmap, `ps`, foreground `calc`, kill, and `[HSH] HSH exited`; capture exit watcher returned success. |
+| `demo_shell` | TCG | `/tmp/himuos-demo-shell-tcg.log` | Matched the same anchors as host; capture exit watcher returned success. |
+| `user_fault` | host | `/tmp/himuos-user-fault-host.log` | Matched user-mode `#DE`, user-mode `#PF`, `CR2`, foreground restore, wait completion, `ps`, and `[HSH] HSH exited`; capture exit watcher returned success. |
+| `user_fault` | TCG | `/tmp/himuos-user-fault-tcg.log` | Matched the same anchors as host; capture exit watcher returned success. |
+| `user_dual` | host | `/tmp/himuos-user-dual-host.log` | Matched user-mode entry, timer gate, `user_hello`, `user_counter`, `SYS_RAW_EXIT`, `SYS_EXIT`, teardown, and reaper anchors; capture ended by watchdog after anchors. |
+| `user_dual` | TCG | `/tmp/himuos-user-dual-tcg.log` | Matched the same anchors as host; capture ended by watchdog after anchors. |
+| `user_input` | host | `/tmp/himuos-user-input-host.log` | Matched foreground handoff to `hsh`, `hsh` echo/handoff, foreground handoff to `calc`, `[CALC] 3 4 +`, and teardown anchors; capture ended by watchdog after anchors. |
+| `user_input` | TCG | `/tmp/himuos-user-input-tcg.log` | Matched the same anchors as host; capture ended by watchdog after anchors. |
+
 ## Phase A Baseline Evidence 2026-04-28
 
 Build and list sanity:

@@ -287,9 +287,9 @@ SRCS_KERNEL_C := \
     src/kernel/ke/mm/kva.c                              \
     src/kernel/ke/mm/allocator.c                        \
     src/kernel/ke/mm/pool.c                             \
-	src/kernel/ke/bootstrap_callbacks.c                 \
-	src/kernel/ke/user_bootstrap.c                      \
-	src/kernel/ke/user_bootstrap_syscall.c              \
+    src/kernel/ke/user_runtime_hooks.c                 \
+    src/kernel/ke/user_bootstrap.c                      \
+    src/kernel/ke/user_bootstrap_syscall.c              \
     src/kernel/ex/ex_bootstrap.c                        \
     src/kernel/ex/object.c                              \
     src/kernel/ex/handle.c                              \
@@ -301,8 +301,8 @@ SRCS_KERNEL_C := \
     src/kernel/ex/thread.c                              \
     src/kernel/ex/sysinfo.c                             \
     src/kernel/ex/syscall.c                             \
-    src/kernel/ex/bootstrap_compat.c                    \
-	src/kernel/ex/ex_bootstrap_adapter.c                \
+    src/kernel/ex/user_runtime_bridge.c                \
+    src/kernel/ex/ex_bootstrap_adapter.c                \
     src/kernel/ke/input/input.c                         \
     src/kernel/ke/input/sinks/ps2_keyboard_sink.c       \
     src/kernel/ke/thread/kthread.c                      \

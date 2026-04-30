@@ -3,7 +3,7 @@
 #include "kernel/hodbg.h"
 #include <kernel/ex/user_syscall_abi.h>
 #include <kernel/init.h>
-#include <kernel/ke/bootstrap_callbacks.h>
+#include <kernel/ke/user_runtime_hooks.h>
 #include <kernel/ke/irql.h>
 #include <kernel/ke/scheduler.h>
 #include <libc/string.h>
@@ -26,10 +26,10 @@ static uint8_t GetVectorIstIndex(uint8_t vectorNumber);
 static BOOL IsSynchronousTrapVector(uint8_t vectorNumber);
 static void CaptureCpuExceptionContext(INTERRUPT_FRAME *frame, HO_CPU_EXCEPTION_CONTEXT *outContext);
 static BOOL IsUserModeExceptionFrame(const INTERRUPT_FRAME *frame);
-static BOOL IsBootstrapUserExceptionVector(uint8_t vectorNumber);
-static void PopulateBootstrapUserExceptionContext(const HO_CPU_EXCEPTION_CONTEXT *cpuContext,
-                                                  KE_BOOTSTRAP_USER_EXCEPTION_CONTEXT *outContext);
-static BOOL TryHandleBootstrapUserException(const HO_CPU_EXCEPTION_CONTEXT *cpuContext);
+static BOOL IsUserRuntimeFaultVector(uint8_t vectorNumber);
+static void PopulateUserRuntimeFaultContext(const HO_CPU_EXCEPTION_CONTEXT *cpuContext,
+                                            KE_USER_RUNTIME_FAULT_CONTEXT *outContext);
+static BOOL TryHandleUserRuntimeFault(const HO_CPU_EXCEPTION_CONTEXT *cpuContext);
 
 static inline HO_VIRTUAL_ADDRESS
 ReadCr2(void)
@@ -133,14 +133,13 @@ IsUserModeExceptionFrame(const INTERRUPT_FRAME *frame)
 }
 
 static BOOL
-IsBootstrapUserExceptionVector(uint8_t vectorNumber)
+IsUserRuntimeFaultVector(uint8_t vectorNumber)
 {
     return vectorNumber == 0U || vectorNumber == 14U;
 }
 
 static void
-PopulateBootstrapUserExceptionContext(const HO_CPU_EXCEPTION_CONTEXT *cpuContext,
-                                      KE_BOOTSTRAP_USER_EXCEPTION_CONTEXT *outContext)
+PopulateUserRuntimeFaultContext(const HO_CPU_EXCEPTION_CONTEXT *cpuContext, KE_USER_RUNTIME_FAULT_CONTEXT *outContext)
 {
     const INTERRUPT_FRAME *frame = NULL;
 
@@ -161,33 +160,32 @@ PopulateBootstrapUserExceptionContext(const HO_CPU_EXCEPTION_CONTEXT *cpuContext
 }
 
 static BOOL
-TryHandleBootstrapUserException(const HO_CPU_EXCEPTION_CONTEXT *cpuContext)
+TryHandleUserRuntimeFault(const HO_CPU_EXCEPTION_CONTEXT *cpuContext)
 {
     const INTERRUPT_FRAME *frame = NULL;
     KTHREAD *currentThread = NULL;
-    KE_BOOTSTRAP_THREAD_OWNERSHIP_QUERY_FN ownershipQueryFn = NULL;
-    KE_BOOTSTRAP_USER_EXCEPTION_FN userExceptionFn = NULL;
-    KE_BOOTSTRAP_USER_EXCEPTION_CONTEXT bootstrapContext = {0};
+    KE_USER_RUNTIME_OWNS_THREAD_HOOK ownsThreadFn = NULL;
+    KE_USER_RUNTIME_FAULT_HOOK faultFn = NULL;
+    KE_USER_RUNTIME_FAULT_CONTEXT faultContext = {0};
 
     if (cpuContext == NULL || cpuContext->Frame == NULL)
         return FALSE;
 
     frame = (const INTERRUPT_FRAME *)cpuContext->Frame;
 
-    if (!IsBootstrapUserExceptionVector((uint8_t)frame->VectorNumber) || !IsUserModeExceptionFrame(frame))
+    if (!IsUserRuntimeFaultVector((uint8_t)frame->VectorNumber) || !IsUserModeExceptionFrame(frame))
     {
         return FALSE;
     }
 
     currentThread = KeGetCurrentThread();
-    ownershipQueryFn = KiGetBootstrapThreadOwnershipQueryCallback();
-    userExceptionFn = KiGetBootstrapUserExceptionCallback();
-    if (currentThread == NULL || ownershipQueryFn == NULL || userExceptionFn == NULL ||
-        !ownershipQueryFn(currentThread))
+    ownsThreadFn = KiGetUserRuntimeOwnsThreadHook();
+    faultFn = KiGetUserRuntimeFaultHook();
+    if (currentThread == NULL || ownsThreadFn == NULL || faultFn == NULL || !ownsThreadFn(currentThread))
         return FALSE;
 
-    PopulateBootstrapUserExceptionContext(cpuContext, &bootstrapContext);
-    userExceptionFn(currentThread, &bootstrapContext);
+    PopulateUserRuntimeFaultContext(cpuContext, &faultContext);
+    faultFn(currentThread, &faultContext);
     __builtin_unreachable();
 }
 
@@ -215,7 +213,7 @@ IdtExceptionHandler(void *frame)
         HO_CPU_EXCEPTION_CONTEXT context;
         CaptureCpuExceptionContext(dump, &context);
 
-        if (TryHandleBootstrapUserException(&context))
+        if (TryHandleUserRuntimeFault(&context))
             __builtin_unreachable();
 
         KernelHalt(-(int64_t)vectorNumber, &context);

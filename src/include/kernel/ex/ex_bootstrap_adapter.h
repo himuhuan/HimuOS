@@ -2,7 +2,7 @@
  * HimuOperatingSystem
  *
  * File: ex/ex_bootstrap_adapter.h
- * Description: Ex bootstrap callback bridge used by the runtime facade.
+ * Description: Transitional Ex adapter used by the user-runtime bridge.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
@@ -14,30 +14,30 @@ struct KTHREAD;
 struct KE_USER_BOOTSTRAP_STAGING;
 
 /**
- * Initialize the Ex bootstrap adapter subsystem.
- * Must be called before any bootstrap user thread is scheduled.
+ * Initialize the Ex adapter subsystem.
+ * Must be called before any user-runtime thread is scheduled.
  */
 HO_KERNEL_API HO_STATUS ExBootstrapAdapterInit(void);
 
 /**
- * Validate that the current bootstrap thread already has Ex-owned wrapper
+ * Validate that the current user-runtime thread already has Ex-owned wrapper
  * state registered. Idempotent - second call for the same thread is a no-op
  * returning EC_SUCCESS.
- * Called by the registered bootstrap enter callback.
+ * Called by the registered user-runtime enter hook.
  */
 HO_KERNEL_API HO_STATUS ExBootstrapAdapterWrapThread(struct KTHREAD *thread);
 
 /**
- * Finalize the Ex ownership for a terminated bootstrap thread: destroy the
+ * Finalize the Ex ownership for a terminated user-runtime thread: destroy the
  * staging through ExProcess ownership, then clear the non-owning runtime alias
  * and free Ex objects through the existing final release path.
- * Called by the registered bootstrap finalize callback.
- * Returns EC_SUCCESS if the thread had no Ex wrapper (non-bootstrap path).
+ * Called by the registered user-runtime finalize hook.
+ * Returns EC_SUCCESS if the thread had no Ex wrapper (non-user-runtime path).
  */
 HO_KERNEL_API HO_STATUS ExBootstrapAdapterFinalizeThread(struct KTHREAD *thread);
 
 /**
- * Query whether a KTHREAD currently has an Ex bootstrap wrapper.
+ * Query whether a KTHREAD currently has an Ex user-runtime wrapper.
  * Returns TRUE if the runtime registry currently exposes a non-owning
  * EX_THREAD alias for this KTHREAD.
  */

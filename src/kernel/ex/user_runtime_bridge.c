@@ -1,8 +1,8 @@
 /**
  * HimuOperatingSystem
  *
- * File: ex/bootstrap_compat.c
- * Description: Temporary Ex bootstrap callback compatibility bridge.
+ * File: ex/user_runtime_bridge.c
+ * Description: Ex implementation of the Ke user-runtime hook contract.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
@@ -10,69 +10,68 @@
 
 #include <kernel/ex/ex_bootstrap_adapter.h>
 #include <kernel/ex/user_regression_anchors.h>
-#include <kernel/ke/bootstrap_callbacks.h>
+#include <kernel/ke/user_runtime_hooks.h>
 #include <kernel/ke/kthread.h>
 #include <kernel/ke/mm.h>
 #include <kernel/ke/scheduler.h>
 #include <kernel/ke/user_bootstrap.h>
 #include <kernel/hodbg.h>
 
-static HO_STATUS KiDestroyBootstrapWrapperObjects(KTHREAD *thread);
-static HO_STATUS KiValidateBootstrapTerminationHandoff(KTHREAD *thread,
-                                                       EX_THREAD **outRuntimeThread,
-                                                       EX_PROCESS **outProcess);
-static const char *KiGetBootstrapUserExceptionShortName(uint8_t vectorNumber);
-static void KiLogBootstrapPageFaultBits(uint32_t errorCode);
-static void KiLogBootstrapUserExceptionEvidence(KTHREAD *thread,
-                                                const EX_PROCESS *process,
-                                                const KE_BOOTSTRAP_USER_EXCEPTION_CONTEXT *context);
-static HO_NORETURN void ExBootstrapUserExceptionCallback(KTHREAD *thread,
-                                                         const KE_BOOTSTRAP_USER_EXCEPTION_CONTEXT *context);
+static HO_STATUS KiDestroyUserRuntimeWrapperObjects(KTHREAD *thread);
+static HO_STATUS KiValidateUserRuntimeTerminationHandoff(KTHREAD *thread,
+                                                         EX_THREAD **outRuntimeThread,
+                                                         EX_PROCESS **outProcess);
+static const char *KiGetUserRuntimeFaultShortName(uint8_t vectorNumber);
+static void KiLogUserRuntimePageFaultBits(uint32_t errorCode);
+static void KiLogUserRuntimeFaultEvidence(KTHREAD *thread,
+                                          const EX_PROCESS *process,
+                                          const KE_USER_RUNTIME_FAULT_CONTEXT *context);
+static HO_NORETURN void ExUserRuntimeFaultHook(KTHREAD *thread, const KE_USER_RUNTIME_FAULT_CONTEXT *context);
 
 static HO_NORETURN void
-ExBootstrapEnterCallback(KTHREAD *thread)
+ExUserRuntimeEnterHook(KTHREAD *thread)
 {
     EX_PROCESS *process = NULL;
     HO_STATUS status = ExBootstrapAdapterWrapThread(thread);
     if (status != EC_SUCCESS)
     {
-        HO_KPANIC(status, "Failed to wrap bootstrap thread in Ex adapter");
+        HO_KPANIC(status, "Failed to wrap user-runtime thread in Ex adapter");
     }
 
     process = ExBootstrapLookupRuntimeProcess(thread);
     if (process == NULL || !process->AddressSpace.Initialized)
     {
-        HO_KPANIC(EC_INVALID_STATE, "Bootstrap enter: process root not initialized");
+        HO_KPANIC(EC_INVALID_STATE, "User-runtime enter: process root not initialized");
     }
 
     if (process->AddressSpace.RootPageTablePhys == 0)
     {
-        HO_KPANIC(EC_INVALID_STATE, "Bootstrap enter: process root missing");
+        HO_KPANIC(EC_INVALID_STATE, "User-runtime enter: process root missing");
     }
 
     HO_PHYSICAL_ADDRESS activeRoot = 0;
     status = KeQueryActiveRootPageTable(&activeRoot);
     if (status != EC_SUCCESS)
     {
-        HO_KPANIC(status, "Bootstrap enter: failed to query active root");
+        HO_KPANIC(status, "User-runtime enter: failed to query active root");
     }
 
     if (activeRoot != process->AddressSpace.RootPageTablePhys)
     {
-        HO_KPANIC(EC_INVALID_STATE, "Bootstrap enter: dispatch root not installed");
+        HO_KPANIC(EC_INVALID_STATE, "User-runtime enter: dispatch root not installed");
     }
 
     KeUserBootstrapEnterCurrentThread();
 }
 
 static BOOL
-ExBootstrapThreadOwnershipQueryCallback(const KTHREAD *thread)
+ExUserRuntimeOwnsThreadHook(const KTHREAD *thread)
 {
     return ExBootstrapAdapterHasWrapper(thread);
 }
 
 static HO_STATUS
-ExBootstrapThreadRootQueryCallback(const KTHREAD *thread, HO_PHYSICAL_ADDRESS *outRootPageTablePhys)
+ExUserRuntimeResolveRootHook(const KTHREAD *thread, HO_PHYSICAL_ADDRESS *outRootPageTablePhys)
 {
     const KE_KERNEL_ADDRESS_SPACE *kernelSpace = KeGetKernelAddressSpace();
     EX_THREAD *runtimeThread = NULL;
@@ -100,35 +99,35 @@ ExBootstrapThreadRootQueryCallback(const KTHREAD *thread, HO_PHYSICAL_ADDRESS *o
 }
 
 static HO_STATUS
-ExBootstrapFinalizeCallback(KTHREAD *thread)
+ExUserRuntimeFinalizeThreadHook(KTHREAD *thread)
 {
     return ExBootstrapAdapterFinalizeThread(thread);
 }
 
 static void
-ExBootstrapTimerObserveCallback(KTHREAD *thread)
+ExUserRuntimeObserveTimerHook(KTHREAD *thread)
 {
     (void)thread;
     KeUserBootstrapObserveCurrentThreadUserTimerPreemption();
 }
 
 static HO_NORETURN void
-ExBootstrapUserExceptionCallback(KTHREAD *thread, const KE_BOOTSTRAP_USER_EXCEPTION_CONTEXT *context)
+ExUserRuntimeFaultHook(KTHREAD *thread, const KE_USER_RUNTIME_FAULT_CONTEXT *context)
 {
     EX_PROCESS *process = NULL;
 
     if (thread == NULL || context == NULL)
-        HO_KPANIC(EC_ILLEGAL_ARGUMENT, "Bootstrap user-fault handoff requires thread and context");
+        HO_KPANIC(EC_ILLEGAL_ARGUMENT, "User-runtime fault handoff requires thread and context");
 
-    HO_STATUS status = KiValidateBootstrapTerminationHandoff(thread, NULL, &process);
+    HO_STATUS status = KiValidateUserRuntimeTerminationHandoff(thread, NULL, &process);
     if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Bootstrap user-fault handoff validation failed");
+        HO_KPANIC(status, "User-runtime fault handoff validation failed");
 
-    KiLogBootstrapUserExceptionEvidence(thread, process, context);
+    KiLogUserRuntimeFaultEvidence(thread, process, context);
 
     status = ExBootstrapAdapterHandleExit(thread);
     if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Bootstrap user-fault exit handoff validation failed");
+        HO_KPANIC(status, "User-runtime fault exit handoff validation failed");
 
     KeThreadExit();
 }
@@ -136,9 +135,9 @@ ExBootstrapUserExceptionCallback(KTHREAD *thread, const KE_BOOTSTRAP_USER_EXCEPT
 HO_STATUS
 ExBootstrapAdapterInit(void)
 {
-    return KeRegisterBootstrapCallbacks(ExBootstrapEnterCallback, ExBootstrapThreadOwnershipQueryCallback,
-                                        ExBootstrapThreadRootQueryCallback, ExBootstrapFinalizeCallback,
-                                        ExBootstrapTimerObserveCallback, ExBootstrapUserExceptionCallback);
+    return KeRegisterUserRuntimeHooks(ExUserRuntimeEnterHook, ExUserRuntimeOwnsThreadHook, ExUserRuntimeResolveRootHook,
+                                      ExUserRuntimeFinalizeThreadHook, ExUserRuntimeObserveTimerHook,
+                                      ExUserRuntimeFaultHook);
 }
 
 HO_STATUS
@@ -179,7 +178,7 @@ ExBootstrapAdapterFinalizeThread(KTHREAD *thread)
         klog(KLOG_LEVEL_INFO, EX_USER_REGRESSION_LOG_TEARDOWN_COMPLETE " thread=%u\n", thread->ThreadId);
     }
 
-    HO_STATUS releaseStatus = KiDestroyBootstrapWrapperObjects(thread);
+    HO_STATUS releaseStatus = KiDestroyUserRuntimeWrapperObjects(thread);
     if (status == EC_SUCCESS)
         status = releaseStatus;
 
@@ -206,11 +205,11 @@ ExBootstrapAdapterQueryThreadStaging(const KTHREAD *thread)
 HO_STATUS
 ExBootstrapAdapterHandleExit(KTHREAD *thread)
 {
-    return KiValidateBootstrapTerminationHandoff(thread, NULL, NULL);
+    return KiValidateUserRuntimeTerminationHandoff(thread, NULL, NULL);
 }
 
 static HO_STATUS
-KiDestroyBootstrapWrapperObjects(KTHREAD *thread)
+KiDestroyUserRuntimeWrapperObjects(KTHREAD *thread)
 {
     EX_THREAD *exThread = NULL;
     EX_PROCESS *process = NULL;
@@ -240,7 +239,7 @@ KiDestroyBootstrapWrapperObjects(KTHREAD *thread)
 }
 
 static HO_STATUS
-KiValidateBootstrapTerminationHandoff(KTHREAD *thread, EX_THREAD **outRuntimeThread, EX_PROCESS **outProcess)
+KiValidateUserRuntimeTerminationHandoff(KTHREAD *thread, EX_THREAD **outRuntimeThread, EX_PROCESS **outProcess)
 {
     EX_THREAD *runtimeThread = NULL;
     EX_PROCESS *process = NULL;
@@ -281,7 +280,7 @@ KiValidateBootstrapTerminationHandoff(KTHREAD *thread, EX_THREAD **outRuntimeThr
 }
 
 static const char *
-KiGetBootstrapUserExceptionShortName(uint8_t vectorNumber)
+KiGetUserRuntimeFaultShortName(uint8_t vectorNumber)
 {
     switch (vectorNumber)
     {
@@ -295,7 +294,7 @@ KiGetBootstrapUserExceptionShortName(uint8_t vectorNumber)
 }
 
 static void
-KiLogBootstrapPageFaultBits(uint32_t errorCode)
+KiLogUserRuntimePageFaultBits(uint32_t errorCode)
 {
     klog(KLOG_LEVEL_ERROR, "[USERFAULT] PFERR: P=%u W=%u U=%u RSVD=%u I=%u PK=%u SS=%u SGX=%u\n", errorCode & 0x1U,
          (errorCode >> 1) & 0x1U, (errorCode >> 2) & 0x1U, (errorCode >> 3) & 0x1U, (errorCode >> 4) & 0x1U,
@@ -303,21 +302,19 @@ KiLogBootstrapPageFaultBits(uint32_t errorCode)
 }
 
 static void
-KiLogBootstrapUserExceptionEvidence(KTHREAD *thread,
-                                    const EX_PROCESS *process,
-                                    const KE_BOOTSTRAP_USER_EXCEPTION_CONTEXT *context)
+KiLogUserRuntimeFaultEvidence(KTHREAD *thread, const EX_PROCESS *process, const KE_USER_RUNTIME_FAULT_CONTEXT *context)
 {
     if (thread == NULL || process == NULL || context == NULL)
-        HO_KPANIC(EC_ILLEGAL_ARGUMENT, "Bootstrap user-fault evidence requires live runtime state");
+        HO_KPANIC(EC_ILLEGAL_ARGUMENT, "User-runtime fault evidence requires live runtime state");
 
     klog(KLOG_LEVEL_ERROR, "[USERFAULT] %s thread=%u program=%u rip=%p\n",
-         KiGetBootstrapUserExceptionShortName(context->VectorNumber), thread->ThreadId, process->ProgramId,
+         KiGetUserRuntimeFaultShortName(context->VectorNumber), thread->ThreadId, process->ProgramId,
          (void *)(uint64_t)context->InstructionPointer);
 
     if (context->HasFaultAddress)
     {
         klog(KLOG_LEVEL_ERROR, "[USERFAULT] CR2=%p PFERR=%p safe=%u\n", (void *)(uint64_t)context->FaultAddress,
              (void *)(uint64_t)context->PageFaultErrorCode, context->IsSafePageFaultContext);
-        KiLogBootstrapPageFaultBits(context->PageFaultErrorCode);
+        KiLogUserRuntimePageFaultBits(context->PageFaultErrorCode);
     }
 }
