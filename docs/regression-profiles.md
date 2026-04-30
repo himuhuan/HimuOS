@@ -1,8 +1,44 @@
 # Regression Profiles
 
-This index is the Stage 0 contract for HimuOS profile-driven regression. It
-records how each profile is selected, how it should be captured, and which
-anchors prove the expected behavior.
+This index is the Phase A cleanup baseline for HimuOS profile-driven
+regression. It records which profiles are official cleanup contracts, which
+ones are legacy bring-up sentinels, and which anchors prove the expected
+behavior.
+
+## Phase A Contract Split
+
+Official cleanup contracts:
+
+- `demo_shell`: interactive vertical slice for shell, sysinfo, spawn/wait/kill,
+  and foreground ownership.
+- `user_input`: foreground handoff and input ownership safety net.
+- `user_dual`: concurrent compiled userspace and teardown safety net.
+- `user_fault`: user fault isolation and recovery-to-shell safety net.
+
+These four profiles remain the timing-sensitive safety net. `user_input` and
+`user_dual` still launch through direct bootstrap helpers today; that debt is
+tracked in `docs/architecture/bootstrap-debt-index.md` and belongs to Phase F,
+not to the sentinel bucket.
+
+Legacy bring-up sentinels:
+
+- `user_hello`: raw syscall, phase-gate, and bootstrap teardown sentinel.
+- `user_caps`: seeded capability/stdout/wait bootstrap sentinel.
+
+Targeted mechanism sentinels:
+
+- `schedule`
+- `kthread_pool_race`
+- `guard_wait`
+- `owned_exit`
+- `irql_wait`
+- `irql_sleep`
+- `irql_yield`
+- `irql_exit`
+- `pf_imported`
+- `pf_guard`
+- `pf_fixmap`
+- `pf_heap`
 
 ## Common Workflow
 
@@ -26,28 +62,28 @@ teardown, foreground input, or scheduling must have both.
 
 ## Profile Index
 
-| Profile | Build flavor | Define | Input plan | Evidence | Success anchors |
-| --- | --- | --- | --- | --- | --- |
-| `schedule` | `test-schedule` | `HO_DEMO_TEST_SCHEDULE` | none | host normally enough | `[DEMO] Selected profile: schedule`, scheduler/thread demo pass anchors |
-| `kthread_pool_race` | `test-kthread_pool_race` | `HO_DEMO_TEST_KTHREAD_POOL_RACE` | none | host normally enough | `[TEST] KTHREAD pool race regression suite passed` |
-| `user_hello` | `test-user_hello` | `HO_DEMO_TEST_USER_HELLO` | none | host normally enough | `[USERBOOT] enter user mode`, `[USERBOOT] hello`, `[USERBOOT] SYS_RAW_EXIT`, `[USERBOOT] bootstrap teardown complete` |
-| `user_caps` | `test-user_caps` | `HO_DEMO_TEST_USER_CAPS` | none | host normally enough | `[USERCAP] stdout capability write succeeds`, `[USERCAP] SYS_CLOSE succeeded`, `[USERCAP] capability syscall rejected`, `[USERCAP] SYS_WAIT_ONE succeeded` |
-| `user_dual` | `test-user_dual` | `HO_DEMO_TEST_USER_DUAL` | none | host and TCG required | `user_hello` and `user_counter` enter/exit evidence, no teardown panic |
-| `user_input` | `test-user_input` | `HO_DEMO_TEST_USER_INPUT` | `scripts/input_plans/user_input.plan` | host and TCG required | `[USERINPUT] foreground -> hsh`, `[HSH] hello`, `[HSH] handoff`, `[USERINPUT] foreground -> calc`, `[CALC] 3 4 +`, clean teardown |
-| `demo_shell` | `test-demo_shell` | `HO_DEMO_TEST_DEMO_SHELL` | `scripts/input_plans/demo_shell.plan` | host and TCG required | `HimuOS System Information`, `HimuOS Virtual Memory Map`, `PID  STATE`, `[CALC] result=7`, `[HSH] killed pid=`, `[HSH] HSH exited` |
-| `user_fault` | `test-user_fault` | `HO_DEMO_TEST_USER_FAULT` | `scripts/input_plans/user_fault.plan` | host and TCG required | `[USERFAULT] #DE`, `[USERFAULT] #PF`, `[USERFAULT] CR2=`, `[DEMOSHELL] foreground restored`, `[HSH] HSH exited` |
-| `guard_wait` | `test-guard_wait` | `HO_DEMO_TEST_GUARD_WAIT` | none | targeted panic evidence | `[GUARDWAIT-`, diagnosable guard violation |
-| `owned_exit` | `test-owned_exit` | `HO_DEMO_TEST_OWNED_EXIT` | none | targeted panic evidence | `[OWNEDEXIT-`, diagnosable owned-exit violation |
-| `irql_wait` | `test-irql_wait` | `HO_DEMO_TEST_IRQL_WAIT` | none | targeted panic evidence | `[IRQLWAIT-`, diagnosable DISPATCH_LEVEL wait violation |
-| `irql_sleep` | `test-irql_sleep` | `HO_DEMO_TEST_IRQL_SLEEP` | none | targeted panic evidence | `[IRQLSLEEP-`, diagnosable DISPATCH_LEVEL sleep violation |
-| `irql_yield` | `test-irql_yield` | `HO_DEMO_TEST_IRQL_YIELD` | none | targeted panic evidence | `[IRQLYIELD-`, diagnosable DISPATCH_LEVEL yield violation |
-| `irql_exit` | `test-irql_exit` | `HO_DEMO_TEST_IRQL_EXIT` | none | targeted panic evidence | `[IRQLEXIT-`, diagnosable DISPATCH_LEVEL exit violation |
-| `pf_imported` | `test-pf_imported` | `HO_DEMO_TEST_PF_IMPORTED` | none | targeted page-fault evidence | `[PF-DEMO] triggering NX execute fault`, page-fault diagnostic output |
-| `pf_guard` | `test-pf_guard` | `HO_DEMO_TEST_PF_GUARD` | none | targeted page-fault evidence | `[PF-DEMO] triggering guard fault`, page-fault diagnostic output |
-| `pf_fixmap` | `test-pf_fixmap` | `HO_DEMO_TEST_PF_FIXMAP` | none | targeted page-fault evidence | fixmap NX page-fault diagnostic output |
-| `pf_heap` | `test-pf_heap` | `HO_DEMO_TEST_PF_HEAP` | none | targeted page-fault evidence | heap-backed KVA page-fault diagnostic output |
+| Profile | Baseline role | Current runtime path | Build flavor | Define | Input plan | Evidence | Success anchors |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `schedule` | targeted mechanism sentinel | Ke scheduler/thread demo | `test-schedule` | `HO_DEMO_TEST_SCHEDULE` | none | host normally enough | `[DEMO] Selected profile: schedule`, scheduler/thread demo pass anchors |
+| `kthread_pool_race` | targeted mechanism sentinel | Ke pool synchronization | `test-kthread_pool_race` | `HO_DEMO_TEST_KTHREAD_POOL_RACE` | none | host normally enough | `[TEST] KTHREAD pool race regression suite passed` |
+| `user_hello` | legacy bring-up sentinel | raw bootstrap payload + P1 gate | `test-user_hello` | `HO_DEMO_TEST_USER_HELLO` | none | host normally enough | `[USERBOOT] enter user mode`, `[USERBOOT] hello`, `[USERBOOT] SYS_RAW_EXIT`, `[USERBOOT] bootstrap teardown complete` |
+| `user_caps` | legacy bring-up sentinel | seeded capability/wait bootstrap payload | `test-user_caps` | `HO_DEMO_TEST_USER_CAPS` | none | host normally enough | `[USERCAP] stdout capability write succeeds`, `[USERCAP] SYS_CLOSE succeeded`, `[USERCAP] capability syscall rejected`, `[USERCAP] SYS_WAIT_ONE succeeded` |
+| `user_dual` | official contract (timing-sensitive) | direct `ExBootstrap*` launch of compiled userspace | `test-user_dual` | `HO_DEMO_TEST_USER_DUAL` | none | host and TCG required | `user_hello` and `user_counter` enter/exit evidence, no teardown panic |
+| `user_input` | official contract (timing-sensitive) | direct `ExBootstrap*` launch + borrowed `KTHREAD` joins | `test-user_input` | `HO_DEMO_TEST_USER_INPUT` | `scripts/input_plans/user_input.plan` | host and TCG required | `[USERINPUT] foreground -> hsh`, `[HSH] hello`, `[HSH] handoff`, `[USERINPUT] foreground -> calc`, `[CALC] 3 4 +`, clean teardown |
+| `demo_shell` | official contract (timing-sensitive) | `ExSpawnProgram()` / `ExWaitProcess()` shell path | `test-demo_shell` | `HO_DEMO_TEST_DEMO_SHELL` | `scripts/input_plans/demo_shell.plan` | host and TCG required | `HimuOS System Information`, `HimuOS Virtual Memory Map`, `PID  STATE`, `[CALC] result=7`, `[HSH] killed pid=`, `[HSH] HSH exited` |
+| `user_fault` | official contract (timing-sensitive) | `demo_shell` control plane + user-fault recovery | `test-user_fault` | `HO_DEMO_TEST_USER_FAULT` | `scripts/input_plans/user_fault.plan` | host and TCG required | `[USERFAULT] #DE`, `[USERFAULT] #PF`, `[USERFAULT] CR2=`, `[DEMOSHELL] foreground restored`, `[HSH] HSH exited` |
+| `guard_wait` | targeted mechanism sentinel | guard misuse panic | `test-guard_wait` | `HO_DEMO_TEST_GUARD_WAIT` | none | targeted panic evidence | `[GUARDWAIT-`, diagnosable guard violation |
+| `owned_exit` | targeted mechanism sentinel | owned-exit panic | `test-owned_exit` | `HO_DEMO_TEST_OWNED_EXIT` | none | targeted panic evidence | `[OWNEDEXIT-`, diagnosable owned-exit violation |
+| `irql_wait` | targeted mechanism sentinel | DISPATCH_LEVEL wait panic | `test-irql_wait` | `HO_DEMO_TEST_IRQL_WAIT` | none | targeted panic evidence | `[IRQLWAIT-`, diagnosable DISPATCH_LEVEL wait violation |
+| `irql_sleep` | targeted mechanism sentinel | DISPATCH_LEVEL sleep panic | `test-irql_sleep` | `HO_DEMO_TEST_IRQL_SLEEP` | none | targeted panic evidence | `[IRQLSLEEP-`, diagnosable DISPATCH_LEVEL sleep violation |
+| `irql_yield` | targeted mechanism sentinel | DISPATCH_LEVEL yield panic | `test-irql_yield` | `HO_DEMO_TEST_IRQL_YIELD` | none | targeted panic evidence | `[IRQLYIELD-`, diagnosable DISPATCH_LEVEL yield violation |
+| `irql_exit` | targeted mechanism sentinel | DISPATCH_LEVEL exit panic | `test-irql_exit` | `HO_DEMO_TEST_IRQL_EXIT` | none | targeted panic evidence | `[IRQLEXIT-`, diagnosable DISPATCH_LEVEL exit violation |
+| `pf_imported` | targeted mechanism sentinel | imported-region NX fault | `test-pf_imported` | `HO_DEMO_TEST_PF_IMPORTED` | none | targeted page-fault evidence | `[PF-DEMO] triggering NX execute fault`, page-fault diagnostic output |
+| `pf_guard` | targeted mechanism sentinel | stack guard fault | `test-pf_guard` | `HO_DEMO_TEST_PF_GUARD` | none | targeted page-fault evidence | `[PF-DEMO] triggering guard fault`, page-fault diagnostic output |
+| `pf_fixmap` | targeted mechanism sentinel | fixmap NX fault | `test-pf_fixmap` | `HO_DEMO_TEST_PF_FIXMAP` | none | targeted page-fault evidence | fixmap NX page-fault diagnostic output |
+| `pf_heap` | targeted mechanism sentinel | heap-backed KVA NX fault | `test-pf_heap` | `HO_DEMO_TEST_PF_HEAP` | none | targeted page-fault evidence | heap-backed KVA page-fault diagnostic output |
 
-## Canonical Stage 0 Commands
+## Canonical Phase A Commands
 
 ### Build Sanity
 
@@ -128,7 +164,7 @@ For failures, keep the log path and record:
 - first failure or panic anchor
 - whether the failure appears host-only, TCG-only, or common
 
-## Stage 0 Baseline Evidence 2026-04-28
+## Phase A Baseline Evidence 2026-04-28
 
 Build and list sanity:
 
@@ -151,7 +187,7 @@ Timing-sensitive profile evidence:
 
 Harness note:
 
-- `scripts/input_plans/user_fault.plan` was adjusted during Stage 0 to avoid a
+- `scripts/input_plans/user_fault.plan` was adjusted during the baseline freeze to avoid a
   log-order race between `calc>` and `SYS_SPAWN_PROGRAM`; the plan now waits on
   stable behavior anchors instead of capturing the child PID from an
   order-sensitive log line.

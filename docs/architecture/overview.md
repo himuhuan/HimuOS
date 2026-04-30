@@ -1,87 +1,72 @@
 # HimuOS Architecture Overview
 
-This document tracks the current New Era refactor state. It describes the
-branch as it exists today, not the final target.
+This document records the Phase A cleanup baseline: what is true in-tree now,
+before later cleanup phases remove Bootstrap-era runtime names.
 
 ## Boot And Handoff
 
-The boot path is UEFI-first and lives under `src/boot/v2`. The loader builds a
-boot capsule and mapping manifest, then hands control to the x86_64 kernel with
-framebuffer, memory map, kernel placement, stacks, page-table metadata, ACPI
-RSDP, and CPU-local data already described.
+`Bootstrap` should mean early machine boot only. In the current tree that means
+the UEFI loader under `src/boot/v2` plus the x86_64 kernel handoff contract.
+The loader builds the boot capsule and mapping manifest, then transfers control
+with framebuffer, memory map, kernel placement, stacks, page-table metadata,
+ACPI RSDP, and CPU-local data already prepared.
 
-The current boot contract is good enough for the teaching-kernel target. Stage 0
-does not expand the loader or turn it into a runtime program loader. Runtime
-program loading remains an Ex responsibility for later stages.
+The loader does not own userspace policy or program loading. Once the kernel is
+running, runtime program lookup and launch belong to Ex.
 
-## Ke Mechanism Layer
+## Current Ke / Ex Split
 
-The Ke layer owns kernel mechanisms:
+Ke owns mechanisms:
 
-- interrupt and trap setup
+- interrupt, trap, and low-level user entry/return mechanics
 - PMM, imported address-space metadata, page-table operations, KVA, heap, and
   pool foundations
 - kernel threads, scheduler state, waits, sleeps, and dispatcher objects
 - time-source and clock-event abstraction
-- console and input mechanisms
-- bounded system information snapshots through `KeQuerySystemInformation()`
-- the current bootstrap user mapping and trap mechanics
+- console and input device mechanisms
+- bounded mechanism snapshots through `KeQuerySystemInformation()`
 
-The strongest current subsystem is memory management:
-Boot memory map -> PMM -> imported kernel address space -> PT HAL -> KVA ->
-heap foundation -> allocator and pool consumers.
+Ex owns the current user-runtime policy surface:
 
-Ke still owns the low-level bootstrap syscall trap and user-copy mechanics in
-`src/kernel/ke/user_bootstrap_syscall.c`, but user-visible syscall policy now
-enters the Ex dispatcher in `src/kernel/ex/syscall.c`.
+- embedded user-image lookup in `src/kernel/ex/program.c`
+- object, handle, process, and thread scaffolding in
+  `src/kernel/ex/object.c`, `src/kernel/ex/handle.c`,
+  `src/kernel/ex/process.c`, and `src/kernel/ex/thread.c`
+- runtime alias and sysinfo glue in `src/kernel/ex/runtime_alias.c` and
+  `src/kernel/ex/sysinfo.c`
+- syscall dispatch in `src/kernel/ex/syscall.c`
+- the current spawn/wait/kill/foreground control plane in
+  `src/kernel/ex/process_control.c`
+- `src/kernel/ex/ex_bootstrap.c` is the init facade, while
+  `src/kernel/ex/ex_bootstrap_adapter.c` is only a compatibility translation
+  unit
+- user-fault handoff and Ke bridge glue in `src/kernel/ex/bootstrap_compat.c`
 
-## Ex Bootstrap Facade
+The split is real, but not clean yet. Ke still exposes bootstrap-named runtime
+hooks and low-level user-bootstrap helpers, while Ex still carries
+bootstrap-named launch and ABI surfaces. The explicit debt list is
+`docs/architecture/bootstrap-debt-index.md`.
 
-The Ex layer currently exists, but it is still bootstrap-shaped. The public
-headers are mostly:
+## Current User-Runtime Shape
 
-- `src/include/kernel/ex/ex_bootstrap.h`
-- `src/include/kernel/ex/ex_bootstrap_adapter.h`
-- `src/include/kernel/ex/ex_bootstrap_abi.h`
-- `src/include/kernel/ex/ex_process.h`
-- `src/include/kernel/ex/ex_thread.h`
+Demo profiles live in `src/kernel/demo`. User programs live in `src/user` and
+are still embedded into the kernel build through make rules and bridge files.
 
-The implementation is concentrated in two large files:
+Current runtime reality:
 
-- `src/kernel/ex/ex_bootstrap.c`
-- `src/kernel/ex/ex_bootstrap_adapter.c`
-
-Those files already contain the seeds of the intended Executive Lite layer:
-object headers, process and thread wrappers, private generation-checked handles,
-rights bits, stdout and waitable pilot objects, process-private address spaces,
-sysinfo text rendering, capability syscalls, user-fault handling, and callback
-bridges into Ke.
-
-Later stages should continue extracting object, handle, process, thread,
-syscall, program, image, and sysinfo modules without changing profile behavior
-first.
-
-## Demo And User Programs
-
-Demo profiles live in `src/kernel/demo`. User programs live in `src/user`.
-
-Current official user-visible programs are compiled C userspace artifacts:
-
-- `hsh`
-- `calc`
-- `tick1s`
-- `user_hello`
-- `user_counter`
-
-They are still embedded into the kernel build through make rules and artifact
-bridge files. `demo_shell` is the visible MVP vertical slice: the kernel boots,
-launches user-mode `hsh`, and the shell drives `sysinfo`, `memmap`, `ps`,
-foreground `calc`, background `tick1s`, `kill`, and `exit`.
-
-The demo shell launcher under `src/kernel/demo` is now a thin profile wrapper.
-The temporary shell lifecycle control plane lives in
-`src/kernel/ex/process_control.c`, where `spawn`, `wait`, `kill`, cooperative
-kill observation, and foreground restoration are Ex-owned.
+- `demo_shell` is the visible vertical slice: boot, launch `hsh`, then drive
+  `sysinfo`, `memmap`, `ps`, foreground `calc`, background `tick1s`, `kill`,
+  and `exit`.
+- `demo_shell` and `user_fault` already exercise the Ex-owned
+  `ExSpawnProgram()` / `ExWaitProcess()` / `ExKillProcess()` control plane.
+- `user_input` and `user_dual` are still official contract profiles, but they
+  launch userspace directly through `ExBootstrap*` helpers instead of the
+  permanent Ex runtime APIs.
+- `user_hello` and `user_caps` are explicit legacy bring-up sentinels, not the
+  default teaching path.
+- `hsh` and `calc` already use the formal `SYS_*` services, while `tick1s`,
+  `fault_de`, `fault_pf`, `user_counter`, and `user_hello` still wait on the
+  P1 gate before starting normal work.
 
 ## Build And Regression
 
@@ -90,28 +75,30 @@ The main build file is `makefile`. The default interactive `run`, `debug`,
 profile variables are supplied.
 
 Regression is profile-driven through QEMU serial logs. Use
-`scripts/qemu_capture.sh` for captures, and use scripted input plans for
+`scripts/qemu_capture.sh` for captures, and use scripted input plans for the
 interactive profiles:
 
 - `scripts/input_plans/user_input.plan`
 - `scripts/input_plans/demo_shell.plan`
 - `scripts/input_plans/user_fault.plan`
 
-Timing-sensitive user/process profiles require both `QEMU_CAPTURE_MODE=host`
-and `QEMU_CAPTURE_MODE=tcg` evidence before later refactors are considered
-safe. The canonical profile contract index is `docs/regression-profiles.md`.
+The timing-sensitive safety net is `demo_shell`, `user_input`, `user_dual`, and
+`user_fault`; each still requires both `QEMU_CAPTURE_MODE=host` and
+`QEMU_CAPTURE_MODE=tcg` evidence before behavior-changing cleanup is considered
+safe. The canonical contract/sentinel index is `docs/regression-profiles.md`.
 
-## Regression Criteria
+## Phase A Documentation Baseline
 
-Refactor checkpoints are healthy when:
+The cleanup baseline is healthy when:
 
-- this architecture map exists and matches the checked-in baseline
-- `new_era_plan.md` is tracked as the New Era roadmap source
-- `docs/architecture/ke-ex-boundary.md` records the current boundary debts and
-  future direction
-- `docs/regression-profiles.md` records profile commands, anchors, and evidence
+- this architecture map matches the checked-in implementation
+- `new_era_next.md` remains the cleanup roadmap source
+- `docs/architecture/ke-ex-boundary.md` records the current Ke/Ex split
+- `docs/architecture/bootstrap-debt-index.md` lists every remaining
+  Bootstrap-era runtime concept with an owner phase and deletion condition
+- `docs/regression-profiles.md` records the contract/sentinel split and capture
   expectations
 - `make all` and `make test list` are known-good, or any environment blocker is
   recorded
-- host and TCG evidence for timing-sensitive user/process profiles is captured,
+- host and TCG evidence for timing-sensitive profiles is captured when touched,
   or the blocker is recorded
