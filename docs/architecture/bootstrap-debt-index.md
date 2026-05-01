@@ -6,8 +6,16 @@ fixed until an explicit replacement contract retires them.
 
 | Debt | Current surface | Owner phase | Deletion condition |
 | --- | --- | --- | --- |
-| Normal userspace still depends on phase gates and raw bootstrap helpers | `HoUserWaitForP1Gate()` now lives in explicit sentinel-only `src/user/libsys_bringup.h` and remains included by `tick1s`, `fault_de`, `fault_pf`, `user_counter`, and `user_hello`; `HoUserRaw*()` is no longer in `src/user/libsys.h`, but remains in `src/user/libsys_bringup.h` for `user_hello`. | Phase G | Ordinary userspace enters directly and uses only formal Ex syscalls; any remaining raw sentinel is explicit and documented, or raw helpers are deleted entirely. |
 | Remaining bootstrap-named runtime headers and helpers | Active runtime headers still include `src/include/kernel/ex/ex_bootstrap.h`, `src/include/kernel/ex/ex_bootstrap_adapter.h`, `src/include/kernel/ex/ex_process.h`, `src/include/kernel/ex/ex_thread.h`, `src/include/kernel/ex/program.h` (`ExProgramBuildBootstrapCreateParams()`), and `src/include/kernel/ke/user_bootstrap.h`. In active runtime source, `src/kernel/ex/user_runtime_bridge.c` still defines the transitional `ExBootstrapAdapter*()` helper family; `src/kernel/ex/syscall.c` still carries the Bootstrap-named exit/dispatch path via `KiAbortBootstrapExit()`, `KiPrepareBootstrapExit()`, `KiPrepareBootstrapKillExit()`, and `ExBootstrapAdapterDispatchSyscall()`; `src/kernel/ex/process.c` still exports `ExBootstrapInitializeProcessObject()`, `ExBootstrapTeardownProcessPayload()`, and `ExBootstrapReleaseProcess()`; `src/kernel/ex/thread.c` still exports `ExBootstrapInitializeThreadObject()` and `ExBootstrapBorrowKernelThread()`; `src/kernel/ex/object.c` still exports `ExBootstrapInitializeStdoutServiceObject()` and `ExBootstrapReleaseStdoutServiceOwner()`; `src/kernel/ex/runtime_table.c` still exports the compatibility `ExBootstrapQueryCurrentProcessId()` wrapper; and `src/kernel/ex/handle.c` still depends on `ExBootstrapReleaseProcess()` and `ExBootstrapReleaseThread()`. | Phase I | Searching active runtime headers and source for `Bootstrap` finds only true early-boot code or historical docs; compatibility wrappers and bootstrap-named helper families are deleted rather than kept. |
+
+## Retired During Phase G
+
+- `tick1s`, `fault_de`, `fault_pf`, and `user_counter` now include
+  `src/user/libsys.h` and enter directly without `HoUserWaitForP1Gate()`.
+- Normal userspace no longer includes `src/user/libsys_bringup.h`, calls
+  `HoUserRaw*()`, or waits on the P1 mailbox.
+- `user_hello` and the kernel-embedded `user_caps` payload are the only
+  remaining raw syscall / phase-gate sentinels.
 
 ## Retired During Phase F
 

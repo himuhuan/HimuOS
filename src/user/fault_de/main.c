@@ -7,7 +7,7 @@
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
-#include "libsys_bringup.h"
+#include "libsys.h"
 
 static const char gFaultDeLine[] = "[FAULTDE] triggering #DE\n";
 
@@ -29,8 +29,6 @@ HoFaultDeTrigger(void)
 int
 main(void)
 {
-    HoUserWaitForP1Gate();
-
     if (HoUserWriteStdout(gFaultDeLine, sizeof(gFaultDeLine) - 1U) != (int64_t)(sizeof(gFaultDeLine) - 1U))
         HoUserAbort();
 

@@ -69,10 +69,11 @@ Current runtime reality:
   handoff.
 - `user_hello` and `user_caps` are explicit legacy bring-up sentinels, not the
   default teaching path.
-- `hsh` and `calc` include the normal `src/user/libsys.h` wrapper surface over
-  the formal `EX_USER_SYS_*` services. `tick1s`, `fault_de`, `fault_pf`,
-  `user_counter`, and `user_hello` still include `src/user/libsys_bringup.h`
-  so their remaining P1 gate waits are explicit Phase G debt.
+- `hsh`, `calc`, `tick1s`, `fault_de`, `fault_pf`, and `user_counter` include
+  the normal `src/user/libsys.h` wrapper surface over the formal
+  `EX_USER_SYS_*` services and enter without phase-gate waits. `user_hello`
+  and the kernel-embedded `user_caps` payload remain explicit raw syscall /
+  phase-gate sentinels.
 
 ## Build And Regression
 

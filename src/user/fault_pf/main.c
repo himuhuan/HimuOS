@@ -7,7 +7,7 @@
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
-#include "libsys_bringup.h"
+#include "libsys.h"
 
 static const char gFaultPfLine[] = "[FAULTPF] triggering #PF\n";
 
@@ -25,8 +25,6 @@ HoFaultPfTrigger(void)
 int
 main(void)
 {
-    HoUserWaitForP1Gate();
-
     if (HoUserWriteStdout(gFaultPfLine, sizeof(gFaultPfLine) - 1U) != (int64_t)(sizeof(gFaultPfLine) - 1U))
         HoUserAbort();
 

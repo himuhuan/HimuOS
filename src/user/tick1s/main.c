@@ -6,15 +6,13 @@
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
-#include "libsys_bringup.h"
+#include "libsys.h"
 
 static const char gTickLine[] = "TICK!\n";
 
 int
 main(void)
 {
-    HoUserWaitForP1Gate();
-
     for (;;)
     {
         if (HoUserSleepMs(5000U) != 0)
