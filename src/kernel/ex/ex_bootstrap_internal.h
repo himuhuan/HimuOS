@@ -129,6 +129,7 @@ EX_PROCESS *ExRuntimeLookupProcessByKernelThread(const struct KTHREAD *thread);
 EX_PROCESS *ExRuntimeLookupProcessByPid(uint32_t processId);
 HO_STATUS ExRuntimeRetainChildProcess(uint32_t parentProcessId, uint32_t childProcessId, EX_PROCESS **outProcess);
 HO_STATUS ExRuntimeQueryCurrentProcessId(uint32_t *outProcessId);
+HO_STATUS ExRuntimeSetProcessForeground(EX_PROCESS *process, uint32_t restoreForegroundOwnerThreadId);
 HO_STATUS ExRuntimeRequestProcessKill(EX_PROCESS *process);
 BOOL ExRuntimeShouldTerminateCurrentProcess(uint32_t *outProgramId);
 HO_STATUS ExRuntimeMarkProcessControl(EX_PROCESS *process, BOOL foreground, uint32_t restoreForegroundOwnerThreadId);

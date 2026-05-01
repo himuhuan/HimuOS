@@ -11,6 +11,7 @@
 #include <kernel/ex/ex_bootstrap.h>
 #include <kernel/ex/program.h>
 #include <kernel/ke/critical_section.h>
+#include <kernel/ke/input.h>
 #include <kernel/ke/kthread.h>
 #include <kernel/ke/scheduler.h>
 #include <libc/string.h>
@@ -564,6 +565,61 @@ ExRuntimeQueryCurrentProcessId(uint32_t *outProcessId)
 
     process = ExRuntimeLookupProcessByKernelThread(thread);
     return ExBootstrapQueryProcessId(process, outProcessId);
+}
+
+HO_STATUS
+ExRuntimeSetProcessForeground(EX_PROCESS *process, uint32_t restoreForegroundOwnerThreadId)
+{
+    EX_THREAD *mainThread = NULL;
+    uint32_t foregroundOwnerThreadId = 0;
+    uint32_t currentForegroundOwnerThreadId = 0;
+    KE_CRITICAL_SECTION guard = {0};
+
+    if (process == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    currentForegroundOwnerThreadId = KeInputGetForegroundOwnerThreadId();
+
+    KeEnterCriticalSection(&guard);
+    mainThread = KiLookupThreadByTidLocked(process->MainThreadId);
+    if (process->MainThreadId == 0U || process->State == EX_PROCESS_STATE_TERMINATED || mainThread == NULL ||
+        mainThread->Thread == NULL || mainThread->Thread->State == KTHREAD_STATE_TERMINATED)
+    {
+        KeLeaveCriticalSection(&guard);
+        return EC_INVALID_STATE;
+    }
+
+    foregroundOwnerThreadId = process->MainThreadId;
+    if (process->Foreground || currentForegroundOwnerThreadId == foregroundOwnerThreadId)
+    {
+        KeLeaveCriticalSection(&guard);
+        return EC_SUCCESS;
+    }
+
+    KeLeaveCriticalSection(&guard);
+
+    HO_STATUS status = KeInputSetForegroundOwnerThreadId(foregroundOwnerThreadId);
+    if (status != EC_SUCCESS)
+        return status;
+
+    KeEnterCriticalSection(&guard);
+    mainThread = KiLookupThreadByTidLocked(process->MainThreadId);
+    if (process->State == EX_PROCESS_STATE_TERMINATED || mainThread == NULL || mainThread->Thread == NULL ||
+        mainThread->Thread->State == KTHREAD_STATE_TERMINATED)
+    {
+        KeLeaveCriticalSection(&guard);
+        (void)KeInputSetForegroundOwnerThreadId(restoreForegroundOwnerThreadId);
+        return EC_INVALID_STATE;
+    }
+
+    if (!process->Foreground)
+    {
+        process->Foreground = TRUE;
+        process->RestoreForegroundOwnerThreadId = restoreForegroundOwnerThreadId;
+    }
+    KeLeaveCriticalSection(&guard);
+
+    return EC_SUCCESS;
 }
 
 HO_STATUS

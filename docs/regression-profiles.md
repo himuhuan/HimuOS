@@ -15,10 +15,9 @@ Official cleanup contracts:
 - `user_dual`: concurrent compiled userspace and teardown safety net.
 - `user_fault`: user fault isolation and recovery-to-shell safety net.
 
-These four profiles remain the timing-sensitive safety net. `user_input` and
-`user_dual` still launch through direct bootstrap helpers today; that debt is
-tracked in `docs/architecture/bootstrap-debt-index.md` and belongs to Phase F,
-not to the sentinel bucket.
+These four profiles remain the timing-sensitive safety net. They now launch
+through the permanent Ex process-control surface; legacy bootstrap launch
+coverage is isolated to the sentinel bucket.
 
 Legacy bring-up sentinels:
 
@@ -68,8 +67,8 @@ teardown, foreground input, or scheduling must have both.
 | `kthread_pool_race` | targeted mechanism sentinel | Ke pool synchronization | `test-kthread_pool_race` | `HO_DEMO_TEST_KTHREAD_POOL_RACE` | none | host normally enough | `[TEST] KTHREAD pool race regression suite passed` |
 | `user_hello` | legacy bring-up sentinel | raw bootstrap payload + P1 gate | `test-user_hello` | `HO_DEMO_TEST_USER_HELLO` | none | host normally enough | `[USERBOOT] enter user mode`, `[USERBOOT] hello`, `[USERBOOT] SYS_RAW_EXIT`, `[USERBOOT] bootstrap teardown complete` |
 | `user_caps` | legacy bring-up sentinel | seeded capability/wait bootstrap payload | `test-user_caps` | `HO_DEMO_TEST_USER_CAPS` | none | host normally enough | `[USERCAP] stdout capability write succeeds`, `[USERCAP] SYS_CLOSE succeeded`, `[USERCAP] capability syscall rejected`, `[USERCAP] SYS_WAIT_ONE timed out` |
-| `user_dual` | official contract (timing-sensitive) | direct `ExBootstrap*` launch of compiled userspace | `test-user_dual` | `HO_DEMO_TEST_USER_DUAL` | none | host and TCG required | `user_hello` and `user_counter` enter/exit evidence, no teardown panic |
-| `user_input` | official contract (timing-sensitive) | direct `ExBootstrap*` launch + borrowed `KTHREAD` joins | `test-user_input` | `HO_DEMO_TEST_USER_INPUT` | `scripts/input_plans/user_input.plan` | host and TCG required | `[USERINPUT] foreground -> hsh`, `[HSH] hello`, `[HSH] handoff`, `[USERINPUT] foreground -> calc`, `[CALC] 3 4 +`, clean teardown |
+| `user_dual` | official contract (timing-sensitive) | `ExSpawnProgram()` / `ExWaitProcess()` compiled-userspace path | `test-user_dual` | `HO_DEMO_TEST_USER_DUAL` | none | host and TCG required | `user_hello` and `user_counter` enter/exit evidence, no teardown panic |
+| `user_input` | official contract (timing-sensitive) | `ExSpawnProgram()` / `ExSetForegroundProcess()` / `ExWaitProcess()` foreground path | `test-user_input` | `HO_DEMO_TEST_USER_INPUT` | `scripts/input_plans/user_input.plan` | host and TCG required | `[USERINPUT] foreground -> hsh`, `[HSH] hello`, `[HSH] handoff`, `[USERINPUT] foreground -> calc`, `[CALC] 3 4 +`, clean teardown |
 | `demo_shell` | official contract (timing-sensitive) | `ExSpawnProgram()` / `ExWaitProcess()` shell path | `test-demo_shell` | `HO_DEMO_TEST_DEMO_SHELL` | `scripts/input_plans/demo_shell.plan` | host and TCG required | `HimuOS System Information`, `HimuOS Virtual Memory Map`, `PID  STATE`, `[CALC] result=7`, `[HSH] killed pid=`, `[HSH] HSH exited` |
 | `user_fault` | official contract (timing-sensitive) | `demo_shell` control plane + user-fault recovery | `test-user_fault` | `HO_DEMO_TEST_USER_FAULT` | `scripts/input_plans/user_fault.plan` | host and TCG required | `[USERFAULT] #DE`, `[USERFAULT] #PF`, `[USERFAULT] CR2=`, `[DEMOSHELL] foreground restored`, `[HSH] HSH exited` |
 | `guard_wait` | targeted mechanism sentinel | guard misuse panic | `test-guard_wait` | `HO_DEMO_TEST_GUARD_WAIT` | none | targeted panic evidence | `[GUARDWAIT-`, diagnosable guard violation |

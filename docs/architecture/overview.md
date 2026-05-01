@@ -63,11 +63,10 @@ Current runtime reality:
 - Ex process/thread objects now own completion state. Process wait/kill and
   generic wait handles no longer depend on pilot wait objects or borrowed
   `KTHREAD` joins.
-- `demo_shell` and `user_fault` already exercise the Ex-owned
-  `ExSpawnProgram()` / `ExWaitProcess()` / `ExKillProcess()` control plane.
-- `user_input` and `user_dual` are still official contract profiles, but they
-  launch userspace directly through `ExBootstrap*` helpers instead of the
-  permanent Ex runtime APIs.
+- `demo_shell`, `user_fault`, `user_input`, and `user_dual` exercise the
+  Ex-owned `ExSpawnProgram()` / `ExWaitProcess()` / `ExKillProcess()` control
+  plane. `user_input` also uses `ExSetForegroundProcess()` for foreground
+  handoff.
 - `user_hello` and `user_caps` are explicit legacy bring-up sentinels, not the
   default teaching path.
 - `hsh` and `calc` include the normal `src/user/libsys.h` wrapper surface over

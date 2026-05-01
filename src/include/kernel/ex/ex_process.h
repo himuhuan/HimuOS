@@ -33,4 +33,5 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS ExSpawnProgram(const char *name,
                                                     uint32_t *outPid);
 HO_KERNEL_API HO_NODISCARD HO_STATUS ExWaitProcess(uint32_t pid);
 HO_KERNEL_API HO_NODISCARD HO_STATUS ExKillProcess(uint32_t pid);
+HO_KERNEL_API HO_NODISCARD HO_STATUS ExSetForegroundProcess(uint32_t pid);
 HO_KERNEL_API BOOL ExShouldTerminateCurrentProcess(uint32_t *outProgramId);

@@ -324,6 +324,34 @@ Exit: {
     return status;
 }
 
+HO_KERNEL_API HO_STATUS
+ExSetForegroundProcess(uint32_t pid)
+{
+    KTHREAD *currentThread = KeGetCurrentThread();
+    EX_PROCESS *childProcess = NULL;
+    uint32_t parentProcessId = 0;
+    HO_STATUS status = EC_SUCCESS;
+
+    if (currentThread == NULL || pid == 0U)
+        return EC_ILLEGAL_ARGUMENT;
+
+    status = KiResolveCallerParentProcessId(&parentProcessId);
+    if (status != EC_SUCCESS)
+        return status;
+
+    status = ExRuntimeRetainChildProcess(parentProcessId, pid, &childProcess);
+    if (status != EC_SUCCESS)
+        return status;
+
+    status = ExRuntimeSetProcessForeground(childProcess, KeInputGetForegroundOwnerThreadId());
+
+    HO_STATUS releaseStatus = ExBootstrapReleaseProcess(childProcess);
+    if (status == EC_SUCCESS)
+        status = releaseStatus;
+
+    return status;
+}
+
 HO_KERNEL_API BOOL
 ExShouldTerminateCurrentProcess(uint32_t *outProgramId)
 {

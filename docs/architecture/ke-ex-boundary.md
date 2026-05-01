@@ -50,9 +50,19 @@ These are the mechanisms Ex should consume rather than duplicate.
 - `src/include/kernel/ke/user_bootstrap.h` and
   `src/kernel/ke/user_bootstrap_syscall.c` still own low-level trap, user-copy,
   and user-entry helpers with bootstrap names.
-- `src/kernel/demo/user_input.c` still calls `ExBootstrapBorrowKernelThread()`
-  directly, and both `user_input` and `user_dual` still build userspace through
-  `ExBootstrap*` launch helpers instead of permanent Ex runtime APIs.
+
+## Phase F Demo Runtime APIs
+
+The contract demo profiles now launch scenarios through permanent Ex process
+control:
+
+- `user_dual` uses `ExSpawnProgram()` and `ExWaitProcess()` for its concurrent
+  `user_hello` / `user_counter` evidence.
+- `user_input` uses `ExSpawnProgram()`, `ExSetForegroundProcess()`, and
+  `ExWaitProcess()` for foreground handoff and cleanup evidence.
+
+Those profiles no longer call `ExBootstrap*` launch helpers, borrow backing
+`KTHREAD` pointers, or join user threads directly.
 
 ## Phase E Waitability
 
@@ -110,9 +120,8 @@ The owner phase and deletion condition for each debt are tracked in
 
 ## Current Profile Reality
 
-- `demo_shell` and `user_fault` already validate the Ex-owned control plane.
-- `user_input` and `user_dual` are still official contracts, but they remain on
-  transitional launch plumbing.
+- `demo_shell`, `user_fault`, `user_input`, and `user_dual` validate the
+  Ex-owned control plane.
 - `user_hello` and `user_caps` are legacy bring-up sentinels, not the default
   runtime story.
 

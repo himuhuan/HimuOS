@@ -578,7 +578,7 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  make test kthread_pool_race # run the KTHREAD pool race regression suite"
 	@echo "  make test user_hello # select the compiled minimal userspace hello profile"
 	@echo "  make test user_caps  # select the staged bootstrap capability/wait profile"
-	@echo "  make test user_dual  # select the dual compiled-userspace bring-up profile (use qemu_capture host+tcg)"
+	@echo "  make test user_dual  # select the dual compiled-userspace runtime profile (use qemu_capture host+tcg)"
 	@echo "  make test user_input # select the bounded demo-shell input profile (use qemu_capture host+tcg with sendkeys)"
 	@echo "  make test demo_shell # select the P2 demo-shell control-plane profile (use qemu_capture host+tcg with sendkeys)"
 	@echo "  make test user_fault # select the demo-shell child fault profile (use qemu_capture host+tcg with sendkeys)"
