@@ -13,6 +13,7 @@
 #include <kernel/ex/ex_process.h>
 #include <kernel/ex/ex_thread.h>
 #include <kernel/ex/user_sysinfo_abi.h>
+#include <kernel/ke/event.h>
 #include <kernel/ke/mm.h>
 
 struct KTHREAD;
@@ -56,14 +57,6 @@ typedef struct EX_STDOUT_SERVICE
     struct EX_PROCESS *Owner;
 } EX_STDOUT_SERVICE;
 
-typedef struct EX_WAITABLE_OBJECT
-{
-    EX_OBJECT_HEADER Header;
-    struct EX_PROCESS *Owner;
-    void *Dispatcher;
-    struct KTHREAD *CompanionThread;
-} EX_WAITABLE_OBJECT;
-
 struct EX_PROCESS
 {
     EX_OBJECT_HEADER Header;
@@ -79,11 +72,13 @@ struct EX_PROCESS
     uint64_t ExitStatus;
     EX_PROCESS_TERMINATION_REASON TerminationReason;
     BOOL KillRequested;
+    BOOL CompletionRetained;
+    BOOL CompletionSignaled;
     BOOL Foreground;
     uint32_t RestoreForegroundOwnerThreadId;
     uint32_t ProgramId;
+    KEVENT CompletionEvent;
     EX_STDOUT_SERVICE StdoutService;
-    EX_WAITABLE_OBJECT WaitObject;
     EX_HANDLE_TABLE HandleTable;
 };
 
@@ -94,6 +89,8 @@ struct EX_THREAD
     EX_PROCESS *Process;
     EX_HANDLE SelfHandle;
     uint32_t ThreadId;
+    BOOL CompletionSignaled;
+    KEVENT CompletionEvent;
 };
 
 void ExBootstrapInitializeObjectHeader(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE type);
@@ -103,9 +100,6 @@ HO_STATUS ExBootstrapReleaseObject(EX_OBJECT_HEADER *header,
                                    uint32_t *remainingReferences);
 void ExBootstrapInitializeStdoutServiceObject(EX_PROCESS *process);
 HO_STATUS ExBootstrapReleaseStdoutServiceOwner(EX_PROCESS *process);
-void ExBootstrapInitializeWaitableObject(EX_PROCESS *process);
-HO_STATUS ExBootstrapReleaseWaitableObjectOwner(EX_PROCESS *process);
-HO_STATUS ExBootstrapCleanupWaitableBacking(EX_WAITABLE_OBJECT *waitObject);
 void ExBootstrapInitializePrivateHandleTable(EX_PRIVATE_HANDLE_TABLE *table);
 void ExBootstrapInitializeProcessObject(EX_PROCESS *process);
 void ExBootstrapInitializeThreadObject(EX_THREAD *thread);
@@ -134,7 +128,6 @@ EX_THREAD *ExRuntimeLookupThreadByKernelThread(const struct KTHREAD *thread);
 EX_PROCESS *ExRuntimeLookupProcessByKernelThread(const struct KTHREAD *thread);
 EX_PROCESS *ExRuntimeLookupProcessByPid(uint32_t processId);
 HO_STATUS ExRuntimeRetainChildProcess(uint32_t parentProcessId, uint32_t childProcessId, EX_PROCESS **outProcess);
-HO_STATUS ExRuntimeBorrowProcessMainKernelThread(EX_PROCESS *process, struct KTHREAD **outThread);
 HO_STATUS ExRuntimeQueryCurrentProcessId(uint32_t *outProcessId);
 HO_STATUS ExRuntimeRequestProcessKill(EX_PROCESS *process);
 BOOL ExRuntimeShouldTerminateCurrentProcess(uint32_t *outProgramId);
@@ -144,6 +137,14 @@ HO_STATUS ExRuntimeMarkProcessTerminating(EX_PROCESS *process,
                                           EX_PROCESS_TERMINATION_REASON reason,
                                           uint64_t exitStatus);
 HO_STATUS ExRuntimeMarkProcessTerminated(EX_PROCESS *process);
+HO_STATUS ExRuntimeSignalProcessCompletion(EX_PROCESS *process);
+HO_STATUS ExRuntimeSignalThreadCompletion(EX_THREAD *thread);
+HO_STATUS ExRuntimeWaitForProcessCompletion(EX_PROCESS *process, uint64_t timeoutNs);
+HO_STATUS ExRuntimeWaitForThreadCompletion(EX_THREAD *thread, uint64_t timeoutNs);
+HO_STATUS ExRuntimeConsumeCompletedProcess(EX_PROCESS *process);
+void ExRuntimeUnpublishThreadByKernelThread(const struct KTHREAD *thread,
+                                            EX_THREAD **outThread,
+                                            EX_PROCESS **outProcess);
 void ExRuntimeUnpublishByKernelThread(const struct KTHREAD *thread, EX_THREAD **outThread, EX_PROCESS **outProcess);
 HO_STATUS ExBootstrapBuildInitialConstBytes(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params,
                                             uint8_t **outConstBytes,

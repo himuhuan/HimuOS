@@ -47,7 +47,7 @@ KiExSpawnWorkerThread(void *arg)
     EX_BOOTSTRAP_THREAD_CREATE_PARAMS threadParams = {
         .EntryPoint = KiUnexpectedExProcessControlKernelEntry,
         .EntryArg = NULL,
-        .Flags = EX_BOOTSTRAP_THREAD_CREATE_FLAG_JOINABLE,
+        .Flags = EX_BOOTSTRAP_THREAD_CREATE_FLAG_NONE,
     };
     EX_PROCESS *process = NULL;
     EX_PROCESS *runtimeProcess = NULL;
@@ -251,7 +251,6 @@ ExWaitProcess(uint32_t pid)
 {
     KTHREAD *currentThread = KeGetCurrentThread();
     EX_PROCESS *childProcess = NULL;
-    KTHREAD *childKernelThread = NULL;
     uint32_t parentProcessId = 0;
     HO_STATUS status = EC_SUCCESS;
 
@@ -266,15 +265,14 @@ ExWaitProcess(uint32_t pid)
     if (status != EC_SUCCESS)
         return status;
 
-    status = ExRuntimeBorrowProcessMainKernelThread(childProcess, &childKernelThread);
-    if (status != EC_SUCCESS)
-        goto Exit;
-
-    status = KeThreadJoin(childKernelThread, KE_WAIT_INFINITE);
+    status = ExRuntimeWaitForProcessCompletion(childProcess, KE_WAIT_INFINITE);
     if (status != EC_SUCCESS)
         goto Exit;
 
     status = KiRestoreForegroundOwner(childProcess);
+    HO_STATUS consumeStatus = ExRuntimeConsumeCompletedProcess(childProcess);
+    if (status == EC_SUCCESS)
+        status = consumeStatus;
 
 Exit: {
     HO_STATUS releaseStatus = ExBootstrapReleaseProcess(childProcess);
@@ -290,7 +288,6 @@ ExKillProcess(uint32_t pid)
 {
     KTHREAD *currentThread = KeGetCurrentThread();
     EX_PROCESS *childProcess = NULL;
-    KTHREAD *childKernelThread = NULL;
     uint32_t parentProcessId = 0;
     HO_STATUS status = EC_SUCCESS;
 
@@ -305,19 +302,18 @@ ExKillProcess(uint32_t pid)
     if (status != EC_SUCCESS)
         return status;
 
-    status = ExRuntimeBorrowProcessMainKernelThread(childProcess, &childKernelThread);
-    if (status != EC_SUCCESS)
-        goto Exit;
-
     status = ExRuntimeRequestProcessKill(childProcess);
     if (status != EC_SUCCESS)
         goto Exit;
 
-    status = KeThreadJoin(childKernelThread, KE_WAIT_INFINITE);
+    status = ExRuntimeWaitForProcessCompletion(childProcess, KE_WAIT_INFINITE);
     if (status != EC_SUCCESS)
         goto Exit;
 
     status = KiRestoreForegroundOwner(childProcess);
+    HO_STATUS consumeStatus = ExRuntimeConsumeCompletedProcess(childProcess);
+    if (status == EC_SUCCESS)
+        status = consumeStatus;
 
 Exit: {
     HO_STATUS releaseStatus = ExBootstrapReleaseProcess(childProcess);

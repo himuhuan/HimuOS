@@ -50,6 +50,11 @@ HO_STATUS ExHandleResolve(struct EX_PROCESS *process,
                           EX_OBJECT_TYPE expectedType,
                           EX_HANDLE_RIGHTS desiredRights,
                           EX_OBJECT_HEADER **outObjectHeader);
+HO_STATUS ExHandleResolveWaitable(struct EX_PROCESS *process,
+                                  EX_HANDLE handle,
+                                  EX_HANDLE_RIGHTS desiredRights,
+                                  EX_OBJECT_HEADER **outObjectHeader);
 HO_STATUS ExHandleReleaseResolvedObject(EX_OBJECT_HEADER *objectHeader);
 HO_STATUS ExHandleClose(struct EX_PROCESS *process, EX_HANDLE *handle);
 HO_STATUS ExHandleCloseAll(struct EX_PROCESS *process);
+HO_STATUS ExHandleCloseAllForTeardown(struct EX_PROCESS *process);

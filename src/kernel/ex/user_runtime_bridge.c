@@ -180,6 +180,10 @@ ExBootstrapAdapterFinalizeThread(KTHREAD *thread)
             return markStatus;
     }
 
+    HO_STATUS threadSignalStatus = ExRuntimeSignalThreadCompletion(runtimeThread);
+    if (threadSignalStatus != EC_SUCCESS)
+        return threadSignalStatus;
+
     HO_STATUS status = ExBootstrapTeardownProcessPayload(process);
     if (status == EC_SUCCESS)
     {
@@ -189,6 +193,9 @@ ExBootstrapAdapterFinalizeThread(KTHREAD *thread)
     HO_STATUS releaseStatus = KiDestroyUserRuntimeWrapperObjects(thread);
     if (status == EC_SUCCESS)
         status = releaseStatus;
+
+    if (status == EC_SUCCESS && process != NULL)
+        status = ExRuntimeSignalProcessCompletion(process);
 
     return status;
 }
@@ -223,13 +230,13 @@ KiDestroyUserRuntimeWrapperObjects(KTHREAD *thread)
     EX_PROCESS *process = NULL;
     HO_STATUS status = EC_SUCCESS;
 
-    ExRuntimeUnpublishByKernelThread(thread, &exThread, &process);
+    ExRuntimeUnpublishThreadByKernelThread(thread, &exThread, &process);
 
     if (exThread != NULL && process == NULL)
         process = exThread->Process;
 
     if (process != NULL)
-        status = ExHandleCloseAll(process);
+        status = ExHandleCloseAllForTeardown(process);
 
     if (exThread != NULL)
     {

@@ -2,14 +2,13 @@
  * HimuOperatingSystem
  *
  * File: ex/object.c
- * Description: Executive Lite object headers and embedded pilot objects.
+ * Description: Executive Lite object headers and embedded service objects.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
 #include "ex_bootstrap_internal.h"
 
 static HO_STATUS KiDestroyStdoutServiceObject(EX_OBJECT_HEADER *objectHeader);
-static HO_STATUS KiDestroyWaitableObject(EX_OBJECT_HEADER *objectHeader);
 
 BOOL
 ExObjectIsValidType(EX_OBJECT_TYPE type)
@@ -19,7 +18,6 @@ ExObjectIsValidType(EX_OBJECT_TYPE type)
     case EX_OBJECT_TYPE_PROCESS:
     case EX_OBJECT_TYPE_THREAD:
     case EX_OBJECT_TYPE_CONSOLE:
-    case EX_OBJECT_TYPE_WAITABLE:
         return TRUE;
     default:
         return FALSE;
@@ -115,34 +113,6 @@ ExBootstrapReleaseStdoutServiceOwner(EX_PROCESS *process)
     return remainingReferences == 0 ? EC_SUCCESS : EC_INVALID_STATE;
 }
 
-void
-ExBootstrapInitializeWaitableObject(EX_PROCESS *process)
-{
-    if (process == NULL)
-        return;
-
-    ExObjectInitializeHeader(&process->WaitObject.Header, EX_OBJECT_TYPE_WAITABLE, EX_OBJECT_FLAG_NONE,
-                             KiDestroyWaitableObject);
-    process->WaitObject.Owner = process;
-    process->WaitObject.Dispatcher = NULL;
-    process->WaitObject.CompanionThread = NULL;
-}
-
-HO_STATUS
-ExBootstrapReleaseWaitableObjectOwner(EX_PROCESS *process)
-{
-    uint32_t remainingReferences = 0;
-
-    if (process == NULL)
-        return EC_ILLEGAL_ARGUMENT;
-
-    HO_STATUS status = ExObjectRelease(&process->WaitObject.Header, EX_OBJECT_TYPE_WAITABLE, &remainingReferences);
-    if (status != EC_SUCCESS)
-        return status;
-
-    return remainingReferences == 0 ? EC_SUCCESS : EC_INVALID_STATE;
-}
-
 static HO_STATUS
 KiDestroyStdoutServiceObject(EX_OBJECT_HEADER *objectHeader)
 {
@@ -150,13 +120,4 @@ KiDestroyStdoutServiceObject(EX_OBJECT_HEADER *objectHeader)
         return EC_ILLEGAL_ARGUMENT;
 
     return EC_SUCCESS;
-}
-
-static HO_STATUS
-KiDestroyWaitableObject(EX_OBJECT_HEADER *objectHeader)
-{
-    if (objectHeader == NULL || objectHeader->Type != EX_OBJECT_TYPE_WAITABLE)
-        return EC_ILLEGAL_ARGUMENT;
-
-    return ExBootstrapCleanupWaitableBacking(CONTAINING_RECORD(objectHeader, EX_WAITABLE_OBJECT, Header));
 }

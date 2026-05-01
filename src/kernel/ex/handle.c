@@ -104,20 +104,16 @@ KiReleaseHandleObject(EX_OBJECT_HEADER *objectHeader)
 
         return ExObjectRelease(objectHeader, EX_OBJECT_TYPE_CONSOLE, &remainingReferences);
     }
-    case EX_OBJECT_TYPE_WAITABLE: {
-        uint32_t remainingReferences = 0;
-
-        return ExObjectRelease(objectHeader, EX_OBJECT_TYPE_WAITABLE, &remainingReferences);
-    }
     default:
         return EC_INVALID_STATE;
     }
 }
 
 static HO_STATUS
-KiValidateCloseHandleSlot(const EX_HANDLE_SLOT *slot)
+KiValidateCloseHandleSlot(const EX_HANDLE_SLOT *slot, BOOL allowPublishedObjectClose)
 {
     EX_OBJECT_HEADER *objectHeader = NULL;
+    const EX_HANDLE_RIGHTS identityRights = EX_HANDLE_RIGHT_PROCESS_SELF | EX_HANDLE_RIGHT_THREAD_SELF;
 
     if (slot == NULL || slot->Object == NULL)
         return EC_INVALID_STATE;
@@ -126,8 +122,11 @@ KiValidateCloseHandleSlot(const EX_HANDLE_SLOT *slot)
         return EC_INVALID_STATE;
 
     objectHeader = slot->Object;
-    if (ExRuntimeIsPublishedObject(objectHeader))
+    if (!allowPublishedObjectClose && ExRuntimeIsPublishedObject(objectHeader) &&
+        (slot->Rights & identityRights) != EX_HANDLE_RIGHT_NONE)
+    {
         return EC_INVALID_STATE;
+    }
 
     if (!ExObjectIsValidType(objectHeader->Type))
         return EC_INVALID_STATE;
@@ -147,6 +146,8 @@ KiInvalidateObjectSelfHandleIfMatch(EX_OBJECT_HEADER *objectHeader, EX_HANDLE ha
         EX_PROCESS *process = CONTAINING_RECORD(objectHeader, EX_PROCESS, Header);
         if (process->SelfHandle == handle)
             process->SelfHandle = EX_HANDLE_INVALID;
+        if (process->WaitHandle == handle)
+            process->WaitHandle = EX_HANDLE_INVALID;
         break;
     }
     case EX_OBJECT_TYPE_THREAD: {
@@ -161,27 +162,15 @@ KiInvalidateObjectSelfHandleIfMatch(EX_OBJECT_HEADER *objectHeader, EX_HANDLE ha
             stdoutService->Owner->StdoutHandle = EX_HANDLE_INVALID;
         break;
     }
-    case EX_OBJECT_TYPE_WAITABLE: {
-        EX_WAITABLE_OBJECT *waitObject = CONTAINING_RECORD(objectHeader, EX_WAITABLE_OBJECT, Header);
-        if (waitObject->Owner != NULL && waitObject->Owner->WaitHandle == handle)
-            waitObject->Owner->WaitHandle = EX_HANDLE_INVALID;
-        break;
-    }
     default:
         break;
     }
 }
 
-static HO_STATUS
-KiCleanupHandleBacking(EX_OBJECT_HEADER *objectHeader)
+static BOOL
+KiObjectTypeIsWaitable(EX_OBJECT_TYPE type)
 {
-    if (objectHeader == NULL)
-        return EC_ILLEGAL_ARGUMENT;
-
-    if (objectHeader->Type != EX_OBJECT_TYPE_WAITABLE)
-        return EC_SUCCESS;
-
-    return ExBootstrapCleanupWaitableBacking(CONTAINING_RECORD(objectHeader, EX_WAITABLE_OBJECT, Header));
+    return type == EX_OBJECT_TYPE_PROCESS || type == EX_OBJECT_TYPE_THREAD;
 }
 
 static void
@@ -277,6 +266,41 @@ ExHandleResolve(EX_PROCESS *process,
 }
 
 HO_STATUS
+ExHandleResolveWaitable(EX_PROCESS *process,
+                        EX_HANDLE handle,
+                        EX_HANDLE_RIGHTS desiredRights,
+                        EX_OBJECT_HEADER **outObjectHeader)
+{
+    EX_HANDLE_SLOT *slot = NULL;
+    uint32_t generation = 0;
+
+    if (process == NULL || outObjectHeader == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    *outObjectHeader = NULL;
+
+    slot = KiLookupHandleSlot(process, handle, &generation);
+    if (slot == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    if (slot->Object == NULL || slot->Generation != generation)
+        return EC_INVALID_STATE;
+
+    if ((slot->Rights & desiredRights) != desiredRights)
+        return EC_INVALID_STATE;
+
+    if (!KiObjectTypeIsWaitable(slot->Object->Type))
+        return EC_INVALID_STATE;
+
+    HO_STATUS status = ExObjectRetain(slot->Object, slot->Object->Type);
+    if (status != EC_SUCCESS)
+        return status;
+
+    *outObjectHeader = slot->Object;
+    return EC_SUCCESS;
+}
+
+HO_STATUS
 ExHandleReleaseResolvedObject(EX_OBJECT_HEADER *objectHeader)
 {
     return KiReleaseHandleObject(objectHeader);
@@ -317,11 +341,7 @@ ExHandleClose(EX_PROCESS *process, EX_HANDLE *handle)
     }
 
     objectHeader = slot->Object;
-    status = KiValidateCloseHandleSlot(slot);
-    if (status != EC_SUCCESS)
-        goto Exit;
-
-    status = KiCleanupHandleBacking(objectHeader);
+    status = KiValidateCloseHandleSlot(slot, FALSE);
     if (status != EC_SUCCESS)
         goto Exit;
 
@@ -339,8 +359,8 @@ Exit: {
     return status;
 }
 
-HO_STATUS
-ExHandleCloseAll(EX_PROCESS *process)
+static HO_STATUS
+KiHandleCloseAll(EX_PROCESS *process, BOOL allowPublishedObjectClose)
 {
     EX_PROCESS *ownerReference = NULL;
     HO_STATUS firstError = EC_SUCCESS;
@@ -361,7 +381,7 @@ ExHandleCloseAll(EX_PROCESS *process)
         if (slot->Object == NULL)
             continue;
 
-        firstError = KiValidateCloseHandleSlot(slot);
+        firstError = KiValidateCloseHandleSlot(slot, allowPublishedObjectClose);
         if (firstError != EC_SUCCESS)
             goto Exit;
     }
@@ -375,17 +395,10 @@ ExHandleCloseAll(EX_PROCESS *process)
         if (objectHeader == NULL)
             continue;
 
-        HO_STATUS status = KiCleanupHandleBacking(objectHeader);
-        if (status != EC_SUCCESS)
-        {
-            firstError = status;
-            goto Exit;
-        }
-
         KiInvalidateObjectSelfHandleIfMatch(objectHeader, handle);
         KiClearHandleSlot(slot);
 
-        status = KiReleaseHandleObject(objectHeader);
+        HO_STATUS status = KiReleaseHandleObject(objectHeader);
         if (firstError == EC_SUCCESS)
             firstError = status;
     }
@@ -396,6 +409,18 @@ Exit:
         firstError = ownerStatus;
 
     return firstError;
+}
+
+HO_STATUS
+ExHandleCloseAll(EX_PROCESS *process)
+{
+    return KiHandleCloseAll(process, FALSE);
+}
+
+HO_STATUS
+ExHandleCloseAllForTeardown(EX_PROCESS *process)
+{
+    return KiHandleCloseAll(process, TRUE);
 }
 
 void

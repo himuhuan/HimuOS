@@ -74,10 +74,13 @@ ExBootstrapInitializeProcessObject(EX_PROCESS *process)
     process->ExitStatus = 0;
     process->TerminationReason = EX_PROCESS_TERMINATION_REASON_NONE;
     process->KillRequested = FALSE;
+    process->CompletionRetained = FALSE;
+    process->CompletionSignaled = FALSE;
     process->Foreground = FALSE;
     process->RestoreForegroundOwnerThreadId = 0;
+    process->ProgramId = 0;
+    KeInitializeEvent(&process->CompletionEvent, FALSE);
     ExBootstrapInitializeStdoutServiceObject(process);
-    ExBootstrapInitializeWaitableObject(process);
     ExHandleInitializeTable(&process->HandleTable);
 }
 
@@ -143,11 +146,7 @@ KiDestroyProcessObject(EX_OBJECT_HEADER *objectHeader)
 
     process = CONTAINING_RECORD(objectHeader, EX_PROCESS, Header);
 
-    HO_STATUS status = ExBootstrapReleaseWaitableObjectOwner(process);
-    if (status != EC_SUCCESS)
-        return status;
-
-    status = ExBootstrapReleaseStdoutServiceOwner(process);
+    HO_STATUS status = ExBootstrapReleaseStdoutServiceOwner(process);
     if (status != EC_SUCCESS)
         return status;
 
@@ -166,6 +165,7 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
     const EX_HANDLE_RIGHTS processSelfRights =
         EX_HANDLE_RIGHT_QUERY | EX_HANDLE_RIGHT_CLOSE | EX_HANDLE_RIGHT_PROCESS_SELF;
     const EX_HANDLE_RIGHTS stdoutRights = EX_HANDLE_RIGHT_WRITE | EX_HANDLE_RIGHT_CLOSE;
+    const EX_HANDLE_RIGHTS waitRights = EX_HANDLE_RIGHT_WAIT | EX_HANDLE_RIGHT_CLOSE;
 
     if (outProcess == NULL)
         return EC_ILLEGAL_ARGUMENT;
@@ -249,6 +249,22 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
     }
 
     status = ExHandleInsert(process, &process->StdoutService.Header, stdoutRights, &process->StdoutHandle);
+    if (status != EC_SUCCESS)
+    {
+        HO_STATUS teardownStatus = ExBootstrapTeardownProcessPayload(process);
+        HO_STATUS closeStatus = ExHandleCloseAll(process);
+        HO_STATUS releaseStatus = ExBootstrapReleaseProcess(process);
+
+        if (teardownStatus != EC_SUCCESS)
+            return teardownStatus;
+
+        if (closeStatus != EC_SUCCESS)
+            return closeStatus;
+
+        return releaseStatus == EC_SUCCESS ? status : releaseStatus;
+    }
+
+    status = ExHandleInsert(process, &process->Header, waitRights, &process->WaitHandle);
     if (status != EC_SUCCESS)
     {
         HO_STATUS teardownStatus = ExBootstrapTeardownProcessPayload(process);

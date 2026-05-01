@@ -67,7 +67,7 @@ ExBootstrapPatchCapabilitySeed(EX_PROCESS *process, EX_THREAD *thread)
         return EC_INVALID_STATE;
 
     if (process->SelfHandle == EX_HANDLE_INVALID || process->StdoutHandle == EX_HANDLE_INVALID ||
-        thread->SelfHandle == EX_HANDLE_INVALID)
+        process->WaitHandle == EX_HANDLE_INVALID || thread->SelfHandle == EX_HANDLE_INVALID)
     {
         return EC_INVALID_STATE;
     }

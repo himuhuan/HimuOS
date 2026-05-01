@@ -549,31 +549,6 @@ ExRuntimeRetainChildProcess(uint32_t parentProcessId, uint32_t childProcessId, E
 }
 
 HO_STATUS
-ExRuntimeBorrowProcessMainKernelThread(EX_PROCESS *process, KTHREAD **outThread)
-{
-    uint32_t slotIndex = 0;
-    KTHREAD *kernelThread = NULL;
-    KE_CRITICAL_SECTION guard = {0};
-
-    if (process == NULL || outThread == NULL)
-        return EC_ILLEGAL_ARGUMENT;
-
-    *outThread = NULL;
-
-    KeEnterCriticalSection(&guard);
-    slotIndex = KiFindThreadSlotByThreadId(process->MainThreadId);
-    if (slotIndex < EX_RUNTIME_THREAD_TABLE_CAPACITY && gExRuntimeThreadTable[slotIndex].Thread != NULL)
-        kernelThread = gExRuntimeThreadTable[slotIndex].Thread->Thread;
-    KeLeaveCriticalSection(&guard);
-
-    if (kernelThread == NULL)
-        return EC_INVALID_STATE;
-
-    *outThread = kernelThread;
-    return EC_SUCCESS;
-}
-
-HO_STATUS
 ExRuntimeQueryCurrentProcessId(uint32_t *outProcessId)
 {
     KTHREAD *thread = KeGetCurrentThread();
@@ -691,6 +666,7 @@ HO_STATUS
 ExRuntimeMarkProcessTerminated(EX_PROCESS *process)
 {
     KE_CRITICAL_SECTION guard = {0};
+    HO_STATUS status = EC_SUCCESS;
 
     if (process == NULL)
         return EC_ILLEGAL_ARGUMENT;
@@ -702,15 +678,123 @@ ExRuntimeMarkProcessTerminated(EX_PROCESS *process)
         process->ExitStatus = 0;
     }
     process->State = EX_PROCESS_STATE_TERMINATED;
+    if (!process->CompletionRetained)
+    {
+        status = ExObjectRetain(&process->Header, EX_OBJECT_TYPE_PROCESS);
+        if (status == EC_SUCCESS)
+            process->CompletionRetained = TRUE;
+    }
     KeLeaveCriticalSection(&guard);
+    return status;
+}
+
+HO_STATUS
+ExRuntimeSignalProcessCompletion(EX_PROCESS *process)
+{
+    BOOL shouldSignal = FALSE;
+    KE_CRITICAL_SECTION guard = {0};
+
+    if (process == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    KeEnterCriticalSection(&guard);
+    if (process->State != EX_PROCESS_STATE_TERMINATED || !process->CompletionRetained)
+    {
+        KeLeaveCriticalSection(&guard);
+        return EC_INVALID_STATE;
+    }
+
+    if (!process->CompletionSignaled)
+    {
+        process->CompletionSignaled = TRUE;
+        shouldSignal = TRUE;
+    }
+    KeLeaveCriticalSection(&guard);
+
+    if (shouldSignal)
+        KeSetEvent(&process->CompletionEvent);
+
     return EC_SUCCESS;
 }
 
+HO_STATUS
+ExRuntimeSignalThreadCompletion(EX_THREAD *thread)
+{
+    BOOL shouldSignal = FALSE;
+    KE_CRITICAL_SECTION guard = {0};
+
+    if (thread == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    KeEnterCriticalSection(&guard);
+    if (!thread->CompletionSignaled)
+    {
+        thread->CompletionSignaled = TRUE;
+        shouldSignal = TRUE;
+    }
+    KeLeaveCriticalSection(&guard);
+
+    if (shouldSignal)
+        KeSetEvent(&thread->CompletionEvent);
+
+    return EC_SUCCESS;
+}
+
+HO_STATUS
+ExRuntimeWaitForProcessCompletion(EX_PROCESS *process, uint64_t timeoutNs)
+{
+    if (process == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    return KeWaitForSingleObject(&process->CompletionEvent, timeoutNs);
+}
+
+HO_STATUS
+ExRuntimeWaitForThreadCompletion(EX_THREAD *thread, uint64_t timeoutNs)
+{
+    if (thread == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    return KeWaitForSingleObject(&thread->CompletionEvent, timeoutNs);
+}
+
+HO_STATUS
+ExRuntimeConsumeCompletedProcess(EX_PROCESS *process)
+{
+    uint32_t processSlot = 0;
+    BOOL releaseCompletionReference = FALSE;
+    KE_CRITICAL_SECTION guard = {0};
+
+    if (process == NULL)
+        return EC_ILLEGAL_ARGUMENT;
+
+    KeEnterCriticalSection(&guard);
+    if (process->State != EX_PROCESS_STATE_TERMINATED || !process->CompletionSignaled || !process->CompletionRetained)
+    {
+        KeLeaveCriticalSection(&guard);
+        return EC_INVALID_STATE;
+    }
+
+    processSlot = KiFindProcessSlotByProcess(process);
+    if (processSlot >= EX_RUNTIME_PROCESS_TABLE_CAPACITY)
+    {
+        KeLeaveCriticalSection(&guard);
+        return EC_INVALID_STATE;
+    }
+
+    gExRuntimeProcessTable[processSlot].Active = FALSE;
+    gExRuntimeProcessTable[processSlot].Process = NULL;
+    process->CompletionRetained = FALSE;
+    releaseCompletionReference = TRUE;
+    KeLeaveCriticalSection(&guard);
+
+    return releaseCompletionReference ? ExBootstrapReleaseProcess(process) : EC_SUCCESS;
+}
+
 void
-ExRuntimeUnpublishByKernelThread(const KTHREAD *thread, EX_THREAD **outThread, EX_PROCESS **outProcess)
+ExRuntimeUnpublishThreadByKernelThread(const KTHREAD *thread, EX_THREAD **outThread, EX_PROCESS **outProcess)
 {
     uint32_t threadSlot = 0;
-    uint32_t processSlot = 0;
     EX_THREAD *runtimeThread = NULL;
     EX_PROCESS *process = NULL;
     KE_CRITICAL_SECTION guard = {0};
@@ -727,6 +811,26 @@ ExRuntimeUnpublishByKernelThread(const KTHREAD *thread, EX_THREAD **outThread, E
     if (runtimeThread != NULL)
         process = runtimeThread->Process;
 
+    KeLeaveCriticalSection(&guard);
+
+    if (outThread != NULL)
+        *outThread = runtimeThread;
+
+    if (outProcess != NULL)
+        *outProcess = process;
+}
+
+void
+ExRuntimeUnpublishByKernelThread(const KTHREAD *thread, EX_THREAD **outThread, EX_PROCESS **outProcess)
+{
+    uint32_t processSlot = 0;
+    EX_THREAD *runtimeThread = NULL;
+    EX_PROCESS *process = NULL;
+    KE_CRITICAL_SECTION guard = {0};
+
+    ExRuntimeUnpublishThreadByKernelThread(thread, &runtimeThread, &process);
+
+    KeEnterCriticalSection(&guard);
     processSlot = KiFindProcessSlotByProcess(process);
     if (processSlot < EX_RUNTIME_PROCESS_TABLE_CAPACITY)
     {

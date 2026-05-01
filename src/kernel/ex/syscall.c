@@ -305,7 +305,6 @@ static int64_t
 KiHandleCapabilityWaitOne(EX_PROCESS *process, EX_HANDLE handle, uint64_t timeoutMsRaw, uint64_t reserved)
 {
     EX_OBJECT_HEADER *objectHeader = NULL;
-    EX_WAITABLE_OBJECT *waitObject = NULL;
     KTHREAD *thread = KeGetCurrentThread();
     uint64_t timeoutNs = 0;
 
@@ -319,18 +318,21 @@ KiHandleCapabilityWaitOne(EX_PROCESS *process, EX_HANDLE handle, uint64_t timeou
     if (status != EC_SUCCESS)
         return KiRejectCapabilitySyscall("SYS_WAIT_ONE", EX_USER_SYS_WAIT_ONE, handle, status);
 
-    status = ExHandleResolve(process, handle, EX_OBJECT_TYPE_WAITABLE, EX_HANDLE_RIGHT_WAIT, &objectHeader);
+    status = ExHandleResolveWaitable(process, handle, EX_HANDLE_RIGHT_WAIT, &objectHeader);
     if (status != EC_SUCCESS)
         return KiRejectCapabilitySyscall("SYS_WAIT_ONE", EX_USER_SYS_WAIT_ONE, handle, status);
 
-    waitObject = CONTAINING_RECORD(objectHeader, EX_WAITABLE_OBJECT, Header);
-    if (waitObject->Dispatcher == NULL)
+    switch (objectHeader->Type)
     {
+    case EX_OBJECT_TYPE_PROCESS:
+        status = ExRuntimeWaitForProcessCompletion(CONTAINING_RECORD(objectHeader, EX_PROCESS, Header), timeoutNs);
+        break;
+    case EX_OBJECT_TYPE_THREAD:
+        status = ExRuntimeWaitForThreadCompletion(CONTAINING_RECORD(objectHeader, EX_THREAD, Header), timeoutNs);
+        break;
+    default:
         status = EC_INVALID_STATE;
-    }
-    else
-    {
-        status = KeWaitForSingleObject(waitObject->Dispatcher, timeoutNs);
+        break;
     }
 
     HO_STATUS releaseStatus = ExHandleReleaseResolvedObject(objectHeader);
@@ -340,7 +342,11 @@ KiHandleCapabilityWaitOne(EX_PROCESS *process, EX_HANDLE handle, uint64_t timeou
     if (status != EC_SUCCESS)
     {
         if (status == EC_TIMEOUT)
+        {
+            klog(KLOG_LEVEL_INFO, EX_USER_REGRESSION_LOG_CAP_WAIT_TIMED_OUT " handle=%u thread=%u timeout_ms=%lu\n",
+                 handle, thread ? thread->ThreadId : 0U, (unsigned long)timeoutMsRaw);
             return KiEncodeSyscallStatus(status);
+        }
 
         return KiRejectCapabilitySyscall("SYS_WAIT_ONE", EX_USER_SYS_WAIT_ONE, handle, status);
     }

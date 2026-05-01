@@ -15,9 +15,10 @@ teardown visible in one place.
   Ex syscalls.
 
 The object header stores the type, reference count, flags, and optional destroy
-routine. The first Lite object types are process, thread, console/stdout, and
-waitable. Future process-table work can add input, event, timer, and program
-image objects without changing the handle contract.
+routine. The first Lite object types are process, thread, and console/stdout.
+Process and thread objects are waitable through their embedded Ex completion
+state. Future process-table work can add input, event, timer, and program image
+objects without changing the handle contract.
 
 ## Handles
 
@@ -47,13 +48,11 @@ V1 rights are intentionally small:
 
 Syscalls must request the minimum right they need. For example, `SYS_WRITE`
 requires `WRITE` on a console object, while `SYS_WAIT_ONE` requires `WAIT` on a
-waitable object.
+process or thread object.
 
 ## Teardown
 
 Process teardown closes all process-owned handles before releasing the owning
 process/thread references. Object release calls the object's destroy routine
-when the reference count reaches zero. The current waitable object still wraps a
-bootstrap companion-thread artifact; Object Manager Lite only centralizes its
-ownership and cleanup until the later process/thread wait-object work replaces
-that backing.
+when the reference count reaches zero. Completed child processes keep a retained
+Ex completion reference until the parent consumes the process through wait/kill.

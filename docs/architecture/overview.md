@@ -60,6 +60,9 @@ Current runtime reality:
 - Ex process/thread identity now flows through the runtime process and thread
   tables. The old runtime alias registry and process-control child table are
   retired.
+- Ex process/thread objects now own completion state. Process wait/kill and
+  generic wait handles no longer depend on pilot wait objects or borrowed
+  `KTHREAD` joins.
 - `demo_shell` and `user_fault` already exercise the Ex-owned
   `ExSpawnProgram()` / `ExWaitProcess()` / `ExKillProcess()` control plane.
 - `user_input` and `user_dual` are still official contract profiles, but they

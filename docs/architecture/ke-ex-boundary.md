@@ -50,23 +50,28 @@ These are the mechanisms Ex should consume rather than duplicate.
 - `src/include/kernel/ke/user_bootstrap.h` and
   `src/kernel/ke/user_bootstrap_syscall.c` still own low-level trap, user-copy,
   and user-entry helpers with bootstrap names.
-- Phase E still needs real Ex waitables. Until then, `ExWaitProcess()` and
-  `ExKillProcess()` borrow the process main backing `KTHREAD` through the Ex
-  runtime table and join it as the wait mechanism.
 - `src/kernel/demo/user_input.c` still calls `ExBootstrapBorrowKernelThread()`
   directly, and both `user_input` and `user_dual` still build userspace through
   `ExBootstrap*` launch helpers instead of permanent Ex runtime APIs.
+
+## Phase E Waitability
+
+Pilot wait objects are retired. Ex process and thread objects own embedded
+completion events, and `SYS_WAIT_ONE` resolves wait-right handles directly to
+process or thread objects.
+
+`ExWaitProcess()` and `ExKillProcess()` now wait on the retained child process
+completion state. They no longer borrow the process main backing `KTHREAD`, and
+normal Ex-spawned user threads are detached so the idle reaper finalizes
+user-runtime resources and signals process completion.
 
 ## Phase D Runtime Tables
 
 The runtime alias registry and process-control child table are retired.
 `src/kernel/ex/runtime_table.c` now publishes bounded Ex process and thread
 tables. Process objects carry parent PID, main TID, lifecycle state, exit
-status, termination reason, kill request, and foreground restore metadata.
-
-The remaining borrowed `KTHREAD` use is no longer identity ownership; it is the
-Phase E waitability mechanism for joining a process main thread until Ex
-process/thread objects own completion state directly.
+status, termination reason, kill request, foreground restore metadata, and
+completion state.
 
 ## Phase C User-Runtime Hooks
 
