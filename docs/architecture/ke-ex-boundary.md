@@ -41,15 +41,14 @@ These are the mechanisms Ex should consume rather than duplicate.
 - `src/kernel/ex/process_control.c` owns the current spawn/wait/kill/
   foreground policy surface used by `demo_shell` and `user_fault`.
 - `src/kernel/ex/program.c` maps embedded program names and IDs to user images.
-- `src/kernel/ex/ex_bootstrap.c` is the init facade, and
-  `src/kernel/ex/ex_bootstrap_adapter.c` is only a compatibility translation
-  unit.
+- `src/kernel/ex/runtime.c` is the Ex runtime init facade.
 
-## Named Boundary Debts
+## Phase I Runtime Naming
 
-- `src/include/kernel/ke/user_bootstrap.h` and
-  `src/kernel/ke/user_bootstrap_syscall.c` still own low-level trap, user-copy,
-  and user-entry helpers with bootstrap names.
+The active user-runtime surface no longer exposes Bootstrap-named headers,
+source files, wrappers, or helper families. Ke low-level user entry now lives
+under `user_mode` names, Ex launch/runtime code lives under `runtime` and
+`user_runtime` names, and the empty compatibility translation unit was deleted.
 
 ## Phase F Demo Runtime APIs
 
@@ -61,7 +60,7 @@ control:
 - `user_input` uses `ExSpawnProgram()`, `ExSetForegroundProcess()`, and
   `ExWaitProcess()` for foreground handoff and cleanup evidence.
 
-Those profiles no longer call `ExBootstrap*` launch helpers, borrow backing
+Those profiles no longer call retired launch helpers, borrow backing
 `KTHREAD` pointers, or join user threads directly.
 
 ## Phase E Waitability
@@ -104,9 +103,6 @@ and IDT user-fault handoff call user-runtime owner/root/finalize/timer/fault
 hooks instead of bootstrap callback names.
 
 Ex implements that hook contract in `src/kernel/ex/user_runtime_bridge.c`.
-The bridge still calls transitional `ExBootstrapAdapter*()` helpers because the
-process/thread identity and launch surfaces are later-phase debts, but those
-helper names are no longer part of the Ke callback boundary.
 
 ## Phase B ABI Split
 
@@ -127,7 +123,7 @@ Bring-up-only raw syscall, P1 mailbox, and regression-log anchors are separate:
 phase-gate waiting are isolated in `src/user/libsys_bringup.h` for the
 `user_hello` sentinel and in the kernel-embedded `user_caps` payload.
 
-The owner phase and deletion condition for each debt are tracked in
+Historical deletion context for retired debt is tracked in
 `docs/architecture/bootstrap-debt-index.md`.
 
 ## Current Profile Reality
@@ -145,8 +141,7 @@ Near-term cleanup must not:
 
 - change syscall numbers, return values, or register ABI
 - change user program layout or embedded artifact rules
-- split `ex_bootstrap.c` or `ex_bootstrap_adapter.c`
-- remove raw bootstrap syscalls before their sentinel value is retired
+- remove raw bring-up syscalls before their sentinel value is retired
 - replace demo shell lifecycle behavior with full TTY-lite or POSIX job control
 - alter QEMU profile input plans or expected anchors unless the existing
   profile is already failing and the failure is documented

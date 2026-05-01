@@ -2,20 +2,20 @@
  * HimuOperatingSystem
  *
  * File: ex/image.c
- * Description: Bootstrap image const payload and capability seed helpers.
+ * Description: User image const payload and capability seed helpers.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
-#include "ex_bootstrap_internal.h"
+#include "runtime_internal.h"
 
 #include <kernel/ex/user_capability_abi.h>
 #include <kernel/ex/user_image_abi.h>
 #include <kernel/ke/mm.h>
-#include <kernel/ke/user_bootstrap.h>
+#include <kernel/ke/user_mode.h>
 #include <libc/string.h>
 
 HO_STATUS
-ExBootstrapBuildInitialConstBytes(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params,
+ExRuntimeBuildInitialConstBytes(const EX_RUNTIME_PROCESS_CREATE_PARAMS *params,
                                   uint8_t **outConstBytes,
                                   uint64_t *outConstLength)
 {
@@ -58,7 +58,7 @@ ExBootstrapBuildInitialConstBytes(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *para
 }
 
 HO_STATUS
-ExBootstrapPatchCapabilitySeed(EX_PROCESS *process, EX_THREAD *thread)
+ExRuntimePatchCapabilitySeed(EX_PROCESS *process, EX_THREAD *thread)
 {
     if (process == NULL || thread == NULL)
         return EC_ILLEGAL_ARGUMENT;
@@ -81,5 +81,5 @@ ExBootstrapPatchCapabilitySeed(EX_PROCESS *process, EX_THREAD *thread)
         .WaitObject = process->WaitHandle,
     };
 
-    return KeUserBootstrapPatchConstBytes(process->Staging, 0, &seed, sizeof(seed));
+    return KeUserModePatchConstBytes(process->Staging, 0, &seed, sizeof(seed));
 }

@@ -54,7 +54,7 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS ExLookupProgramImageByName(const char *name
                                                                 const EX_USER_IMAGE **outImage);
 HO_KERNEL_API HO_NODISCARD HO_STATUS ExLookupProgramImageById(uint32_t programId,
                                                               const EX_USER_IMAGE **outImage);
-HO_KERNEL_API HO_NODISCARD HO_STATUS ExProgramBuildBootstrapCreateParams(
+HO_KERNEL_API HO_NODISCARD HO_STATUS ExProgramBuildRuntimeCreateParams(
     const EX_USER_IMAGE *image,
     uint32_t parentProcessId,
-    EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *outParams);
+    EX_RUNTIME_PROCESS_CREATE_PARAMS *outParams);

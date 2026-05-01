@@ -192,9 +192,9 @@ ExLookupProgramImageById(uint32_t programId, const EX_USER_IMAGE **outImage)
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
-ExProgramBuildBootstrapCreateParams(const EX_USER_IMAGE *image,
-                                    uint32_t parentProcessId,
-                                    EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *outParams)
+ExProgramBuildRuntimeCreateParams(const EX_USER_IMAGE *image,
+                                  uint32_t parentProcessId,
+                                  EX_RUNTIME_PROCESS_CREATE_PARAMS *outParams)
 {
     if (image == NULL || outParams == NULL)
         return EC_ILLEGAL_ARGUMENT;

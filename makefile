@@ -288,9 +288,9 @@ SRCS_KERNEL_C := \
     src/kernel/ke/mm/allocator.c                        \
     src/kernel/ke/mm/pool.c                             \
     src/kernel/ke/user_runtime_hooks.c                 \
-    src/kernel/ke/user_bootstrap.c                      \
-    src/kernel/ke/user_bootstrap_syscall.c              \
-    src/kernel/ex/ex_bootstrap.c                        \
+    src/kernel/ke/user_mode.c                          \
+    src/kernel/ke/user_mode_syscall.c                  \
+    src/kernel/ex/runtime.c                            \
     src/kernel/ex/object.c                              \
     src/kernel/ex/handle.c                              \
     src/kernel/ex/runtime_table.c                       \
@@ -302,7 +302,6 @@ SRCS_KERNEL_C := \
     src/kernel/ex/sysinfo.c                             \
     src/kernel/ex/syscall.c                             \
     src/kernel/ex/user_runtime_bridge.c                \
-    src/kernel/ex/ex_bootstrap_adapter.c                \
     src/kernel/ke/input/input.c                         \
     src/kernel/ke/input/sinks/ps2_keyboard_sink.c       \
     src/kernel/ke/thread/kthread.c                      \
@@ -330,7 +329,7 @@ SRCS_KERNEL_C := \
 SRCS_KERNEL_ASM := \
     src/arch/amd64/intr_stub.asm \
 	src/arch/amd64/context_switch.asm \
-	src/arch/amd64/user_bootstrap.asm
+	src/arch/amd64/user_mode.asm
 
 # Kernel target: kernel sources + full libc + elf
 SRCS_KERNEL_ALL := $(SRCS_KERNEL_C) $(SRCS_LIBC) $(SRCS_ELF) $(SRCS_KERNEL_ASM)
@@ -341,7 +340,7 @@ OBJS_KERNEL_ASM := $(patsubst src/%.asm,$(KRN_OBJDIR)/%.o,$(filter %.asm,$(SRCS_
 TARGET_KERNEL := $(KRN_BINDIR)/kernel.bin
 
 # ------------------------------------------------------------------------------
-# Userspace bootstrap artifacts
+# Userspace artifacts
 # ------------------------------------------------------------------------------
 USER_PROGRAMS := user_hello user_counter hsh calc tick1s fault_de fault_pf
 
@@ -518,7 +517,7 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  pf_heap     - page-fault demo: NX execute fault in heap-backed KVA page"
 	@echo "  kthread_pool_race - regression suite for KTHREAD pool synchronization"
 	@echo "  user_hello  - compiled minimal userspace hello regression profile"
-	@echo "  user_caps   - staged bootstrap capability/wait regression"
+	@echo "  user_caps   - staged capability/wait regression"
 	@echo "  user_dual   - launch compiled user_hello and user_counter together"
 	@echo "  user_input  - bounded demo-shell input profile (use qemu_capture host+tcg with sendkeys)"
 	@echo "  demo_shell  - P2 demo-shell control-plane regression profile"
@@ -577,7 +576,7 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  make test pf_heap    # run heap-backed page-fault observability demo"
 	@echo "  make test kthread_pool_race # run the KTHREAD pool race regression suite"
 	@echo "  make test user_hello # select the compiled minimal userspace hello profile"
-	@echo "  make test user_caps  # select the staged bootstrap capability/wait profile"
+	@echo "  make test user_caps  # select the staged capability/wait profile"
 	@echo "  make test user_dual  # select the dual compiled-userspace runtime profile (use qemu_capture host+tcg)"
 	@echo "  make test user_input # select the bounded demo-shell input profile (use qemu_capture host+tcg with sendkeys)"
 	@echo "  make test demo_shell # select the P2 demo-shell control-plane profile (use qemu_capture host+tcg with sendkeys)"

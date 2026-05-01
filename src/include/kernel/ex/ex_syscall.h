@@ -2,7 +2,7 @@
  * HimuOperatingSystem
  *
  * File: ex/ex_syscall.h
- * Description: Ex-owned syscall dispatcher interface for the bootstrap user ABI.
+ * Description: Ex-owned syscall dispatcher interface for the user ABI.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 

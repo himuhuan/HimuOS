@@ -2,13 +2,13 @@
  * HimuOperatingSystem
  *
  * File: ex/syscall.c
- * Description: Ex bootstrap syscall dispatch.
+ * Description: Ex-owned user syscall dispatch.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
-#include "ex_bootstrap_internal.h"
+#include "runtime_internal.h"
 
-#include <kernel/ex/ex_bootstrap_adapter.h>
+#include <kernel/ex/ex_user_runtime.h>
 #include <kernel/ex/ex_syscall.h>
 #include <kernel/ex/program.h>
 #include <kernel/ex/user_bringup_sentinel_abi.h>
@@ -18,20 +18,20 @@
 #include <kernel/ke/input.h>
 #include <kernel/ke/kthread.h>
 #include <kernel/ke/scheduler.h>
-#include <kernel/ke/user_bootstrap.h>
+#include <kernel/ke/user_mode.h>
 
 typedef char KI_INPUT_LINE_CAPACITY_MATCHES_USER_ABI[(KE_INPUT_LINE_CAPACITY == EX_USER_READLINE_MAX_LENGTH) ? 1 : -1];
 
 static int64_t KiEncodeSyscallStatus(HO_STATUS status);
 static void KiSetReturnResult(EX_SYSCALL_DISPATCH_RESULT *result, int64_t returnValue);
 static void KiSetExitResult(EX_SYSCALL_DISPATCH_RESULT *result);
-static HO_NORETURN void KiAbortBootstrapExit(
+static HO_NORETURN void KiAbortUserRuntimeExit(
     KTHREAD *thread, uint64_t exitCode, HO_STATUS status, const char *exitKind, const char *reason);
-static HO_STATUS KiPrepareBootstrapExit(uint64_t exitCode,
-                                        const char *successLog,
-                                        const char *exitKind,
-                                        EX_SYSCALL_DISPATCH_RESULT *result);
-static HO_STATUS KiPrepareBootstrapKillExit(uint32_t programId, EX_SYSCALL_DISPATCH_RESULT *result);
+static HO_STATUS KiPrepareUserRuntimeExit(uint64_t exitCode,
+                                          const char *successLog,
+                                          const char *exitKind,
+                                          EX_SYSCALL_DISPATCH_RESULT *result);
+static HO_STATUS KiPrepareUserRuntimeKillExit(uint32_t programId, EX_SYSCALL_DISPATCH_RESULT *result);
 static int64_t KiRejectRawWrite(uint64_t userBuffer, uint64_t length, HO_STATUS status);
 static int64_t KiHandleRawWrite(uint64_t userBuffer, uint64_t length);
 static HO_STATUS KiDispatchRawSyscall(const EX_SYSCALL_ARGUMENTS *args, EX_SYSCALL_DISPATCH_RESULT *result);
@@ -76,7 +76,7 @@ KiSetExitResult(EX_SYSCALL_DISPATCH_RESULT *result)
 }
 
 static HO_NORETURN void
-KiAbortBootstrapExit(KTHREAD *thread, uint64_t exitCode, HO_STATUS status, const char *exitKind, const char *reason)
+KiAbortUserRuntimeExit(KTHREAD *thread, uint64_t exitCode, HO_STATUS status, const char *exitKind, const char *reason)
 {
     klog(KLOG_LEVEL_ERROR,
          EX_USER_REGRESSION_LOG_TEARDOWN_FAILED " exit=%s unrecoverable thread=%u code=%lu reason=%s status=%s (%d)\n",
@@ -85,46 +85,46 @@ KiAbortBootstrapExit(KTHREAD *thread, uint64_t exitCode, HO_STATUS status, const
 }
 
 static HO_STATUS
-KiPrepareBootstrapExit(uint64_t exitCode,
-                       const char *successLog,
-                       const char *exitKind,
-                       EX_SYSCALL_DISPATCH_RESULT *result)
+KiPrepareUserRuntimeExit(uint64_t exitCode,
+                         const char *successLog,
+                         const char *exitKind,
+                         EX_SYSCALL_DISPATCH_RESULT *result)
 {
     KTHREAD *thread = KeGetCurrentThread();
-    if (!thread || ExBootstrapAdapterQueryThreadStaging(thread) == NULL)
-        KiAbortBootstrapExit(thread, exitCode, EC_INVALID_STATE, exitKind, "Bootstrap exit missing staging");
+    if (!thread || ExUserRuntimeQueryThreadStaging(thread) == NULL)
+        KiAbortUserRuntimeExit(thread, exitCode, EC_INVALID_STATE, exitKind, "User-runtime exit missing staging");
 
     HO_STATUS status = ExRuntimeMarkCurrentProcessTerminating(EX_PROCESS_TERMINATION_REASON_EXIT, (uint64_t)exitCode);
     if (status != EC_SUCCESS)
-        KiAbortBootstrapExit(thread, exitCode, status, exitKind, "Failed to mark process exit");
+        KiAbortUserRuntimeExit(thread, exitCode, status, exitKind, "Failed to mark process exit");
 
     klog(KLOG_LEVEL_INFO, "%s code=%lu thread=%u\n", successLog, (unsigned long)exitCode, thread->ThreadId);
 
-    status = ExBootstrapAdapterHandleExit(thread);
+    status = ExUserRuntimeHandleExit(thread);
     if (status != EC_SUCCESS)
-        KiAbortBootstrapExit(thread, exitCode, status, exitKind,
-                             "Bootstrap exit handoff validation failed after no-return transition");
+        KiAbortUserRuntimeExit(thread, exitCode, status, exitKind,
+                               "User-runtime exit handoff validation failed after no-return transition");
 
     KiSetExitResult(result);
     return EC_SUCCESS;
 }
 
 static HO_STATUS
-KiPrepareBootstrapKillExit(uint32_t programId, EX_SYSCALL_DISPATCH_RESULT *result)
+KiPrepareUserRuntimeKillExit(uint32_t programId, EX_SYSCALL_DISPATCH_RESULT *result)
 {
     KTHREAD *thread = KeGetCurrentThread();
-    if (!thread || ExBootstrapAdapterQueryThreadStaging(thread) == NULL)
-        KiAbortBootstrapExit(thread, 0, EC_INVALID_STATE, "kill", "Bootstrap kill exit missing staging");
+    if (!thread || ExUserRuntimeQueryThreadStaging(thread) == NULL)
+        KiAbortUserRuntimeExit(thread, 0, EC_INVALID_STATE, "kill", "User-runtime kill exit missing staging");
 
     HO_STATUS status = ExRuntimeMarkCurrentProcessTerminating(EX_PROCESS_TERMINATION_REASON_KILL, 0);
     if (status != EC_SUCCESS)
-        KiAbortBootstrapExit(thread, 0, status, "kill", "Failed to mark process kill exit");
+        KiAbortUserRuntimeExit(thread, 0, status, "kill", "Failed to mark process kill exit");
 
     klog(KLOG_LEVEL_INFO, EX_USER_REGRESSION_LOG_KILL_EXIT " thread=%u program=%u\n", thread->ThreadId, programId);
 
-    status = ExBootstrapAdapterHandleExit(thread);
+    status = ExUserRuntimeHandleExit(thread);
     if (status != EC_SUCCESS)
-        KiAbortBootstrapExit(thread, 0, status, "kill", "Bootstrap kill exit handoff validation failed");
+        KiAbortUserRuntimeExit(thread, 0, status, "kill", "User-runtime kill exit handoff validation failed");
 
     KiSetExitResult(result);
     return EC_SUCCESS;
@@ -152,13 +152,13 @@ KiHandleRawWrite(uint64_t userBuffer, uint64_t length)
         return 0;
 
     char scratch[EX_USER_SYSCALL_WRITE_MAX_LENGTH];
-    HO_STATUS status = KeUserBootstrapCopyInBytes(scratch, (HO_VIRTUAL_ADDRESS)userBuffer, length);
+    HO_STATUS status = KeUserModeCopyInBytes(scratch, (HO_VIRTUAL_ADDRESS)userBuffer, length);
     if (status != EC_SUCCESS)
         return KiRejectRawWrite(userBuffer, length, status);
 
     KTHREAD *thread = KeGetCurrentThread();
     uint64_t written = 0;
-    status = KeUserBootstrapWriteConsoleBytes(scratch, length, &written);
+    status = KeUserModeWriteConsoleBytes(scratch, length, &written);
     if (status != EC_SUCCESS)
     {
         klog(KLOG_LEVEL_ERROR, "[USERBOOT] SYS_RAW_WRITE console emit failed index=%lu thread=%u\n",
@@ -176,12 +176,12 @@ static HO_STATUS
 KiDispatchRawSyscall(const EX_SYSCALL_ARGUMENTS *args, EX_SYSCALL_DISPATCH_RESULT *result)
 {
     KTHREAD *thread = KeGetCurrentThread();
-    if (!thread || ExBootstrapAdapterQueryThreadStaging(thread) == NULL)
+    if (!thread || ExUserRuntimeQueryThreadStaging(thread) == NULL)
     {
         if (args->Number == EX_USER_BRINGUP_SYS_RAW_EXIT)
-            KiAbortBootstrapExit(thread, args->Arg0, EC_INVALID_STATE, "raw", "Bootstrap raw exit missing staging");
+            KiAbortUserRuntimeExit(thread, args->Arg0, EC_INVALID_STATE, "raw", "User-runtime raw exit missing staging");
 
-        klog(KLOG_LEVEL_ERROR, EX_USER_REGRESSION_LOG_INVALID_SYSCALL " nr=%lu thread=%u missing bootstrap staging\n",
+        klog(KLOG_LEVEL_ERROR, EX_USER_REGRESSION_LOG_INVALID_SYSCALL " nr=%lu thread=%u missing user-mode staging\n",
              (unsigned long)args->Number, thread ? thread->ThreadId : 0U);
         KiSetReturnResult(result, KiEncodeSyscallStatus(EC_INVALID_STATE));
         return EC_SUCCESS;
@@ -193,7 +193,7 @@ KiDispatchRawSyscall(const EX_SYSCALL_ARGUMENTS *args, EX_SYSCALL_DISPATCH_RESUL
         KiSetReturnResult(result, KiHandleRawWrite(args->Arg0, args->Arg1));
         return EC_SUCCESS;
     case EX_USER_BRINGUP_SYS_RAW_EXIT:
-        return KiPrepareBootstrapExit(args->Arg0, EX_USER_REGRESSION_LOG_SYS_RAW_EXIT, "raw", result);
+        return KiPrepareUserRuntimeExit(args->Arg0, EX_USER_REGRESSION_LOG_SYS_RAW_EXIT, "raw", result);
     default:
         klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_INVALID_SYSCALL " nr=%lu thread=%u args=(%p,%p,%p)\n",
              (unsigned long)args->Number, thread->ThreadId, (void *)(uint64_t)args->Arg0, (void *)(uint64_t)args->Arg1,
@@ -239,9 +239,9 @@ KiHandleCapabilityWrite(EX_PROCESS *process, EX_HANDLE handle, uint64_t userBuff
 
     if (length != 0)
     {
-        status = KeUserBootstrapCopyInBytes(scratch, (HO_VIRTUAL_ADDRESS)userBuffer, length);
+        status = KeUserModeCopyInBytes(scratch, (HO_VIRTUAL_ADDRESS)userBuffer, length);
         if (status == EC_SUCCESS)
-            status = KeUserBootstrapWriteConsoleBytes(scratch, length, &written);
+            status = KeUserModeWriteConsoleBytes(scratch, length, &written);
     }
 
     HO_STATUS releaseStatus = ExHandleReleaseResolvedObject(objectHeader);
@@ -366,7 +366,7 @@ KiDispatchCapabilitySyscall(uint64_t syscallNumber, uint64_t arg0, uint64_t arg1
     if (thread == NULL || process == NULL || process->Staging == NULL)
     {
         klog(KLOG_LEVEL_ERROR,
-             EX_USER_REGRESSION_LOG_INVALID_CAP_SYSCALL " nr=%lu thread=%u missing bootstrap staging\n",
+             EX_USER_REGRESSION_LOG_INVALID_CAP_SYSCALL " nr=%lu thread=%u missing user-mode staging\n",
              (unsigned long)syscallNumber, thread ? thread->ThreadId : 0U);
         return KiEncodeSyscallStatus(EC_INVALID_STATE);
     }
@@ -380,7 +380,7 @@ KiDispatchCapabilitySyscall(uint64_t syscallNumber, uint64_t arg0, uint64_t arg1
     case EX_USER_SYS_WAIT_ONE:
         return KiHandleCapabilityWaitOne(process, (EX_HANDLE)arg0, arg1, arg2);
     case EX_USER_SYS_QUERY_SYSINFO:
-        return ExBootstrapHandleQuerySysinfo(process, arg0, arg1, arg2);
+        return ExRuntimeHandleQuerySysinfo(process, arg0, arg1, arg2);
     default:
         klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_INVALID_CAP_SYSCALL " nr=%lu thread=%u args=(%p,%p,%p)\n",
              (unsigned long)syscallNumber, thread->ThreadId, (void *)(uint64_t)arg0, (void *)(uint64_t)arg1,
@@ -423,7 +423,7 @@ KiHandleReadLine(uint64_t userBuffer, uint64_t capacity, uint64_t reserved)
         return KiEncodeSyscallStatus(status);
     }
 
-    status = KeUserBootstrapCopyOutBytes((HO_VIRTUAL_ADDRESS)userBuffer, scratch, copiedLength);
+    status = KeUserModeCopyOutBytes((HO_VIRTUAL_ADDRESS)userBuffer, scratch, copiedLength);
     if (status != EC_SUCCESS)
     {
         klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_READLINE_REJECTED " thread=%u addr=%p cap=%lu status=%s (%d)\n",
@@ -459,7 +459,7 @@ KiHandleSpawnProgram(uint64_t userName, uint64_t nameLength, uint64_t flags)
 
     memset(programName, 0, sizeof(programName));
 
-    HO_STATUS status = KeUserBootstrapCopyInBytes(programName, (HO_VIRTUAL_ADDRESS)userName, nameLength);
+    HO_STATUS status = KeUserModeCopyInBytes(programName, (HO_VIRTUAL_ADDRESS)userName, nameLength);
     if (status != EC_SUCCESS)
     {
         klog(KLOG_LEVEL_WARNING,
@@ -568,7 +568,7 @@ KiDispatchFormalSyscall(const EX_SYSCALL_ARGUMENTS *args, EX_SYSCALL_DISPATCH_RE
             return EC_SUCCESS;
         }
 
-        return KiPrepareBootstrapExit(args->Arg0, EX_USER_REGRESSION_LOG_SYS_EXIT, "formal", result);
+        return KiPrepareUserRuntimeExit(args->Arg0, EX_USER_REGRESSION_LOG_SYS_EXIT, "formal", result);
     case EX_USER_SYS_READLINE:
         KiSetReturnResult(result, KiHandleReadLine(args->Arg0, args->Arg1, args->Arg2));
         return EC_SUCCESS;
@@ -595,7 +595,7 @@ KiObserveKillRequest(EX_SYSCALL_DISPATCH_RESULT *result)
 {
     uint32_t killedProgramId = EX_PROGRAM_ID_NONE;
     if (ExRuntimeShouldTerminateCurrentProcess(&killedProgramId))
-        return KiPrepareBootstrapKillExit(killedProgramId, result);
+        return KiPrepareUserRuntimeKillExit(killedProgramId, result);
 
     return EC_SUCCESS;
 }
@@ -625,10 +625,4 @@ ExDispatchSyscall(const EX_SYSCALL_ARGUMENTS *args, EX_SYSCALL_DISPATCH_RESULT *
         return KiObserveKillRequest(outResult);
 
     return EC_SUCCESS;
-}
-
-HO_KERNEL_API HO_NODISCARD int64_t
-ExBootstrapAdapterDispatchSyscall(uint64_t syscallNumber, uint64_t arg0, uint64_t arg1, uint64_t arg2)
-{
-    return KiDispatchCapabilitySyscall(syscallNumber, arg0, arg1, arg2);
 }

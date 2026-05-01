@@ -6,9 +6,9 @@
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
-#include "ex_bootstrap_internal.h"
+#include "runtime_internal.h"
 
-#include <kernel/ex/ex_bootstrap.h>
+#include <kernel/ex/ex_runtime.h>
 #include <kernel/ex/program.h>
 #include <kernel/ke/critical_section.h>
 #include <kernel/ke/input.h>
@@ -564,7 +564,7 @@ ExRuntimeQueryCurrentProcessId(uint32_t *outProcessId)
         return EC_INVALID_STATE;
 
     process = ExRuntimeLookupProcessByKernelThread(thread);
-    return ExBootstrapQueryProcessId(process, outProcessId);
+    return ExRuntimeQueryProcessId(process, outProcessId);
 }
 
 HO_STATUS
@@ -844,7 +844,7 @@ ExRuntimeConsumeCompletedProcess(EX_PROCESS *process)
     releaseCompletionReference = TRUE;
     KeLeaveCriticalSection(&guard);
 
-    return releaseCompletionReference ? ExBootstrapReleaseProcess(process) : EC_SUCCESS;
+    return releaseCompletionReference ? ExRuntimeReleaseProcess(process) : EC_SUCCESS;
 }
 
 void
@@ -911,10 +911,4 @@ KiLookupThreadByTidLocked(uint32_t threadId)
         return NULL;
 
     return gExRuntimeThreadTable[slotIndex].Thread;
-}
-
-HO_STATUS
-ExBootstrapQueryCurrentProcessId(uint32_t *outProcessId)
-{
-    return ExRuntimeQueryCurrentProcessId(outProcessId);
 }

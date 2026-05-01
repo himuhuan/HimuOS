@@ -2,18 +2,18 @@
  * HimuOperatingSystem
  *
  * File: ex/sysinfo.c
- * Description: Ex-facing bootstrap sysinfo capture and text rendering.
+ * Description: Ex-facing sysinfo capture and text rendering.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
-#include "ex_bootstrap_internal.h"
+#include "runtime_internal.h"
 
 #include <kernel/ex/user_regression_anchors.h>
 #include <kernel/ke/kthread.h>
 #include <kernel/ke/mm.h>
 #include <kernel/ke/scheduler.h>
 #include <kernel/ke/sysinfo.h>
-#include <kernel/ke/user_bootstrap.h>
+#include <kernel/ke/user_mode.h>
 #include <kernel/hodbg.h>
 #include <libc/string.h>
 
@@ -644,7 +644,7 @@ KiBuildSysinfoMemmapText(char *buffer, size_t capacity, size_t *outLength)
     KE_KVA_ARENA_INFO stackArena = {0};
     KE_KVA_ARENA_INFO heapArena = {0};
     KE_KVA_ARENA_INFO fixmapArena = {0};
-    KE_USER_BOOTSTRAP_LAYOUT layout = {0};
+    KE_USER_MODE_LAYOUT layout = {0};
     const KE_KERNEL_ADDRESS_SPACE *space = NULL;
     uint32_t printedRegionCount = 0;
 
@@ -671,7 +671,7 @@ KiBuildSysinfoMemmapText(char *buffer, size_t capacity, size_t *outLength)
     if (status != EC_SUCCESS)
         return status;
 
-    status = KeUserBootstrapQueryCurrentThreadLayout(&layout);
+    status = KeUserModeQueryCurrentThreadLayout(&layout);
     if (status != EC_SUCCESS)
         return status;
 
@@ -723,7 +723,7 @@ KiBuildSysinfoMemmapText(char *buffer, size_t capacity, size_t *outLength)
             return EC_NOT_ENOUGH_MEMORY;
     }
 
-    if (!KiAppendSysinfoLiteral(buffer, &length, capacity, "Low Half (bootstrap)\n") ||
+    if (!KiAppendSysinfoLiteral(buffer, &length, capacity, "Low Half (user image)\n") ||
         !KiAppendSysinfoRangeLine(buffer, &length, capacity, "code slot", layout.UserRangeBase,
                                   layout.UserRangeBase + PAGE_4KB) ||
         !KiAppendSysinfoRangeLine(buffer, &length, capacity, "const slot", layout.UserRangeBase + PAGE_4KB,
@@ -885,7 +885,7 @@ KiRejectQuerySysinfo(uint64_t infoClassRaw, uint64_t userBuffer, uint64_t length
 }
 
 int64_t
-ExBootstrapHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64_t userBuffer, uint64_t length)
+ExRuntimeHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64_t userBuffer, uint64_t length)
 {
     KTHREAD *thread = KeGetCurrentThread();
     EX_SYSINFO_OVERVIEW overview = {0};
@@ -916,7 +916,7 @@ ExBootstrapHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64
             if (length < sizeof(overview))
                 return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, EC_NOT_ENOUGH_MEMORY);
 
-            status = KeUserBootstrapCopyOutBytes((HO_VIRTUAL_ADDRESS)userBuffer, &overview, sizeof(overview));
+            status = KeUserModeCopyOutBytes((HO_VIRTUAL_ADDRESS)userBuffer, &overview, sizeof(overview));
             if (status != EC_SUCCESS)
                 return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, status);
 
@@ -939,7 +939,7 @@ ExBootstrapHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64
             if (length < textLength)
                 return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, EC_NOT_ENOUGH_MEMORY);
 
-            status = KeUserBootstrapCopyOutBytes((HO_VIRTUAL_ADDRESS)userBuffer, text, textLength);
+            status = KeUserModeCopyOutBytes((HO_VIRTUAL_ADDRESS)userBuffer, text, textLength);
             if (status != EC_SUCCESS)
                 return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, status);
 
@@ -964,7 +964,7 @@ ExBootstrapHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64
         if (length < textLength)
             return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, EC_NOT_ENOUGH_MEMORY);
 
-        status = KeUserBootstrapCopyOutBytes((HO_VIRTUAL_ADDRESS)userBuffer, text, textLength);
+        status = KeUserModeCopyOutBytes((HO_VIRTUAL_ADDRESS)userBuffer, text, textLength);
         if (status != EC_SUCCESS)
             return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, status);
 
@@ -986,7 +986,7 @@ ExBootstrapHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64
             if (length < sizeof(processList))
                 return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, EC_NOT_ENOUGH_MEMORY);
 
-            status = KeUserBootstrapCopyOutBytes((HO_VIRTUAL_ADDRESS)userBuffer, &processList, sizeof(processList));
+            status = KeUserModeCopyOutBytes((HO_VIRTUAL_ADDRESS)userBuffer, &processList, sizeof(processList));
             if (status != EC_SUCCESS)
                 return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, status);
 
@@ -1009,7 +1009,7 @@ ExBootstrapHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64
             if (length < textLength)
                 return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, EC_NOT_ENOUGH_MEMORY);
 
-            status = KeUserBootstrapCopyOutBytes((HO_VIRTUAL_ADDRESS)userBuffer, text, textLength);
+            status = KeUserModeCopyOutBytes((HO_VIRTUAL_ADDRESS)userBuffer, text, textLength);
             if (status != EC_SUCCESS)
                 return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, status);
 
@@ -1033,7 +1033,7 @@ ExBootstrapHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64
             if (length < sizeof(threadList))
                 return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, EC_NOT_ENOUGH_MEMORY);
 
-            status = KeUserBootstrapCopyOutBytes((HO_VIRTUAL_ADDRESS)userBuffer, &threadList, sizeof(threadList));
+            status = KeUserModeCopyOutBytes((HO_VIRTUAL_ADDRESS)userBuffer, &threadList, sizeof(threadList));
             if (status != EC_SUCCESS)
                 return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, status);
 
@@ -1056,7 +1056,7 @@ ExBootstrapHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64
             if (length < textLength)
                 return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, EC_NOT_ENOUGH_MEMORY);
 
-            status = KeUserBootstrapCopyOutBytes((HO_VIRTUAL_ADDRESS)userBuffer, text, textLength);
+            status = KeUserModeCopyOutBytes((HO_VIRTUAL_ADDRESS)userBuffer, text, textLength);
             if (status != EC_SUCCESS)
                 return KiRejectQuerySysinfo(infoClassRaw, userBuffer, length, status);
 

@@ -17,7 +17,7 @@ key ret
 wait_for HimuOS Virtual Memory Map
 wait_for High Half
 wait_for Imported Regions
-wait_for Low Half (bootstrap)
+wait_for Low Half (user image)
 wait_for hsh> 
 
 text & tick1s

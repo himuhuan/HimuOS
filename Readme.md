@@ -17,7 +17,7 @@
 
 - 虚拟内存管理：建立并启用四级页表，为内核和每个用户进程提供隔离的地址空间。
 - 特权级分离：实现内核态（Ring 0）和用户态（Ring 3）的安全隔离。
-- 用户程序模型：以**编译型 C 用户程序**作为正式用户程序形态，当前官方 demo-scope 程序固定为 `hsh`、`tick1s`、`calc`，并继续沿用嵌入内核的 bootstrap 路径。
+- 用户程序模型：以**编译型 C 用户程序**作为正式用户程序形态，当前官方 demo-scope 程序固定为 `hsh`、`tick1s`、`calc`，并通过嵌入内核的 Ex runtime 路径装载。
 - 系统调用与句柄：以 Ex-facing 的最小句柄化 syscall contract 作为用户态请求服务的正式方向，当前聚焦 stdout、wait、close、exit 等原型级能力。
 - 并发与调度：在单处理器（AP）上以抢占式调度支撑这条 demo-shell 切片；当前调度器已经具备优先级感知 ready queue 与 RR 时间片语义，因此后续主线不再把“先补优先级调度”当作前置阶段。
 - 可观测性：以 GOP 文本输出和 COM1 串口输出作为主要演示与诊断界面。
@@ -37,7 +37,7 @@
 | 存储器    | 四级页表；页式虚拟存储器                              |
 | 物理内存   | 最低 32MB, 最高 128GB                         |
 | 特权级    | 支持内核态（Ring 0) 和用户态 (Ring 3)               |
-| 用户空间   | 每进程私有地址空间；当前以固定 bootstrap window 装载用户映像   |
+| 用户空间   | 每进程私有地址空间；当前以固定 user image window 装载用户映像   |
 | 系统调用   | 目标方向为 `int 0x80` + Ex-facing 最小句柄化 syscall contract |
 | 并发与同步  | 仅支持 单AP；当前调度器为优先级感知的抢占式 RR / tickless 语义        |
 | 多线程    | 支持内核级线程调度                                 |
@@ -76,7 +76,7 @@ BUILD_FLAVOR=<flavor> HO_DEMO_TEST_NAME=<profile> HO_DEMO_TEST_DEFINE=<define> \
 | ------ | ------ | ------ | ------ | ------ |
 | `schedule` | `test-schedule` | `HO_DEMO_TEST_SCHEDULE` | clean pass with continued boot/idle | scheduler smoke coverage, thread/event/semaphore/mutex 基线路径 |
 | `user_hello` | `test-user_hello` | `HO_DEMO_TEST_USER_HELLO` | compiled minimal userspace bring-up | 由 `src/user/user_hello` 源码编译并接入 kernel 的最小 Ring 3 进入、来自 CPL3 的 P1 timer round-trip、P1 gate 之后的 rejected raw write probe / successful hello write / `SYS_RAW_EXIT`、P3 thread-terminated → finalizer teardown → idle/reaper reclaimed 证据链 |
-| `user_caps` | `test-user_caps` | `HO_DEMO_TEST_USER_CAPS` | bootstrap-only capability pilot | 版本化 capability seed block、stdout capability write、`SYS_CLOSE`、stale-handle rejection、`SYS_WAIT_ONE` 与 clean exit 证据链 |
+| `user_caps` | `test-user_caps` | `HO_DEMO_TEST_USER_CAPS` | bring-up capability pilot | 版本化 capability seed block、stdout capability write、`SYS_CLOSE`、stale-handle rejection、`SYS_WAIT_ONE` 与 clean exit 证据链 |
 | `guard_wait` | `test-guard_wait` | `HO_DEMO_TEST_GUARD_WAIT` | diagnosable contract violation or panic | critical-section guard misuse |
 | `owned_exit` | `test-owned_exit` | `HO_DEMO_TEST_OWNED_EXIT` | diagnosable contract violation or panic | exit while owning a mutex |
 | `irql_wait` | `test-irql_wait` | `HO_DEMO_TEST_IRQL_WAIT` | diagnosable contract violation or panic | wait at `DISPATCH_LEVEL` |
@@ -107,7 +107,7 @@ bear -- make all BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DE
 BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO \
     bash scripts/qemu_capture.sh 30 /tmp/himuos-user-hello.log
 
-# bootstrap capability pilot
+# bring-up capability pilot
 make clean
 bear -- make all BUILD_FLAVOR=test-user_caps HO_DEMO_TEST_NAME=user_caps HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_CAPS
 BUILD_FLAVOR=test-user_caps HO_DEMO_TEST_NAME=user_caps HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_CAPS \

@@ -1,6 +1,6 @@
 #include "init_internal.h"
 
-#include <kernel/ex/ex_bootstrap.h>
+#include <kernel/ex/ex_runtime.h>
 #include <kernel/ke/input.h>
 #include <kernel/ke/sysinfo.h>
 
@@ -663,10 +663,10 @@ InitKernel(MAYBE_UNUSED STAGING_BLOCK *block)
         HO_KPANIC(initStatus, "Scheduler observability self-test failed");
     }
 
-    initStatus = ExBootstrapInit();
+    initStatus = ExRuntimeInit();
     if (initStatus != EC_SUCCESS)
     {
-        HO_KPANIC(initStatus, "Failed to initialize Ex bootstrap runtime");
+        HO_KPANIC(initStatus, "Failed to initialize Ex runtime");
     }
 
     initStatus = KeInputInit();

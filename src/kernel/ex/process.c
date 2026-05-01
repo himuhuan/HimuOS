@@ -2,34 +2,34 @@
  * HimuOperatingSystem
  *
  * File: ex/process.c
- * Description: Ex bootstrap process object lifecycle and staging ownership.
+ * Description: Ex runtime process object lifecycle and staging ownership.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
-#include <kernel/ex/ex_bootstrap.h>
+#include <kernel/ex/ex_runtime.h>
 
-#include "ex_bootstrap_internal.h"
+#include "runtime_internal.h"
 
 #include <kernel/ke/critical_section.h>
 #include <kernel/ke/mm.h>
-#include <kernel/ke/user_bootstrap.h>
+#include <kernel/ke/user_mode.h>
 #include <kernel/hodbg.h>
 #include <libc/string.h>
 
-static uint32_t gNextBootstrapProcessId = 1;
+static uint32_t gNextRuntimeProcessId = 1;
 
-static uint32_t KiAllocateBootstrapProcessId(void);
+static uint32_t KiAllocateRuntimeProcessId(void);
 static HO_STATUS KiDestroyProcessObject(EX_OBJECT_HEADER *objectHeader);
 
 static uint32_t
-KiAllocateBootstrapProcessId(void)
+KiAllocateRuntimeProcessId(void)
 {
     KE_CRITICAL_SECTION guard = {0};
     uint32_t processId = 0;
 
     KeEnterCriticalSection(&guard);
-    HO_KASSERT(gNextBootstrapProcessId != 0, EC_OUT_OF_RESOURCE);
-    processId = gNextBootstrapProcessId++;
+    HO_KASSERT(gNextRuntimeProcessId != 0, EC_OUT_OF_RESOURCE);
+    processId = gNextRuntimeProcessId++;
     KeLeaveCriticalSection(&guard);
 
     return processId;
@@ -56,7 +56,7 @@ KiRestoreImportedRootForProcessTeardown(const EX_PROCESS *process)
 }
 
 void
-ExBootstrapInitializeProcessObject(EX_PROCESS *process)
+ExRuntimeInitializeProcessObject(EX_PROCESS *process)
 {
     if (process == NULL)
         return;
@@ -80,12 +80,12 @@ ExBootstrapInitializeProcessObject(EX_PROCESS *process)
     process->RestoreForegroundOwnerThreadId = 0;
     process->ProgramId = 0;
     KeInitializeEvent(&process->CompletionEvent, FALSE);
-    ExBootstrapInitializeStdoutServiceObject(process);
+    ExRuntimeInitializeStdoutServiceObject(process);
     ExHandleInitializeTable(&process->HandleTable);
 }
 
 HO_STATUS
-ExBootstrapTeardownProcessPayload(EX_PROCESS *process)
+ExRuntimeTeardownProcessPayload(EX_PROCESS *process)
 {
     HO_STATUS status = KiRestoreImportedRootForProcessTeardown(process);
 
@@ -94,7 +94,7 @@ ExBootstrapTeardownProcessPayload(EX_PROCESS *process)
 
     if (process->Staging != NULL)
     {
-        HO_STATUS stagingStatus = KeUserBootstrapDestroyStaging(process->Staging);
+        HO_STATUS stagingStatus = KeUserModeDestroyStaging(process->Staging);
 
         /* Destroy consumes the staging object even when teardown reports an error. */
         process->Staging = NULL;
@@ -114,7 +114,7 @@ ExBootstrapTeardownProcessPayload(EX_PROCESS *process)
 }
 
 EX_PROCESS *
-ExBootstrapRetainProcess(EX_PROCESS *process)
+ExRuntimeRetainProcess(EX_PROCESS *process)
 {
     if (process == NULL)
         return NULL;
@@ -126,7 +126,7 @@ ExBootstrapRetainProcess(EX_PROCESS *process)
 }
 
 HO_STATUS
-ExBootstrapReleaseProcess(EX_PROCESS *process)
+ExRuntimeReleaseProcess(EX_PROCESS *process)
 {
     uint32_t remainingReferences = 0;
 
@@ -146,7 +146,7 @@ KiDestroyProcessObject(EX_OBJECT_HEADER *objectHeader)
 
     process = CONTAINING_RECORD(objectHeader, EX_PROCESS, Header);
 
-    HO_STATUS status = ExBootstrapReleaseStdoutServiceOwner(process);
+    HO_STATUS status = ExRuntimeReleaseStdoutServiceOwner(process);
     if (status != EC_SUCCESS)
         return status;
 
@@ -155,11 +155,11 @@ KiDestroyProcessObject(EX_OBJECT_HEADER *objectHeader)
 }
 
 HO_STATUS
-ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PROCESS **outProcess)
+ExRuntimeCreateProcess(const EX_RUNTIME_PROCESS_CREATE_PARAMS *params, EX_PROCESS **outProcess)
 {
-    KE_USER_BOOTSTRAP_STAGING *staging = NULL;
+    KE_USER_MODE_STAGING *staging = NULL;
     EX_PROCESS *process = NULL;
-    KE_USER_BOOTSTRAP_CREATE_PARAMS keParams = {0};
+    KE_USER_MODE_CREATE_PARAMS keParams = {0};
     uint8_t *initialConstBytes = NULL;
     uint64_t initialConstLength = 0;
     const EX_HANDLE_RIGHTS processSelfRights =
@@ -183,26 +183,26 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
     if (process == NULL)
         return EC_OUT_OF_RESOURCE;
 
-    ExBootstrapInitializeProcessObject(process);
-    process->ProcessId = KiAllocateBootstrapProcessId();
+    ExRuntimeInitializeProcessObject(process);
+    process->ProcessId = KiAllocateRuntimeProcessId();
     process->ParentProcessId = params->ParentProcessId;
     process->ProgramId = params->ProgramId;
 
     HO_STATUS status = KeCreateProcessAddressSpace(&process->AddressSpace);
     if (status != EC_SUCCESS)
     {
-        HO_STATUS releaseStatus = ExBootstrapReleaseProcess(process);
+        HO_STATUS releaseStatus = ExRuntimeReleaseProcess(process);
         if (releaseStatus != EC_SUCCESS)
             return releaseStatus;
 
         return status;
     }
 
-    status = ExBootstrapBuildInitialConstBytes(params, &initialConstBytes, &initialConstLength);
+    status = ExRuntimeBuildInitialConstBytes(params, &initialConstBytes, &initialConstLength);
     if (status != EC_SUCCESS)
     {
         HO_STATUS destroyStatus = KeDestroyProcessAddressSpace(&process->AddressSpace);
-        HO_STATUS releaseStatus = ExBootstrapReleaseProcess(process);
+        HO_STATUS releaseStatus = ExRuntimeReleaseProcess(process);
 
         if (destroyStatus != EC_SUCCESS)
             return destroyStatus;
@@ -213,7 +213,7 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
     keParams.ConstBytes = initialConstBytes;
     keParams.ConstLength = initialConstLength;
 
-    status = KeUserBootstrapCreateStaging(&keParams, &process->AddressSpace, &staging);
+    status = KeUserModeCreateStaging(&keParams, &process->AddressSpace, &staging);
     if (initialConstBytes != NULL)
     {
         kfree(initialConstBytes);
@@ -223,7 +223,7 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
     if (status != EC_SUCCESS)
     {
         HO_STATUS destroyStatus = KeDestroyProcessAddressSpace(&process->AddressSpace);
-        HO_STATUS releaseStatus = ExBootstrapReleaseProcess(process);
+        HO_STATUS releaseStatus = ExRuntimeReleaseProcess(process);
 
         if (destroyStatus != EC_SUCCESS)
             return destroyStatus;
@@ -235,9 +235,9 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
     status = ExHandleInsert(process, &process->Header, processSelfRights, &process->SelfHandle);
     if (status != EC_SUCCESS)
     {
-        HO_STATUS teardownStatus = ExBootstrapTeardownProcessPayload(process);
+        HO_STATUS teardownStatus = ExRuntimeTeardownProcessPayload(process);
         HO_STATUS closeStatus = ExHandleCloseAll(process);
-        HO_STATUS releaseStatus = ExBootstrapReleaseProcess(process);
+        HO_STATUS releaseStatus = ExRuntimeReleaseProcess(process);
 
         if (teardownStatus != EC_SUCCESS)
             return teardownStatus;
@@ -251,9 +251,9 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
     status = ExHandleInsert(process, &process->StdoutService.Header, stdoutRights, &process->StdoutHandle);
     if (status != EC_SUCCESS)
     {
-        HO_STATUS teardownStatus = ExBootstrapTeardownProcessPayload(process);
+        HO_STATUS teardownStatus = ExRuntimeTeardownProcessPayload(process);
         HO_STATUS closeStatus = ExHandleCloseAll(process);
-        HO_STATUS releaseStatus = ExBootstrapReleaseProcess(process);
+        HO_STATUS releaseStatus = ExRuntimeReleaseProcess(process);
 
         if (teardownStatus != EC_SUCCESS)
             return teardownStatus;
@@ -267,9 +267,9 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
     status = ExHandleInsert(process, &process->Header, waitRights, &process->WaitHandle);
     if (status != EC_SUCCESS)
     {
-        HO_STATUS teardownStatus = ExBootstrapTeardownProcessPayload(process);
+        HO_STATUS teardownStatus = ExRuntimeTeardownProcessPayload(process);
         HO_STATUS closeStatus = ExHandleCloseAll(process);
-        HO_STATUS releaseStatus = ExBootstrapReleaseProcess(process);
+        HO_STATUS releaseStatus = ExRuntimeReleaseProcess(process);
 
         if (teardownStatus != EC_SUCCESS)
             return teardownStatus;
@@ -285,7 +285,7 @@ ExBootstrapCreateProcess(const EX_BOOTSTRAP_PROCESS_CREATE_PARAMS *params, EX_PR
 }
 
 HO_STATUS
-ExBootstrapDestroyProcess(EX_PROCESS *process)
+ExRuntimeDestroyProcess(EX_PROCESS *process)
 {
     if (process == NULL)
         return EC_ILLEGAL_ARGUMENT;
@@ -293,13 +293,13 @@ ExBootstrapDestroyProcess(EX_PROCESS *process)
     if (ExRuntimeIsProcessPublished(process))
         return EC_INVALID_STATE;
 
-    HO_STATUS status = ExBootstrapTeardownProcessPayload(process);
+    HO_STATUS status = ExRuntimeTeardownProcessPayload(process);
 
     HO_STATUS closeStatus = ExHandleCloseAll(process);
     if (status == EC_SUCCESS)
         status = closeStatus;
 
-    HO_STATUS releaseStatus = ExBootstrapReleaseProcess(process);
+    HO_STATUS releaseStatus = ExRuntimeReleaseProcess(process);
     if (status == EC_SUCCESS)
         status = releaseStatus;
 
@@ -307,7 +307,7 @@ ExBootstrapDestroyProcess(EX_PROCESS *process)
 }
 
 HO_STATUS
-ExBootstrapQueryProcessId(const EX_PROCESS *process, uint32_t *outProcessId)
+ExRuntimeQueryProcessId(const EX_PROCESS *process, uint32_t *outProcessId)
 {
     if (process == NULL || outProcessId == NULL)
         return EC_ILLEGAL_ARGUMENT;

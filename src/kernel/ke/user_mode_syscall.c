@@ -1,8 +1,8 @@
 /**
  * HimuOperatingSystem
  *
- * File: ke/user_bootstrap_syscall.c
- * Description: Minimal bootstrap syscall trap, raw dispatcher, and user-copy helpers.
+ * File: ke/user_mode_syscall.c
+ * Description: Minimal user syscall trap, raw dispatcher, and user-copy helpers.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
@@ -15,23 +15,23 @@
 #include <kernel/ke/console.h>
 #include <kernel/ke/mm.h>
 #include <kernel/ke/scheduler.h>
-#include <kernel/ke/user_bootstrap.h>
+#include <kernel/ke/user_mode.h>
 #include <libc/string.h>
 
-static BOOL gKeUserBootstrapRawSyscallInitialized;
+static BOOL gKeUserModeRawSyscallInitialized;
 
-static HO_STATUS KiValidateBootstrapUserRange(const KE_USER_BOOTSTRAP_LAYOUT *layout,
+static HO_STATUS KiValidateUserModeRange(const KE_USER_MODE_LAYOUT *layout,
                                               HO_VIRTUAL_ADDRESS userBase,
                                               uint64_t length,
                                               HO_VIRTUAL_ADDRESS *outEndExclusive);
-static HO_STATUS KiValidateBootstrapUserPages(const KE_KERNEL_ADDRESS_SPACE *space,
+static HO_STATUS KiValidateUserModePages(const KE_KERNEL_ADDRESS_SPACE *space,
                                               HO_VIRTUAL_ADDRESS userBase,
                                               HO_VIRTUAL_ADDRESS endExclusive,
                                               BOOL requireWritable);
 static void KiHandleRawSyscallTrap(void *frame, void *context);
 
 static HO_STATUS
-KiValidateBootstrapUserRange(const KE_USER_BOOTSTRAP_LAYOUT *layout,
+KiValidateUserModeRange(const KE_USER_MODE_LAYOUT *layout,
                              HO_VIRTUAL_ADDRESS userBase,
                              uint64_t length,
                              HO_VIRTUAL_ADDRESS *outEndExclusive)
@@ -66,7 +66,7 @@ KiValidateBootstrapUserRange(const KE_USER_BOOTSTRAP_LAYOUT *layout,
 }
 
 static HO_STATUS
-KiValidateBootstrapUserPages(const KE_KERNEL_ADDRESS_SPACE *space,
+KiValidateUserModePages(const KE_KERNEL_ADDRESS_SPACE *space,
                              HO_VIRTUAL_ADDRESS userBase,
                              HO_VIRTUAL_ADDRESS endExclusive,
                              BOOL requireWritable)
@@ -124,7 +124,7 @@ KiValidateBootstrapUserPages(const KE_KERNEL_ADDRESS_SPACE *space,
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
-KeUserBootstrapCopyInBytes(void *kernelDestination, HO_VIRTUAL_ADDRESS userSource, uint64_t length)
+KeUserModeCopyInBytes(void *kernelDestination, HO_VIRTUAL_ADDRESS userSource, uint64_t length)
 {
     if (!kernelDestination)
         return EC_ILLEGAL_ARGUMENT;
@@ -132,13 +132,13 @@ KeUserBootstrapCopyInBytes(void *kernelDestination, HO_VIRTUAL_ADDRESS userSourc
     if (length == 0)
         return EC_SUCCESS;
 
-    KE_USER_BOOTSTRAP_LAYOUT layout = {0};
-    HO_STATUS status = KeUserBootstrapQueryCurrentThreadLayout(&layout);
+    KE_USER_MODE_LAYOUT layout = {0};
+    HO_STATUS status = KeUserModeQueryCurrentThreadLayout(&layout);
     if (status != EC_SUCCESS)
         return status;
 
     HO_VIRTUAL_ADDRESS endExclusive = 0;
-    status = KiValidateBootstrapUserRange(&layout, userSource, length, &endExclusive);
+    status = KiValidateUserModeRange(&layout, userSource, length, &endExclusive);
     if (status != EC_SUCCESS)
     {
         klog(KLOG_LEVEL_WARNING,
@@ -170,7 +170,7 @@ KeUserBootstrapCopyInBytes(void *kernelDestination, HO_VIRTUAL_ADDRESS userSourc
     ownerView.RootPageTablePhys = layout.OwnerRootPageTablePhys;
     ownerView.Initialized = TRUE;
 
-    status = KiValidateBootstrapUserPages(&ownerView, userSource, endExclusive, FALSE);
+    status = KiValidateUserModePages(&ownerView, userSource, endExclusive, FALSE);
     if (status != EC_SUCCESS)
         return status;
 
@@ -179,7 +179,7 @@ KeUserBootstrapCopyInBytes(void *kernelDestination, HO_VIRTUAL_ADDRESS userSourc
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
-KeUserBootstrapCopyOutBytes(HO_VIRTUAL_ADDRESS userDestination, const void *kernelSource, uint64_t length)
+KeUserModeCopyOutBytes(HO_VIRTUAL_ADDRESS userDestination, const void *kernelSource, uint64_t length)
 {
     if (kernelSource == NULL && length != 0)
         return EC_ILLEGAL_ARGUMENT;
@@ -187,13 +187,13 @@ KeUserBootstrapCopyOutBytes(HO_VIRTUAL_ADDRESS userDestination, const void *kern
     if (length == 0)
         return EC_SUCCESS;
 
-    KE_USER_BOOTSTRAP_LAYOUT layout = {0};
-    HO_STATUS status = KeUserBootstrapQueryCurrentThreadLayout(&layout);
+    KE_USER_MODE_LAYOUT layout = {0};
+    HO_STATUS status = KeUserModeQueryCurrentThreadLayout(&layout);
     if (status != EC_SUCCESS)
         return status;
 
     HO_VIRTUAL_ADDRESS endExclusive = 0;
-    status = KiValidateBootstrapUserRange(&layout, userDestination, length, &endExclusive);
+    status = KiValidateUserModeRange(&layout, userDestination, length, &endExclusive);
     if (status != EC_SUCCESS)
     {
         klog(KLOG_LEVEL_WARNING,
@@ -218,7 +218,7 @@ KeUserBootstrapCopyOutBytes(HO_VIRTUAL_ADDRESS userDestination, const void *kern
         .Initialized = TRUE,
     };
 
-    status = KiValidateBootstrapUserPages(&ownerView, userDestination, endExclusive, TRUE);
+    status = KiValidateUserModePages(&ownerView, userDestination, endExclusive, TRUE);
     if (status != EC_SUCCESS)
         return status;
 
@@ -227,7 +227,7 @@ KeUserBootstrapCopyOutBytes(HO_VIRTUAL_ADDRESS userDestination, const void *kern
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
-KeUserBootstrapWriteConsoleBytes(const char *bytes, uint64_t length, uint64_t *outWritten)
+KeUserModeWriteConsoleBytes(const char *bytes, uint64_t length, uint64_t *outWritten)
 {
     if (outWritten == NULL)
         return EC_ILLEGAL_ARGUMENT;
@@ -277,9 +277,9 @@ KiHandleRawSyscallTrap(void *frame, MAYBE_UNUSED void *context)
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
-KeUserBootstrapRawSyscallInit(void)
+KeUserModeRawSyscallInit(void)
 {
-    if (gKeUserBootstrapRawSyscallInitialized)
+    if (gKeUserModeRawSyscallInitialized)
         return EC_SUCCESS;
 
     HO_STATUS status = IdtRegisterInterruptHandler(EX_USER_SYSCALL_VECTOR, KiHandleRawSyscallTrap, NULL);
@@ -293,7 +293,7 @@ KeUserBootstrapRawSyscallInit(void)
         return status;
     }
 
-    gKeUserBootstrapRawSyscallInitialized = TRUE;
+    gKeUserModeRawSyscallInitialized = TRUE;
     klog(KLOG_LEVEL_INFO, "[USERBOOT] raw syscall trap ready vector=%u\n", EX_USER_SYSCALL_VECTOR);
     return EC_SUCCESS;
 }

@@ -2,23 +2,23 @@
  * HimuOperatingSystem
  *
  * File: ex/thread.c
- * Description: Ex bootstrap thread object lifecycle and KTHREAD binding.
+ * Description: Ex runtime thread object lifecycle and KTHREAD binding.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
-#include <kernel/ex/ex_bootstrap.h>
+#include <kernel/ex/ex_runtime.h>
 
-#include "ex_bootstrap_internal.h"
+#include "runtime_internal.h"
 
 #include <kernel/ke/kthread.h>
 #include <kernel/ke/scheduler.h>
-#include <kernel/ke/user_bootstrap.h>
+#include <kernel/ke/user_mode.h>
 
 static HO_STATUS KiDestroyThreadObject(EX_OBJECT_HEADER *objectHeader);
-static HO_STATUS ExBootstrapDestroyNewKernelThread(KTHREAD *thread);
+static HO_STATUS ExRuntimeDestroyNewKernelThread(KTHREAD *thread);
 
 void
-ExBootstrapInitializeThreadObject(EX_THREAD *thread)
+ExRuntimeInitializeThreadObject(EX_THREAD *thread)
 {
     if (thread == NULL)
         return;
@@ -33,7 +33,7 @@ ExBootstrapInitializeThreadObject(EX_THREAD *thread)
 }
 
 HO_STATUS
-ExBootstrapReleaseThread(EX_THREAD *thread)
+ExRuntimeReleaseThread(EX_THREAD *thread)
 {
     uint32_t remainingReferences = 0;
 
@@ -59,13 +59,13 @@ KiDestroyThreadObject(EX_OBJECT_HEADER *objectHeader)
     kfree(thread);
 
     if (process != NULL)
-        return ExBootstrapReleaseProcess(process);
+        return ExRuntimeReleaseProcess(process);
 
     return EC_SUCCESS;
 }
 
 static HO_STATUS
-ExBootstrapDestroyNewKernelThread(KTHREAD *thread)
+ExRuntimeDestroyNewKernelThread(KTHREAD *thread)
 {
     if (thread == NULL)
         return EC_ILLEGAL_ARGUMENT;
@@ -85,8 +85,8 @@ ExBootstrapDestroyNewKernelThread(KTHREAD *thread)
 }
 
 HO_STATUS
-ExBootstrapCreateThread(EX_PROCESS **processHandle,
-                        const EX_BOOTSTRAP_THREAD_CREATE_PARAMS *params,
+ExRuntimeCreateThread(EX_PROCESS **processHandle,
+                        const EX_RUNTIME_THREAD_CREATE_PARAMS *params,
                         EX_THREAD **outThread)
 {
     EX_PROCESS *process = NULL;
@@ -104,32 +104,32 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
     if (process == NULL || params == NULL || params->EntryPoint == NULL || process->Staging == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    if ((params->Flags & ~EX_BOOTSTRAP_THREAD_CREATE_FLAG_JOINABLE) != 0)
+    if ((params->Flags & ~EX_RUNTIME_THREAD_CREATE_FLAG_JOINABLE) != 0)
         return EC_ILLEGAL_ARGUMENT;
 
     thread = (EX_THREAD *)kzalloc(sizeof(*thread));
     if (thread == NULL)
         return EC_OUT_OF_RESOURCE;
 
-    ExBootstrapInitializeThreadObject(thread);
+    ExRuntimeInitializeThreadObject(thread);
 
-    HO_STATUS status = (params->Flags & EX_BOOTSTRAP_THREAD_CREATE_FLAG_JOINABLE) != 0
+    HO_STATUS status = (params->Flags & EX_RUNTIME_THREAD_CREATE_FLAG_JOINABLE) != 0
                            ? KeThreadCreateJoinable(&kernelThread, (KTHREAD_ENTRY)params->EntryPoint, params->EntryArg)
                            : KeThreadCreate(&kernelThread, (KTHREAD_ENTRY)params->EntryPoint, params->EntryArg);
     if (status != EC_SUCCESS)
     {
-        HO_STATUS releaseStatus = ExBootstrapReleaseThread(thread);
+        HO_STATUS releaseStatus = ExRuntimeReleaseThread(thread);
         if (releaseStatus != EC_SUCCESS)
             return releaseStatus;
 
         return status;
     }
 
-    status = KeUserBootstrapAttachThread(kernelThread, process->Staging);
+    status = KeUserModeAttachThread(kernelThread, process->Staging);
     if (status != EC_SUCCESS)
     {
-        HO_STATUS destroyStatus = ExBootstrapDestroyNewKernelThread(kernelThread);
-        HO_STATUS releaseStatus = ExBootstrapReleaseThread(thread);
+        HO_STATUS destroyStatus = ExRuntimeDestroyNewKernelThread(kernelThread);
+        HO_STATUS releaseStatus = ExRuntimeReleaseThread(thread);
 
         if (destroyStatus != EC_SUCCESS)
             return destroyStatus;
@@ -145,7 +145,7 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
     if (status != EC_SUCCESS)
         goto FailThreadRuntimeSetup;
 
-    status = ExBootstrapPatchCapabilitySeed(process, thread);
+    status = ExRuntimePatchCapabilitySeed(process, thread);
     if (status != EC_SUCCESS)
         goto FailThreadRuntimeSetup;
 
@@ -160,14 +160,14 @@ ExBootstrapCreateThread(EX_PROCESS **processHandle,
     return EC_SUCCESS;
 
 FailThreadRuntimeSetup: {
-    HO_STATUS detachStatus = KeUserBootstrapDetachThread(kernelThread, process->Staging);
-    HO_STATUS destroyStatus = ExBootstrapDestroyNewKernelThread(kernelThread);
+    HO_STATUS detachStatus = KeUserModeDetachThread(kernelThread, process->Staging);
+    HO_STATUS destroyStatus = ExRuntimeDestroyNewKernelThread(kernelThread);
     HO_STATUS closeStatus = ExHandleClose(process, &thread->SelfHandle);
 
     thread->Thread = NULL;
     thread->Process = NULL;
 
-    HO_STATUS releaseStatus = ExBootstrapReleaseThread(thread);
+    HO_STATUS releaseStatus = ExRuntimeReleaseThread(thread);
 
     if (detachStatus != EC_SUCCESS)
         return detachStatus;
@@ -183,7 +183,7 @@ FailThreadRuntimeSetup: {
 }
 
 HO_STATUS
-ExBootstrapStartThread(EX_THREAD **threadHandle)
+ExRuntimeStartThread(EX_THREAD **threadHandle)
 {
     EX_THREAD *thread = NULL;
 
@@ -207,7 +207,7 @@ ExBootstrapStartThread(EX_THREAD **threadHandle)
 }
 
 HO_STATUS
-ExBootstrapQueryThreadId(const EX_THREAD *thread, uint32_t *outThreadId)
+ExRuntimeQueryThreadId(const EX_THREAD *thread, uint32_t *outThreadId)
 {
     if (thread == NULL || outThreadId == NULL)
         return EC_ILLEGAL_ARGUMENT;
@@ -220,7 +220,7 @@ ExBootstrapQueryThreadId(const EX_THREAD *thread, uint32_t *outThreadId)
 }
 
 HO_STATUS
-ExBootstrapBorrowKernelThread(EX_THREAD *thread, KTHREAD **outThread)
+ExRuntimeBorrowKernelThread(EX_THREAD *thread, KTHREAD **outThread)
 {
     if (thread == NULL || outThread == NULL)
         return EC_ILLEGAL_ARGUMENT;
@@ -233,7 +233,7 @@ ExBootstrapBorrowKernelThread(EX_THREAD *thread, KTHREAD **outThread)
 }
 
 HO_STATUS
-ExBootstrapTeardownThread(EX_THREAD *thread)
+ExRuntimeTeardownThread(EX_THREAD *thread)
 {
     EX_PROCESS *process = NULL;
 
@@ -248,14 +248,14 @@ ExBootstrapTeardownThread(EX_THREAD *thread)
 
     process = ExRuntimeLookupProcessByKernelThread(thread->Thread);
 
-    HO_STATUS firstError = ExBootstrapTeardownProcessPayload(process);
+    HO_STATUS firstError = ExRuntimeTeardownProcessPayload(process);
 
     if (process != NULL)
         process->State = EX_PROCESS_STATE_TERMINATED;
 
     ExRuntimeUnpublishByKernelThread(thread->Thread, NULL, NULL);
 
-    HO_STATUS threadStatus = ExBootstrapDestroyNewKernelThread(thread->Thread);
+    HO_STATUS threadStatus = ExRuntimeDestroyNewKernelThread(thread->Thread);
     if (firstError == EC_SUCCESS)
         firstError = threadStatus;
 
@@ -263,7 +263,7 @@ ExBootstrapTeardownThread(EX_THREAD *thread)
     if (firstError == EC_SUCCESS)
         firstError = closeStatus;
 
-    HO_STATUS releaseStatus = ExBootstrapReleaseThread(thread);
+    HO_STATUS releaseStatus = ExRuntimeReleaseThread(thread);
     if (firstError == EC_SUCCESS)
         firstError = releaseStatus;
 

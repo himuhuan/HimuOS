@@ -4,9 +4,28 @@ This index covers runtime and public-ABI debt only. True early boot under
 `src/boot/v2` is not debt for this plan. Existing regression log anchors stay
 fixed until an explicit replacement contract retires them.
 
-| Debt | Current surface | Owner phase | Deletion condition |
-| --- | --- | --- | --- |
-| Remaining bootstrap-named runtime headers and helpers | Active runtime headers still include `src/include/kernel/ex/ex_bootstrap.h`, `src/include/kernel/ex/ex_bootstrap_adapter.h`, `src/include/kernel/ex/ex_process.h`, `src/include/kernel/ex/ex_thread.h`, `src/include/kernel/ex/program.h` (`ExProgramBuildBootstrapCreateParams()`), and `src/include/kernel/ke/user_bootstrap.h`. In active runtime source, `src/kernel/ex/user_runtime_bridge.c` still defines the transitional `ExBootstrapAdapter*()` helper family; `src/kernel/ex/syscall.c` still carries the Bootstrap-named exit/dispatch path via `KiAbortBootstrapExit()`, `KiPrepareBootstrapExit()`, `KiPrepareBootstrapKillExit()`, and `ExBootstrapAdapterDispatchSyscall()`; `src/kernel/ex/process.c` still exports `ExBootstrapInitializeProcessObject()`, `ExBootstrapTeardownProcessPayload()`, and `ExBootstrapReleaseProcess()`; `src/kernel/ex/thread.c` still exports `ExBootstrapInitializeThreadObject()` and `ExBootstrapBorrowKernelThread()`; `src/kernel/ex/object.c` still exports `ExBootstrapInitializeStdoutServiceObject()` and `ExBootstrapReleaseStdoutServiceOwner()`; `src/kernel/ex/runtime_table.c` still exports the compatibility `ExBootstrapQueryCurrentProcessId()` wrapper; and `src/kernel/ex/handle.c` still depends on `ExBootstrapReleaseProcess()` and `ExBootstrapReleaseThread()`. | Phase I | Searching active runtime headers and source for `Bootstrap` finds only true early-boot code or historical docs; compatibility wrappers and bootstrap-named helper families are deleted rather than kept. |
+No active runtime debt remains in this index. Searching active source and
+headers for `Bootstrap` should now find only true early-machine boot state,
+early allocator/MM comments, or historical documentation.
+
+## Retired During Phase I
+
+- `src/include/kernel/ex/ex_bootstrap.h` became
+  `src/include/kernel/ex/ex_runtime.h`, and `src/kernel/ex/ex_bootstrap.c`
+  became `src/kernel/ex/runtime.c`.
+- `src/include/kernel/ex/ex_bootstrap_adapter.h` became
+  `src/include/kernel/ex/ex_user_runtime.h`; the empty
+  `src/kernel/ex/ex_bootstrap_adapter.c` compatibility unit was deleted.
+- `src/include/kernel/ke/user_bootstrap.h`,
+  `src/kernel/ke/user_bootstrap.c`, `src/kernel/ke/user_bootstrap_syscall.c`,
+  and `src/arch/amd64/user_bootstrap.asm` moved to `user_mode` names.
+- Ex process/thread/object/runtime helpers were renamed from Bootstrap helper
+  families to runtime/user-runtime helper families.
+- `ExProgramBuildBootstrapCreateParams()` was replaced by
+  `ExProgramBuildRuntimeCreateParams()`.
+- The compatibility `ExBootstrapQueryCurrentProcessId()` wrapper was deleted.
+- Runtime comments, shell plans, and regression docs no longer recommend
+  Bootstrap-named runtime paths.
 
 ## Retired During Phase G
 
@@ -64,8 +83,7 @@ fixed until an explicit replacement contract retires them.
 - Scheduler dispatch, timer observation, and IDT user-fault handoff now call
   `KeRegisterUserRuntimeHooks()` / `KiGetUserRuntime*Hook()` names.
 - The Ex hook implementation moved from `src/kernel/ex/bootstrap_compat.c` to
-  `src/kernel/ex/user_runtime_bridge.c`; the remaining `ExBootstrapAdapter*()`
-  helper names are tracked as Phase I debt, not as the Ke hook contract.
+  `src/kernel/ex/user_runtime_bridge.c`.
 
 ## Retired During Phase B
 

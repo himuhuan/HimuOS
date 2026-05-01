@@ -1,7 +1,7 @@
 # HimuOS Architecture Overview
 
 This document records the current cleanup baseline: what is true in-tree now
-while later phases continue removing Bootstrap-era runtime names.
+after the runtime Bootstrap compatibility names were retired.
 
 ## Boot And Handoff
 
@@ -37,15 +37,12 @@ Ex owns the current user-runtime policy surface:
 - syscall dispatch in `src/kernel/ex/syscall.c`
 - the current spawn/wait/kill/foreground control plane in
   `src/kernel/ex/process_control.c`
-- `src/kernel/ex/ex_bootstrap.c` is the init facade, while
-  `src/kernel/ex/ex_bootstrap_adapter.c` is only a compatibility translation
-  unit
+- `src/kernel/ex/runtime.c` is the Ex runtime init facade
 - user-fault handoff and Ke bridge glue in `src/kernel/ex/user_runtime_bridge.c`
 
-The split is real, but not clean yet. Ke still exposes low-level
-user-bootstrap helpers, while Ex still carries bootstrap-named launch and
-adapter surfaces. The explicit debt list is
-`docs/architecture/bootstrap-debt-index.md`.
+The split is now reflected in active runtime names: Ke owns low-level
+user-mode mechanisms, while Ex owns runtime policy and launch surfaces.
+Historical cleanup context remains in `docs/architecture/bootstrap-debt-index.md`.
 
 ## Current User-Runtime Shape
 
@@ -105,8 +102,9 @@ The cleanup baseline is healthy when:
 - this architecture map matches the checked-in implementation
 - `new_era_next.md` remains the cleanup roadmap source
 - `docs/architecture/ke-ex-boundary.md` records the current Ke/Ex split
-- `docs/architecture/bootstrap-debt-index.md` lists every remaining
-  Bootstrap-era runtime concept with an owner phase and deletion condition
+- `docs/architecture/bootstrap-debt-index.md` records retired Bootstrap-era
+  runtime concepts and confirms that remaining Bootstrap names are true
+  early-boot state or historical notes
 - `docs/apis/ExUserSysinfoABI.md` separates stable structured sysinfo classes
   from text presentation helpers
 - `docs/regression-profiles.md` records the contract/sentinel split and capture

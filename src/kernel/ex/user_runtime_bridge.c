@@ -6,15 +6,15 @@
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
-#include "ex_bootstrap_internal.h"
+#include "runtime_internal.h"
 
-#include <kernel/ex/ex_bootstrap_adapter.h>
+#include <kernel/ex/ex_user_runtime.h>
 #include <kernel/ex/user_regression_anchors.h>
 #include <kernel/ke/user_runtime_hooks.h>
 #include <kernel/ke/kthread.h>
 #include <kernel/ke/mm.h>
 #include <kernel/ke/scheduler.h>
-#include <kernel/ke/user_bootstrap.h>
+#include <kernel/ke/user_mode.h>
 #include <kernel/hodbg.h>
 
 static HO_STATUS KiDestroyUserRuntimeWrapperObjects(KTHREAD *thread);
@@ -32,7 +32,7 @@ static HO_NORETURN void
 ExUserRuntimeEnterHook(KTHREAD *thread)
 {
     EX_PROCESS *process = NULL;
-    HO_STATUS status = ExBootstrapAdapterWrapThread(thread);
+    HO_STATUS status = ExUserRuntimeWrapThread(thread);
     if (status != EC_SUCCESS)
     {
         HO_KPANIC(status, "Failed to wrap user-runtime thread in Ex adapter");
@@ -61,13 +61,13 @@ ExUserRuntimeEnterHook(KTHREAD *thread)
         HO_KPANIC(EC_INVALID_STATE, "User-runtime enter: dispatch root not installed");
     }
 
-    KeUserBootstrapEnterCurrentThread();
+    KeUserModeEnterCurrentThread();
 }
 
 static BOOL
 ExUserRuntimeOwnsThreadHook(const KTHREAD *thread)
 {
-    return ExBootstrapAdapterHasWrapper(thread);
+    return ExUserRuntimeHasWrapper(thread);
 }
 
 static HO_STATUS
@@ -101,14 +101,14 @@ ExUserRuntimeResolveRootHook(const KTHREAD *thread, HO_PHYSICAL_ADDRESS *outRoot
 static HO_STATUS
 ExUserRuntimeFinalizeThreadHook(KTHREAD *thread)
 {
-    return ExBootstrapAdapterFinalizeThread(thread);
+    return ExUserRuntimeFinalizeThread(thread);
 }
 
 static void
 ExUserRuntimeObserveTimerHook(KTHREAD *thread)
 {
     (void)thread;
-    KeUserBootstrapObserveCurrentThreadUserTimerPreemption();
+    KeUserModeObserveCurrentThreadUserTimerPreemption();
 }
 
 static HO_NORETURN void
@@ -129,7 +129,7 @@ ExUserRuntimeFaultHook(KTHREAD *thread, const KE_USER_RUNTIME_FAULT_CONTEXT *con
     if (status != EC_SUCCESS)
         HO_KPANIC(status, "User-runtime fault termination marking failed");
 
-    status = ExBootstrapAdapterHandleExit(thread);
+    status = ExUserRuntimeHandleExit(thread);
     if (status != EC_SUCCESS)
         HO_KPANIC(status, "User-runtime fault exit handoff validation failed");
 
@@ -137,7 +137,7 @@ ExUserRuntimeFaultHook(KTHREAD *thread, const KE_USER_RUNTIME_FAULT_CONTEXT *con
 }
 
 HO_STATUS
-ExBootstrapAdapterInit(void)
+ExUserRuntimeInit(void)
 {
     return KeRegisterUserRuntimeHooks(ExUserRuntimeEnterHook, ExUserRuntimeOwnsThreadHook, ExUserRuntimeResolveRootHook,
                                       ExUserRuntimeFinalizeThreadHook, ExUserRuntimeObserveTimerHook,
@@ -145,7 +145,7 @@ ExBootstrapAdapterInit(void)
 }
 
 HO_STATUS
-ExBootstrapAdapterWrapThread(KTHREAD *thread)
+ExUserRuntimeWrapThread(KTHREAD *thread)
 {
     EX_PROCESS *process = NULL;
 
@@ -163,7 +163,7 @@ ExBootstrapAdapterWrapThread(KTHREAD *thread)
 }
 
 HO_STATUS
-ExBootstrapAdapterFinalizeThread(KTHREAD *thread)
+ExUserRuntimeFinalizeThread(KTHREAD *thread)
 {
     EX_PROCESS *process = NULL;
     EX_THREAD *runtimeThread = NULL;
@@ -184,7 +184,7 @@ ExBootstrapAdapterFinalizeThread(KTHREAD *thread)
     if (threadSignalStatus != EC_SUCCESS)
         return threadSignalStatus;
 
-    HO_STATUS status = ExBootstrapTeardownProcessPayload(process);
+    HO_STATUS status = ExRuntimeTeardownProcessPayload(process);
     if (status == EC_SUCCESS)
     {
         klog(KLOG_LEVEL_INFO, EX_USER_REGRESSION_LOG_TEARDOWN_COMPLETE " thread=%u\n", thread->ThreadId);
@@ -201,13 +201,13 @@ ExBootstrapAdapterFinalizeThread(KTHREAD *thread)
 }
 
 BOOL
-ExBootstrapAdapterHasWrapper(const KTHREAD *thread)
+ExUserRuntimeHasWrapper(const KTHREAD *thread)
 {
     return ExRuntimeLookupThreadByKernelThread(thread) != NULL;
 }
 
-struct KE_USER_BOOTSTRAP_STAGING *
-ExBootstrapAdapterQueryThreadStaging(const KTHREAD *thread)
+struct KE_USER_MODE_STAGING *
+ExUserRuntimeQueryThreadStaging(const KTHREAD *thread)
 {
     EX_PROCESS *process = ExRuntimeLookupProcessByKernelThread(thread);
 
@@ -218,7 +218,7 @@ ExBootstrapAdapterQueryThreadStaging(const KTHREAD *thread)
 }
 
 HO_STATUS
-ExBootstrapAdapterHandleExit(KTHREAD *thread)
+ExUserRuntimeHandleExit(KTHREAD *thread)
 {
     return KiValidateUserRuntimeTerminationHandoff(thread, NULL, NULL);
 }
@@ -240,13 +240,13 @@ KiDestroyUserRuntimeWrapperObjects(KTHREAD *thread)
 
     if (exThread != NULL)
     {
-        HO_STATUS releaseStatus = ExBootstrapReleaseThread(exThread);
+        HO_STATUS releaseStatus = ExRuntimeReleaseThread(exThread);
         return status == EC_SUCCESS ? releaseStatus : status;
     }
 
     if (process != NULL)
     {
-        HO_STATUS releaseStatus = ExBootstrapReleaseProcess(process);
+        HO_STATUS releaseStatus = ExRuntimeReleaseProcess(process);
         return status == EC_SUCCESS ? releaseStatus : status;
     }
 
@@ -258,7 +258,7 @@ KiValidateUserRuntimeTerminationHandoff(KTHREAD *thread, EX_THREAD **outRuntimeT
 {
     EX_THREAD *runtimeThread = NULL;
     EX_PROCESS *process = NULL;
-    KE_USER_BOOTSTRAP_LAYOUT layout = {0};
+    KE_USER_MODE_LAYOUT layout = {0};
 
     if (outRuntimeThread != NULL)
         *outRuntimeThread = NULL;
@@ -279,7 +279,7 @@ KiValidateUserRuntimeTerminationHandoff(KTHREAD *thread, EX_THREAD **outRuntimeT
         return EC_INVALID_STATE;
     }
 
-    HO_STATUS status = KeUserBootstrapQueryCurrentThreadLayout(&layout);
+    HO_STATUS status = KeUserModeQueryCurrentThreadLayout(&layout);
     if (status != EC_SUCCESS)
         return status;
 

@@ -6,7 +6,7 @@
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
-#include "ex_bootstrap_internal.h"
+#include "runtime_internal.h"
 
 static HO_STATUS KiDestroyStdoutServiceObject(EX_OBJECT_HEADER *objectHeader);
 
@@ -70,25 +70,25 @@ ExObjectRelease(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE expectedType, uint32_t 
 }
 
 void
-ExBootstrapInitializeObjectHeader(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE type)
+ExRuntimeInitializeObjectHeader(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE type)
 {
     ExObjectInitializeHeader(header, type, EX_OBJECT_FLAG_NONE, NULL);
 }
 
 HO_STATUS
-ExBootstrapRetainObject(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE expectedType)
+ExRuntimeRetainObject(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE expectedType)
 {
     return ExObjectRetain(header, expectedType);
 }
 
 HO_STATUS
-ExBootstrapReleaseObject(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE expectedType, uint32_t *remainingReferences)
+ExRuntimeReleaseObject(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE expectedType, uint32_t *remainingReferences)
 {
     return ExObjectRelease(header, expectedType, remainingReferences);
 }
 
 void
-ExBootstrapInitializeStdoutServiceObject(EX_PROCESS *process)
+ExRuntimeInitializeStdoutServiceObject(EX_PROCESS *process)
 {
     if (process == NULL)
         return;
@@ -99,7 +99,7 @@ ExBootstrapInitializeStdoutServiceObject(EX_PROCESS *process)
 }
 
 HO_STATUS
-ExBootstrapReleaseStdoutServiceOwner(EX_PROCESS *process)
+ExRuntimeReleaseStdoutServiceOwner(EX_PROCESS *process)
 {
     uint32_t remainingReferences = 0;
 

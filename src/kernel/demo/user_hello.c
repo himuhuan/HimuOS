@@ -12,7 +12,7 @@
 /*
  * Refactor anchor: keep the user_hello clean-pass evidence chain fixed as
  * first entry, timer round-trip, rejected raw write, hello write,
- * EX_USER_BRINGUP_SYS_RAW_EXIT, thread terminated, bootstrap teardown complete, and
+ * EX_USER_BRINGUP_SYS_RAW_EXIT, thread terminated, runtime teardown complete, and
  * idle/reaper reclaim.
  * This change only permits boundary refactoring around ownership and
  * registration seams for the compiled userspace bring-up path.
@@ -21,7 +21,7 @@
 
 #include "demo_internal.h"
 
-#include <kernel/ex/ex_bootstrap.h>
+#include <kernel/ex/ex_runtime.h>
 #include <kernel/ex/program.h>
 
 static void KiUnexpectedUserHelloKernelEntry(void *arg);
@@ -30,15 +30,15 @@ static void
 KiUnexpectedUserHelloKernelEntry(void *arg)
 {
     (void)arg;
-    HO_KPANIC(EC_INVALID_STATE, "user_hello bootstrap thread unexpectedly executed the kernel entry point");
+    HO_KPANIC(EC_INVALID_STATE, "user_hello runtime thread unexpectedly executed the kernel entry point");
 }
 
 void
 RunUserHelloDemo(void)
 {
     const EX_USER_IMAGE *image = NULL;
-    EX_BOOTSTRAP_PROCESS_CREATE_PARAMS createParams = {0};
-    EX_BOOTSTRAP_THREAD_CREATE_PARAMS threadParams = {
+    EX_RUNTIME_PROCESS_CREATE_PARAMS createParams = {0};
+    EX_RUNTIME_THREAD_CREATE_PARAMS threadParams = {
         .EntryPoint = KiUnexpectedUserHelloKernelEntry,
         .EntryArg = NULL,
     };
@@ -49,19 +49,19 @@ RunUserHelloDemo(void)
     if (status != EC_SUCCESS)
         HO_KPANIC(status, "Failed to resolve user_hello image");
 
-    status = ExProgramBuildBootstrapCreateParams(image, 0, &createParams);
+    status = ExProgramBuildRuntimeCreateParams(image, 0, &createParams);
     if (status != EC_SUCCESS)
         HO_KPANIC(status, "Failed to build user_hello create params");
 
-    status = ExBootstrapCreateProcess(&createParams, &process);
+    status = ExRuntimeCreateProcess(&createParams, &process);
     if (status != EC_SUCCESS)
         HO_KPANIC(status, "Failed to create staged user_hello payload");
 
-    status = ExBootstrapCreateThread(&process, &threadParams, &thread);
+    status = ExRuntimeCreateThread(&process, &threadParams, &thread);
     if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to create user_hello bootstrap thread");
+        HO_KPANIC(status, "Failed to create user_hello runtime thread");
 
-    status = ExBootstrapStartThread(&thread);
+    status = ExRuntimeStartThread(&thread);
     if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to start user_hello bootstrap thread");
+        HO_KPANIC(status, "Failed to start user_hello runtime thread");
 }

@@ -2,13 +2,13 @@
  * HimuOperatingSystem
  *
  * File: ex/process_control.c
- * Description: Ex-owned bootstrap process lifecycle control for spawn/wait/kill.
+ * Description: Ex-owned runtime process lifecycle control for spawn/wait/kill.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
-#include "ex_bootstrap_internal.h"
+#include "runtime_internal.h"
 
-#include <kernel/ex/ex_bootstrap.h>
+#include <kernel/ex/ex_runtime.h>
 
 #include <kernel/ex/program.h>
 #include <kernel/ex/user_syscall_abi.h>
@@ -36,18 +36,18 @@ static void
 KiUnexpectedExProcessControlKernelEntry(void *arg)
 {
     (void)arg;
-    HO_KPANIC(EC_INVALID_STATE, "Ex process-control bootstrap thread unexpectedly executed the kernel entry point");
+    HO_KPANIC(EC_INVALID_STATE, "Ex process-control runtime thread unexpectedly executed the kernel entry point");
 }
 
 static void
 KiExSpawnWorkerThread(void *arg)
 {
     EX_PROCESS_SPAWN_WORK *work = (EX_PROCESS_SPAWN_WORK *)arg;
-    EX_BOOTSTRAP_PROCESS_CREATE_PARAMS createParams = {0};
-    EX_BOOTSTRAP_THREAD_CREATE_PARAMS threadParams = {
+    EX_RUNTIME_PROCESS_CREATE_PARAMS createParams = {0};
+    EX_RUNTIME_THREAD_CREATE_PARAMS threadParams = {
         .EntryPoint = KiUnexpectedExProcessControlKernelEntry,
         .EntryArg = NULL,
-        .Flags = EX_BOOTSTRAP_THREAD_CREATE_FLAG_NONE,
+        .Flags = EX_RUNTIME_THREAD_CREATE_FLAG_NONE,
     };
     EX_PROCESS *process = NULL;
     EX_PROCESS *runtimeProcess = NULL;
@@ -71,21 +71,21 @@ KiExSpawnWorkerThread(void *arg)
         goto Cleanup;
     }
 
-    status = ExProgramBuildBootstrapCreateParams(work->Image, work->ParentProcessId, &createParams);
+    status = ExProgramBuildRuntimeCreateParams(work->Image, work->ParentProcessId, &createParams);
     if (status != EC_SUCCESS)
         goto Cleanup;
 
     foregroundRequested = (work->Flags & EX_USER_SPAWN_FLAG_FOREGROUND) != 0U;
 
-    status = ExBootstrapCreateProcess(&createParams, &process);
+    status = ExRuntimeCreateProcess(&createParams, &process);
     if (status != EC_SUCCESS)
         goto Cleanup;
 
-    status = ExBootstrapQueryProcessId(process, &childProcessId);
+    status = ExRuntimeQueryProcessId(process, &childProcessId);
     if (status != EC_SUCCESS)
         goto Cleanup;
 
-    status = ExBootstrapCreateThread(&process, &threadParams, &thread);
+    status = ExRuntimeCreateThread(&process, &threadParams, &thread);
     if (status != EC_SUCCESS)
         goto Cleanup;
 
@@ -96,7 +96,7 @@ KiExSpawnWorkerThread(void *arg)
         goto Cleanup;
     }
 
-    status = ExBootstrapQueryThreadId(thread, &childThreadId);
+    status = ExRuntimeQueryThreadId(thread, &childThreadId);
     if (status != EC_SUCCESS)
         goto Cleanup;
 
@@ -113,7 +113,7 @@ KiExSpawnWorkerThread(void *arg)
     if (status != EC_SUCCESS)
         goto Cleanup;
 
-    status = ExBootstrapStartThread(&thread);
+    status = ExRuntimeStartThread(&thread);
     if (status != EC_SUCCESS)
         goto Cleanup;
 
@@ -132,13 +132,13 @@ Cleanup:
 
     if (thread != NULL)
     {
-        HO_STATUS teardownStatus = ExBootstrapTeardownThread(thread);
+        HO_STATUS teardownStatus = ExRuntimeTeardownThread(thread);
         if (status == EC_SUCCESS)
             status = teardownStatus;
     }
     else if (process != NULL)
     {
-        HO_STATUS destroyStatus = ExBootstrapDestroyProcess(process);
+        HO_STATUS destroyStatus = ExRuntimeDestroyProcess(process);
         if (status == EC_SUCCESS)
             status = destroyStatus;
     }
@@ -165,7 +165,7 @@ KiResolveCallerParentProcessId(uint32_t *outParentProcessId)
     if (process == NULL)
         return EC_SUCCESS;
 
-    status = ExBootstrapQueryProcessId(process, outParentProcessId);
+    status = ExRuntimeQueryProcessId(process, outParentProcessId);
 
     return status;
 }
@@ -275,7 +275,7 @@ ExWaitProcess(uint32_t pid)
         status = consumeStatus;
 
 Exit: {
-    HO_STATUS releaseStatus = ExBootstrapReleaseProcess(childProcess);
+    HO_STATUS releaseStatus = ExRuntimeReleaseProcess(childProcess);
     if (status == EC_SUCCESS)
         status = releaseStatus;
 }
@@ -316,7 +316,7 @@ ExKillProcess(uint32_t pid)
         status = consumeStatus;
 
 Exit: {
-    HO_STATUS releaseStatus = ExBootstrapReleaseProcess(childProcess);
+    HO_STATUS releaseStatus = ExRuntimeReleaseProcess(childProcess);
     if (status == EC_SUCCESS)
         status = releaseStatus;
 }
@@ -345,7 +345,7 @@ ExSetForegroundProcess(uint32_t pid)
 
     status = ExRuntimeSetProcessForeground(childProcess, KeInputGetForegroundOwnerThreadId());
 
-    HO_STATUS releaseStatus = ExBootstrapReleaseProcess(childProcess);
+    HO_STATUS releaseStatus = ExRuntimeReleaseProcess(childProcess);
     if (status == EC_SUCCESS)
         status = releaseStatus;
 

@@ -2,7 +2,7 @@
  * HimuOperatingSystem
  *
  * File: demo/user_caps.c
- * Description: Stage-2 bootstrap capability regression profile covering the
+ * Description: Stage-2 capability regression profile covering the
  *              versioned seed block, stdout capability write, process wait
  *              handle timeout/close, stale-handle rejection after close, and the
  *              unchanged raw exit clean path.
@@ -11,7 +11,7 @@
 
 #include "demo_internal.h"
 
-#include <kernel/ex/ex_bootstrap.h>
+#include <kernel/ex/ex_runtime.h>
 
 #define KI_U32_BYTE(value, shift) ((uint8_t)((((uint32_t)(value)) >> (shift)) & 0xFFU))
 #define KI_U32_LE_BYTES(value)                                                                                         \
@@ -38,7 +38,7 @@ static const uint8_t gKiUserCapsCodeBytes[] = {
     // Wait for the existing P1 gate, validate the versioned capability seed block,
     // emit one stdout capability write, close that handle, prove stale-handle
     // rejection, poll the seeded process wait handle, close it, and then exit
-    // through the unchanged raw bootstrap exit path.
+    // through the raw runtime exit path.
     0xB9,
     KI_U32_LE_BYTES((uint32_t)EX_USER_BRINGUP_P1_MAILBOX_ADDRESS),
     0x8B,
@@ -205,38 +205,38 @@ static void
 KiUnexpectedUserCapsKernelEntry(void *arg)
 {
     (void)arg;
-    HO_KPANIC(EC_INVALID_STATE, "user_caps bootstrap thread unexpectedly executed the kernel entry point");
+    HO_KPANIC(EC_INVALID_STATE, "user_caps runtime thread unexpectedly executed the kernel entry point");
 }
 
 void
 RunUserCapsDemo(void)
 {
-    EX_BOOTSTRAP_PROCESS_CREATE_PARAMS createParams = {
+    EX_RUNTIME_PROCESS_CREATE_PARAMS createParams = {
         .CodeBytes = gKiUserCapsCodeBytes,
         .CodeLength = sizeof(gKiUserCapsCodeBytes),
         .EntryOffset = KI_USER_CAPS_PAYLOAD_ENTRY_OFFSET,
         .ConstBytes = gKiUserCapsConstBytes,
         .ConstLength = KI_USER_CAPS_PAYLOAD_MESSAGE_LENGTH,
     };
-    EX_BOOTSTRAP_THREAD_CREATE_PARAMS threadParams = {
+    EX_RUNTIME_THREAD_CREATE_PARAMS threadParams = {
         .EntryPoint = KiUnexpectedUserCapsKernelEntry,
         .EntryArg = NULL,
-        .Flags = EX_BOOTSTRAP_THREAD_CREATE_FLAG_NONE,
+        .Flags = EX_RUNTIME_THREAD_CREATE_FLAG_NONE,
     };
     EX_PROCESS *process = NULL;
     EX_THREAD *thread = NULL;
 
-    HO_STATUS status = ExBootstrapCreateProcess(&createParams, &process);
+    HO_STATUS status = ExRuntimeCreateProcess(&createParams, &process);
     if (status != EC_SUCCESS)
         HO_KPANIC(status, "Failed to create staged user_caps payload");
 
-    status = ExBootstrapCreateThread(&process, &threadParams, &thread);
+    status = ExRuntimeCreateThread(&process, &threadParams, &thread);
     if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to create user_caps bootstrap thread");
+        HO_KPANIC(status, "Failed to create user_caps runtime thread");
 
-    status = ExBootstrapStartThread(&thread);
+    status = ExRuntimeStartThread(&thread);
     if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to start user_caps bootstrap thread");
+        HO_KPANIC(status, "Failed to start user_caps runtime thread");
 }
 
 #undef KI_U32_LE_BYTES

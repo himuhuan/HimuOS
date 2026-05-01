@@ -1,10 +1,10 @@
 ;
 ; HimuOperatingSystem
 ;
-; File: arch/amd64/user_bootstrap.asm
+; File: arch/amd64/user_mode.asm
 ; Description:
 ; Minimal first-entry helper that builds an iretq frame on the current kernel
-; stack and enters the staged bootstrap user context.
+; stack and enters the staged user-mode context.
 ;
 ; Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
 ;
@@ -14,7 +14,7 @@ default rel
 
 section .text
 
-; void KiUserBootstrapIretq(uint64_t userRip,
+; void KiUserModeIretq(uint64_t userRip,
 ;                           uint64_t userRsp,
 ;                           uint64_t userRflags,
 ;                           uint64_t userCs,
@@ -27,8 +27,8 @@ section .text
 ;   rcx = userCs
 ;   r8  = userSs
 
-global KiUserBootstrapIretq
-KiUserBootstrapIretq:
+global KiUserModeIretq
+KiUserModeIretq:
     mov ax, r8w
     mov ds, ax
     mov es, ax

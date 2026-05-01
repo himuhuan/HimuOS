@@ -6,7 +6,7 @@
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
-#include "ex_bootstrap_internal.h"
+#include "runtime_internal.h"
 
 #include <libc/string.h>
 
@@ -96,9 +96,9 @@ KiReleaseHandleObject(EX_OBJECT_HEADER *objectHeader)
     switch (objectHeader->Type)
     {
     case EX_OBJECT_TYPE_PROCESS:
-        return ExBootstrapReleaseProcess(CONTAINING_RECORD(objectHeader, EX_PROCESS, Header));
+        return ExRuntimeReleaseProcess(CONTAINING_RECORD(objectHeader, EX_PROCESS, Header));
     case EX_OBJECT_TYPE_THREAD:
-        return ExBootstrapReleaseThread(CONTAINING_RECORD(objectHeader, EX_THREAD, Header));
+        return ExRuntimeReleaseThread(CONTAINING_RECORD(objectHeader, EX_THREAD, Header));
     case EX_OBJECT_TYPE_CONSOLE: {
         uint32_t remainingReferences = 0;
 
@@ -323,7 +323,7 @@ ExHandleClose(EX_PROCESS *process, EX_HANDLE *handle)
     if (localHandle == EX_HANDLE_INVALID)
         return EC_SUCCESS;
 
-    ownerReference = ExBootstrapRetainProcess(process);
+    ownerReference = ExRuntimeRetainProcess(process);
     if (ownerReference == NULL)
         return EC_INVALID_STATE;
 
@@ -351,7 +351,7 @@ ExHandleClose(EX_PROCESS *process, EX_HANDLE *handle)
     status = KiReleaseHandleObject(objectHeader);
 
 Exit: {
-    HO_STATUS ownerStatus = ExBootstrapReleaseProcess(ownerReference);
+    HO_STATUS ownerStatus = ExRuntimeReleaseProcess(ownerReference);
     if (status == EC_SUCCESS)
         status = ownerStatus;
 }
@@ -370,7 +370,7 @@ KiHandleCloseAll(EX_PROCESS *process, BOOL allowPublishedObjectClose)
     if (process == NULL)
         return EC_ILLEGAL_ARGUMENT;
 
-    ownerReference = ExBootstrapRetainProcess(process);
+    ownerReference = ExRuntimeRetainProcess(process);
     if (ownerReference == NULL)
         return EC_INVALID_STATE;
 
@@ -404,7 +404,7 @@ KiHandleCloseAll(EX_PROCESS *process, BOOL allowPublishedObjectClose)
     }
 
 Exit:
-    ownerStatus = ExBootstrapReleaseProcess(ownerReference);
+    ownerStatus = ExRuntimeReleaseProcess(ownerReference);
     if (firstError == EC_SUCCESS)
         firstError = ownerStatus;
 
@@ -424,13 +424,13 @@ ExHandleCloseAllForTeardown(EX_PROCESS *process)
 }
 
 void
-ExBootstrapInitializePrivateHandleTable(EX_PRIVATE_HANDLE_TABLE *table)
+ExRuntimeInitializePrivateHandleTable(EX_PRIVATE_HANDLE_TABLE *table)
 {
     ExHandleInitializeTable(table);
 }
 
 HO_STATUS
-ExBootstrapInsertPrivateHandle(EX_PROCESS *process,
+ExRuntimeInsertPrivateHandle(EX_PROCESS *process,
                                EX_OBJECT_HEADER *objectHeader,
                                EX_PRIVATE_HANDLE_RIGHTS rights,
                                EX_PRIVATE_HANDLE *outHandle)
@@ -439,7 +439,7 @@ ExBootstrapInsertPrivateHandle(EX_PROCESS *process,
 }
 
 HO_STATUS
-ExBootstrapResolvePrivateHandle(EX_PROCESS *process,
+ExRuntimeResolvePrivateHandle(EX_PROCESS *process,
                                 EX_PRIVATE_HANDLE handle,
                                 EX_OBJECT_TYPE expectedType,
                                 EX_PRIVATE_HANDLE_RIGHTS desiredRights,
@@ -449,19 +449,19 @@ ExBootstrapResolvePrivateHandle(EX_PROCESS *process,
 }
 
 HO_STATUS
-ExBootstrapReleaseResolvedObject(EX_OBJECT_HEADER *objectHeader)
+ExRuntimeReleaseResolvedObject(EX_OBJECT_HEADER *objectHeader)
 {
     return ExHandleReleaseResolvedObject(objectHeader);
 }
 
 HO_STATUS
-ExBootstrapClosePrivateHandle(EX_PROCESS *process, EX_PRIVATE_HANDLE *handle)
+ExRuntimeClosePrivateHandle(EX_PROCESS *process, EX_PRIVATE_HANDLE *handle)
 {
     return ExHandleClose(process, handle);
 }
 
 HO_STATUS
-ExBootstrapCloseAllPrivateHandles(EX_PROCESS *process)
+ExRuntimeCloseAllPrivateHandles(EX_PROCESS *process)
 {
     return ExHandleCloseAll(process);
 }

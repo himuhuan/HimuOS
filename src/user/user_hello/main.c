@@ -2,7 +2,7 @@
  * HimuOperatingSystem
  *
  * File: user/user_hello/main.c
- * Description: Bootstrap-only C userspace hello payload matching the current
+ * Description: Bring-up C userspace hello payload matching the current
  *              staged raw-write/raw-exit evidence chain.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
