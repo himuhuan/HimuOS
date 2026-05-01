@@ -126,6 +126,32 @@ HoHshAppendBoolean(char *buffer, uint64_t *offset, uint64_t capacity, BOOL value
     *offset += 1U;
 }
 
+static void
+HoHshWriteProcessList(const EX_SYSINFO_PROCESS_LIST *processList)
+{
+    HoHshMustWriteLiteral("PID  STATE       PPID  TID  NAME\n");
+    HoHshMustWriteLiteral("---  ----------  ----  ---  ----\n");
+
+    for (uint32_t index = 0; index < processList->ReturnedCount; ++index)
+    {
+        char line[96];
+        uint64_t length = 0;
+        const EX_SYSINFO_PROCESS_ENTRY *entry = &processList->Entries[index];
+
+        HoHshAppendPid(line, &length, sizeof(line), entry->ProcessId);
+        HoHshAppendLiteral(line, &length, sizeof(line), " ");
+        HoHshAppendPid(line, &length, sizeof(line), entry->State);
+        HoHshAppendLiteral(line, &length, sizeof(line), " ");
+        HoHshAppendPid(line, &length, sizeof(line), entry->ParentProcessId);
+        HoHshAppendLiteral(line, &length, sizeof(line), " ");
+        HoHshAppendPid(line, &length, sizeof(line), entry->MainThreadId);
+        HoHshAppendLiteral(line, &length, sizeof(line), " ");
+        HoHshAppendLiteral(line, &length, sizeof(line), entry->Name);
+        HoHshAppendLiteral(line, &length, sizeof(line), "\n");
+        HoHshMustWrite(line, length);
+    }
+}
+
 static BOOL
 HoHshLineEquals(const char *line, uint64_t length, const char *literal)
 {
@@ -310,9 +336,8 @@ main(void)
 
         if (HoHshLineEquals(line, (uint64_t)status, "ps"))
         {
-            char processListText[EX_SYSINFO_TEXT_MAX_LENGTH];
-            int64_t processListLength =
-                HoUserQuerySysinfo(EX_SYSINFO_CLASS_PROCESS_LIST_TEXT, processListText, sizeof(processListText));
+            EX_SYSINFO_PROCESS_LIST processList = {0};
+            int64_t processListLength = HoUserQuerySysinfoProcessList(&processList);
 
             if (processListLength < 0)
             {
@@ -320,7 +345,7 @@ main(void)
                 continue;
             }
 
-            HoHshMustWrite(processListText, (uint64_t)processListLength);
+            HoHshWriteProcessList(&processList);
             continue;
         }
 

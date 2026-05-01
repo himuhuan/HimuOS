@@ -142,5 +142,23 @@ HoUserQuerySysinfo(uint64_t infoClass, void *buffer, uint64_t bufferSize)
     return HoUserSyscall3(EX_USER_SYS_QUERY_SYSINFO, infoClass, (uint64_t)(void *)buffer, bufferSize);
 }
 
+static inline int64_t
+HoUserQuerySysinfoOverview(EX_SYSINFO_OVERVIEW *overview)
+{
+    return HoUserQuerySysinfo(EX_SYSINFO_CLASS_OVERVIEW, overview, sizeof(*overview));
+}
+
+static inline int64_t
+HoUserQuerySysinfoProcessList(EX_SYSINFO_PROCESS_LIST *processList)
+{
+    return HoUserQuerySysinfo(EX_SYSINFO_CLASS_PROCESS_LIST, processList, sizeof(*processList));
+}
+
+static inline int64_t
+HoUserQuerySysinfoThreadList(EX_SYSINFO_THREAD_LIST *threadList)
+{
+    return HoUserQuerySysinfo(EX_SYSINFO_CLASS_THREAD_LIST, threadList, sizeof(*threadList));
+}
+
 #undef HO_USER_STRINGIFY
 #undef HO_USER_STRINGIFY_INNER

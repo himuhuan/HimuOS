@@ -83,6 +83,18 @@ tables. Process objects carry parent PID, main TID, lifecycle state, exit
 status, termination reason, kill request, foreground restore metadata, and
 completion state.
 
+## Phase H Structured Sysinfo
+
+`src/include/kernel/ex/user_sysinfo_abi.h` is the stable user-facing sysinfo
+contract. `EX_SYSINFO_CLASS_OVERVIEW`, `EX_SYSINFO_CLASS_PROCESS_LIST`, and
+`EX_SYSINFO_CLASS_THREAD_LIST` return structured data. Text classes are
+presentation helpers over those structures or, for `MEMMAP_TEXT`, over Ke
+VMM/KVA snapshots and the current user layout.
+
+`hsh ps` uses `EX_SYSINFO_CLASS_PROCESS_LIST` and formats the view in user
+space. Process and thread identities come from Ex runtime tables; Ke contributes
+mechanism snapshots through `KeQuerySystemInformation()`.
+
 ## Phase C User-Runtime Hooks
 
 Ke now exposes the permanent user-runtime hook contract through

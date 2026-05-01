@@ -74,6 +74,10 @@ Current runtime reality:
   `EX_USER_SYS_*` services and enter without phase-gate waits. `user_hello`
   and the kernel-embedded `user_caps` payload remain explicit raw syscall /
   phase-gate sentinels.
+- Structured Ex sysinfo classes are the stable userspace contract. `hsh ps`
+  queries `EX_SYSINFO_CLASS_PROCESS_LIST` and formats the process view in user
+  space; text sysinfo classes remain convenience renderers for `sysinfo`,
+  `memmap`, and compatibility callers.
 
 ## Build And Regression
 
@@ -103,6 +107,8 @@ The cleanup baseline is healthy when:
 - `docs/architecture/ke-ex-boundary.md` records the current Ke/Ex split
 - `docs/architecture/bootstrap-debt-index.md` lists every remaining
   Bootstrap-era runtime concept with an owner phase and deletion condition
+- `docs/apis/ExUserSysinfoABI.md` separates stable structured sysinfo classes
+  from text presentation helpers
 - `docs/regression-profiles.md` records the contract/sentinel split and capture
   expectations
 - `make all` and `make test list` are known-good, or any environment blocker is
