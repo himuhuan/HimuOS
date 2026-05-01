@@ -11,7 +11,7 @@
 
 #include "demo_internal.h"
 
-#include <kernel/ex/ex_runtime.h>
+#include <kernel/ex/program.h>
 
 #define KI_U32_BYTE(value, shift) ((uint8_t)((((uint32_t)(value)) >> (shift)) & 0xFFU))
 #define KI_U32_LE_BYTES(value)                                                                                         \
@@ -22,8 +22,6 @@ enum
     KI_USER_CAPS_PAYLOAD_ENTRY_OFFSET = 0U,
     KI_USER_CAPS_PAYLOAD_MESSAGE_OFFSET = (uint32_t)EX_USER_IMAGE_CONST_PAYLOAD_OFFSET,
 };
-
-static void KiUnexpectedUserCapsKernelEntry(void *arg);
 
 static const char gKiUserCapsConstBytes[] = "[USERCAP] stdout capability write\n";
 
@@ -201,42 +199,27 @@ static const uint8_t gKiUserCapsCodeBytes[] = {
     0x0B,
 };
 
-static void
-KiUnexpectedUserCapsKernelEntry(void *arg)
-{
-    (void)arg;
-    HO_KPANIC(EC_INVALID_STATE, "user_caps runtime thread unexpectedly executed the kernel entry point");
-}
-
 void
 RunUserCapsDemo(void)
 {
-    EX_RUNTIME_PROCESS_CREATE_PARAMS createParams = {
+    const EX_USER_IMAGE image = {
+        .Name = "user_caps",
+        .NameLength = sizeof("user_caps") - 1U,
+        .ProgramId = EX_PROGRAM_ID_USER_CAPS,
+        .Kind = EX_USER_IMAGE_KIND_EMBEDDED_SPLIT,
         .CodeBytes = gKiUserCapsCodeBytes,
         .CodeLength = sizeof(gKiUserCapsCodeBytes),
-        .EntryOffset = KI_USER_CAPS_PAYLOAD_ENTRY_OFFSET,
-        .ConstBytes = gKiUserCapsConstBytes,
+        .ConstBytes = (const uint8_t *)gKiUserCapsConstBytes,
         .ConstLength = KI_USER_CAPS_PAYLOAD_MESSAGE_LENGTH,
+        .EntryOffset = KI_USER_CAPS_PAYLOAD_ENTRY_OFFSET,
+        .DefaultStackSize = EX_USER_IMAGE_PAGE_SIZE,
+        .RequestedCapabilities = 0,
     };
-    EX_RUNTIME_THREAD_CREATE_PARAMS threadParams = {
-        .EntryPoint = KiUnexpectedUserCapsKernelEntry,
-        .EntryArg = NULL,
-        .Flags = EX_RUNTIME_THREAD_CREATE_FLAG_NONE,
-    };
-    EX_PROCESS *process = NULL;
-    EX_THREAD *thread = NULL;
+    uint32_t pid = 0;
 
-    HO_STATUS status = ExRuntimeCreateProcess(&createParams, &process);
+    HO_STATUS status = ExSpawnProgramImage(&image, EX_USER_SPAWN_FLAG_NONE, &pid);
     if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to create staged user_caps payload");
-
-    status = ExRuntimeCreateThread(&process, &threadParams, &thread);
-    if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to create user_caps runtime thread");
-
-    status = ExRuntimeStartThread(&thread);
-    if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to start user_caps runtime thread");
+        HO_KPANIC(status, "Failed to spawn user_caps sentinel");
 }
 
 #undef KI_U32_LE_BYTES

@@ -2,7 +2,7 @@
  * HimuOperatingSystem
  *
  * File: ke/user_mode_syscall.c
- * Description: Minimal user syscall trap, raw dispatcher, and user-copy helpers.
+ * Description: Minimal user syscall trap and user-copy helpers.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
@@ -18,7 +18,7 @@
 #include <kernel/ke/user_mode.h>
 #include <libc/string.h>
 
-static BOOL gKeUserModeRawSyscallInitialized;
+static BOOL gKeUserModeSyscallInitialized;
 
 static HO_STATUS KiValidateUserModeRange(const KE_USER_MODE_LAYOUT *layout,
                                               HO_VIRTUAL_ADDRESS userBase,
@@ -28,7 +28,7 @@ static HO_STATUS KiValidateUserModePages(const KE_KERNEL_ADDRESS_SPACE *space,
                                               HO_VIRTUAL_ADDRESS userBase,
                                               HO_VIRTUAL_ADDRESS endExclusive,
                                               BOOL requireWritable);
-static void KiHandleRawSyscallTrap(void *frame, void *context);
+static void KiHandleUserSyscallTrap(void *frame, void *context);
 
 static HO_STATUS
 KiValidateUserModeRange(const KE_USER_MODE_LAYOUT *layout,
@@ -252,7 +252,7 @@ KeUserModeWriteConsoleBytes(const char *bytes, uint64_t length, uint64_t *outWri
 }
 
 static void
-KiHandleRawSyscallTrap(void *frame, MAYBE_UNUSED void *context)
+KiHandleUserSyscallTrap(void *frame, MAYBE_UNUSED void *context)
 {
     INTERRUPT_FRAME *interruptFrame = (INTERRUPT_FRAME *)frame;
     EX_SYSCALL_ARGUMENTS args = {
@@ -277,23 +277,23 @@ KiHandleRawSyscallTrap(void *frame, MAYBE_UNUSED void *context)
 }
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS
-KeUserModeRawSyscallInit(void)
+KeUserModeSyscallInit(void)
 {
-    if (gKeUserModeRawSyscallInitialized)
+    if (gKeUserModeSyscallInitialized)
         return EC_SUCCESS;
 
-    HO_STATUS status = IdtRegisterInterruptHandler(EX_USER_SYSCALL_VECTOR, KiHandleRawSyscallTrap, NULL);
+    HO_STATUS status = IdtRegisterInterruptHandler(EX_USER_SYSCALL_VECTOR, KiHandleUserSyscallTrap, NULL);
     if (status != EC_SUCCESS)
     {
         klog(KLOG_LEVEL_ERROR,
-             "[USERBOOT] failed to register raw syscall vector=%u status=%s (%d)\n",
+             "[USERRT] failed to register user syscall vector=%u status=%s (%d)\n",
              EX_USER_SYSCALL_VECTOR,
              KrGetStatusMessage(status),
              status);
         return status;
     }
 
-    gKeUserModeRawSyscallInitialized = TRUE;
-    klog(KLOG_LEVEL_INFO, "[USERBOOT] raw syscall trap ready vector=%u\n", EX_USER_SYSCALL_VECTOR);
+    gKeUserModeSyscallInitialized = TRUE;
+    klog(KLOG_LEVEL_INFO, "[USERRT] user syscall trap ready vector=%u\n", EX_USER_SYSCALL_VECTOR);
     return EC_SUCCESS;
 }

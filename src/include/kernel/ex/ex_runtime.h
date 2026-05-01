@@ -13,8 +13,6 @@
 #include <kernel/ex/ex_process.h>
 #include <kernel/ex/ex_thread.h>
 
-struct KTHREAD;
-
 HO_KERNEL_API HO_NODISCARD HO_STATUS ExRuntimeInit(void);
 
 /**
@@ -70,13 +68,6 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS ExRuntimeQueryProcessId(const EX_PROCESS *p
  * Query the Ex-owned PID for the current runtime process.
  */
 HO_KERNEL_API HO_NODISCARD HO_STATUS ExRuntimeQueryCurrentProcessId(uint32_t *outProcessId);
-
-/**
- * Borrow the underlying KTHREAD for a runtime thread before runtime
- * ownership is transferred. Intended for narrow kernel-side coordination such
- * as waiting on a joinable demo thread.
- */
-HO_KERNEL_API HO_NODISCARD HO_STATUS ExRuntimeBorrowKernelThread(EX_THREAD *thread, struct KTHREAD **outThread);
 
 /**
  * Cancel a runtime thread before it has been started.

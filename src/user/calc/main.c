@@ -2,7 +2,7 @@
  * HimuOperatingSystem
  *
  * File: user/calc/main.c
- * Description: P1 calc skeleton by default, or the minimal P3 calc REPL when
+ * Description: Minimal calc REPL for the stable Ex user runtime.
  *              built for the demo_shell profile.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */

@@ -2,7 +2,7 @@
  * HimuOperatingSystem
  *
  * File: user/hsh/main.c
- * Description: P1 skeleton by default, or the minimal P2 demo-shell REPL when
+ * Description: Minimal demo-shell REPL for the stable Ex user runtime.
  *              built for the demo_shell profile.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */

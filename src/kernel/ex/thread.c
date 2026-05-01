@@ -220,19 +220,6 @@ ExRuntimeQueryThreadId(const EX_THREAD *thread, uint32_t *outThreadId)
 }
 
 HO_STATUS
-ExRuntimeBorrowKernelThread(EX_THREAD *thread, KTHREAD **outThread)
-{
-    if (thread == NULL || outThread == NULL)
-        return EC_ILLEGAL_ARGUMENT;
-
-    if (thread->Thread == NULL)
-        return EC_INVALID_STATE;
-
-    *outThread = thread->Thread;
-    return EC_SUCCESS;
-}
-
-HO_STATUS
 ExRuntimeTeardownThread(EX_THREAD *thread)
 {
     EX_PROCESS *process = NULL;

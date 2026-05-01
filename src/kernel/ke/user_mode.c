@@ -42,6 +42,7 @@ struct KE_USER_MODE_STAGING
     HO_VIRTUAL_ADDRESS StackTop;
     HO_VIRTUAL_ADDRESS GuardBase;
     HO_VIRTUAL_ADDRESS PhaseOneMailboxAddress;
+    BOOL BringupMailboxEnabled;
     uint32_t PhaseOneUserTimerHitCount;
     BOOL PhaseOneFirstEntryObserved;
     BOOL PhaseOneGateArmed;
@@ -293,7 +294,9 @@ KeUserModeCreateStaging(const KE_USER_MODE_CREATE_PARAMS *params,
     staging->StackBase = EX_USER_IMAGE_STACK_BASE;
     staging->StackTop = EX_USER_IMAGE_STACK_TOP;
     staging->GuardBase = EX_USER_IMAGE_STACK_GUARD_BASE;
-    staging->PhaseOneMailboxAddress = EX_USER_BRINGUP_P1_MAILBOX_ADDRESS;
+    staging->BringupMailboxEnabled = params->EnableBringupMailbox;
+    staging->PhaseOneMailboxAddress =
+        params->EnableBringupMailbox ? EX_USER_BRINGUP_P1_MAILBOX_ADDRESS : 0;
     staging->OwnerRootPageTablePhys = targetSpace->RootPageTablePhys;
 
     status = KiAllocateAndMapUserPage(space,
@@ -337,23 +340,26 @@ KeUserModeCreateStaging(const KE_USER_MODE_CREATE_PARAMS *params,
         KiFindMappedPage(staging, KE_USER_MODE_MAPPING_KIND_STACK);
     HO_KASSERT(stackRecord != NULL, EC_INVALID_STATE);
 
-    KE_TEMP_PHYS_MAP_HANDLE mailboxHandle = {0};
-    HO_VIRTUAL_ADDRESS mailboxTempVirt = 0;
-    status = KeTempPhysMapAcquire(stackRecord->PhysicalBase,
-                                  PTE_WRITABLE | PTE_NO_EXECUTE,
-                                  &mailboxHandle,
-                                  &mailboxTempVirt);
-    if (status != EC_SUCCESS)
-        goto cleanup;
-
-    *(volatile uint32_t *)(uint64_t)(mailboxTempVirt + EX_USER_BRINGUP_P1_MAILBOX_OFFSET) =
-        EX_USER_BRINGUP_P1_MAILBOX_CLOSED;
-
-    HO_STATUS mailboxRelease = KeTempPhysMapRelease(&mailboxHandle);
-    if (mailboxRelease != EC_SUCCESS)
+    if (staging->BringupMailboxEnabled)
     {
-        status = mailboxRelease;
-        goto cleanup;
+        KE_TEMP_PHYS_MAP_HANDLE mailboxHandle = {0};
+        HO_VIRTUAL_ADDRESS mailboxTempVirt = 0;
+        status = KeTempPhysMapAcquire(stackRecord->PhysicalBase,
+                                      PTE_WRITABLE | PTE_NO_EXECUTE,
+                                      &mailboxHandle,
+                                      &mailboxTempVirt);
+        if (status != EC_SUCCESS)
+            goto cleanup;
+
+        *(volatile uint32_t *)(uint64_t)(mailboxTempVirt + EX_USER_BRINGUP_P1_MAILBOX_OFFSET) =
+            EX_USER_BRINGUP_P1_MAILBOX_CLOSED;
+
+        HO_STATUS mailboxRelease = KeTempPhysMapRelease(&mailboxHandle);
+        if (mailboxRelease != EC_SUCCESS)
+        {
+            status = mailboxRelease;
+            goto cleanup;
+        }
     }
 
     *outStaging = staging;
@@ -530,7 +536,6 @@ KeUserModeQueryCurrentThreadLayout(KE_USER_MODE_LAYOUT *outLayout)
     outLayout->GuardBase = staging->GuardBase;
     outLayout->StackBase = staging->StackBase;
     outLayout->StackTop = staging->StackTop;
-    outLayout->PhaseOneMailboxAddress = staging->PhaseOneMailboxAddress;
     outLayout->OwnerRootPageTablePhys = staging->OwnerRootPageTablePhys;
     return EC_SUCCESS;
 }
@@ -543,7 +548,7 @@ KeUserModeObserveCurrentThreadUserTimerPreemption(void)
     if (!thread || !staging)
         return;
 
-    if (!staging->PhaseOneFirstEntryObserved || staging->PhaseOneGateArmed)
+    if (!staging->BringupMailboxEnabled || !staging->PhaseOneFirstEntryObserved || staging->PhaseOneGateArmed)
         return;
 
     HO_KASSERT(KiFindMappedPage(staging, KE_USER_MODE_MAPPING_KIND_STACK) != NULL, EC_INVALID_STATE);
@@ -586,7 +591,6 @@ KeUserModeEnterCurrentThread(void)
     HO_KASSERT(staging->EntryPoint < (EX_USER_IMAGE_CODE_BASE + EX_USER_IMAGE_PAGE_SIZE), EC_INVALID_STATE);
     HO_KASSERT(staging->StackBase == EX_USER_IMAGE_STACK_BASE, EC_INVALID_STATE);
     HO_KASSERT(staging->StackTop == EX_USER_IMAGE_STACK_TOP, EC_INVALID_STATE);
-    HO_KASSERT(staging->PhaseOneMailboxAddress == EX_USER_BRINGUP_P1_MAILBOX_ADDRESS, EC_INVALID_STATE);
 
     staging->PhaseOneFirstEntryObserved = TRUE;
 

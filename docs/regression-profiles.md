@@ -65,7 +65,7 @@ teardown, foreground input, or scheduling must have both.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `schedule` | targeted mechanism sentinel | Ke scheduler/thread demo | `test-schedule` | `HO_DEMO_TEST_SCHEDULE` | none | host normally enough | `[DEMO] Selected profile: schedule`, scheduler/thread demo pass anchors |
 | `kthread_pool_race` | targeted mechanism sentinel | Ke pool synchronization | `test-kthread_pool_race` | `HO_DEMO_TEST_KTHREAD_POOL_RACE` | none | host normally enough | `[TEST] KTHREAD pool race regression suite passed` |
-| `user_hello` | legacy bring-up sentinel | raw bring-up payload + P1 gate | `test-user_hello` | `HO_DEMO_TEST_USER_HELLO` | none | host normally enough | `[USERBOOT] enter user mode`, `[USERBOOT] hello`, `[USERBOOT] SYS_RAW_EXIT`, `[USERBOOT] runtime teardown complete` |
+| `user_hello` | legacy bring-up sentinel | raw bring-up payload + P1 gate | `test-user_hello` | `HO_DEMO_TEST_USER_HELLO` | none | host normally enough | `[USERRT] enter user mode`, `[USERBOOT] hello`, `[USERBOOT] SYS_RAW_EXIT`, `[USERRT] runtime teardown complete` |
 | `user_caps` | legacy bring-up sentinel | seeded capability/wait raw/P1 payload | `test-user_caps` | `HO_DEMO_TEST_USER_CAPS` | none | host normally enough | `[USERCAP] stdout capability write succeeds`, `[USERCAP] SYS_CLOSE succeeded`, `[USERCAP] capability syscall rejected`, `[USERCAP] SYS_WAIT_ONE timed out`, `[USERBOOT] SYS_RAW_EXIT` |
 | `user_dual` | official contract (timing-sensitive) | `ExSpawnProgram()` / `ExWaitProcess()` compiled-userspace path | `test-user_dual` | `HO_DEMO_TEST_USER_DUAL` | none | host and TCG required | `user_hello` raw sentinel and direct-entry `user_counter` enter/exit evidence, no teardown panic |
 | `user_input` | official contract (timing-sensitive) | `ExSpawnProgram()` / `ExSetForegroundProcess()` / `ExWaitProcess()` foreground path | `test-user_input` | `HO_DEMO_TEST_USER_INPUT` | `scripts/input_plans/user_input.plan` | host and TCG required | `[USERINPUT] foreground -> hsh`, `[HSH] hello`, `[HSH] handoff`, `[USERINPUT] foreground -> calc`, `[CALC] 3 4 +`, clean teardown |
@@ -163,6 +163,35 @@ For failures, keep the log path and record:
 - first failure or panic anchor
 - whether the failure appears host-only, TCG-only, or common
 
+## Final New-Era Audit Evidence 2026-05-01
+
+Build and list sanity after retiring the Bootstrap compatibility surfaces and
+scoping raw/P1 behavior to sentinels:
+
+- `make all`: passed for the default build.
+- `make test TEST_MODULE=list`: passed and listed the expected profile set.
+- `git diff --check`: passed.
+
+Raw/P1 sentinel evidence:
+
+| Profile | Mode | Log | Result |
+| --- | --- | --- | --- |
+| `user_hello` | host | `/tmp/himuos-user-hello-host.log` | Matched P1 gate, rejected guard-page raw write, `SYS_RAW_EXIT`, runtime teardown, and reaper anchors; no panic/STOP anchors. |
+| `user_caps` | host | `/tmp/himuos-user-caps-host.log` | Matched capability write/close/stale-handle/wait-timeout anchors plus `SYS_RAW_EXIT` and runtime teardown; no panic/STOP anchors. |
+
+Timing-sensitive final acceptance evidence:
+
+| Profile | Mode | Log | Result |
+| --- | --- | --- | --- |
+| `demo_shell` | host | `/tmp/himuos-demo-shell-host.log` | Matched sysinfo, memmap, `ps`, foreground `calc`, kill, and `[HSH] HSH exited`; no panic/STOP anchors. |
+| `demo_shell` | TCG | `/tmp/himuos-demo-shell-tcg.log` | Matched the same anchors as host; no panic/STOP anchors. |
+| `user_input` | host | `/tmp/himuos-user-input-host.log` | Matched foreground handoff to `hsh`, `hsh` echo/handoff, foreground handoff to `calc`, `[CALC] 3 4 +`, teardown, and foreground owner reset anchors; no panic/STOP anchors. |
+| `user_input` | TCG | `/tmp/himuos-user-input-tcg.log` | Matched the same anchors as host; no panic/STOP anchors. |
+| `user_dual` | host | `/tmp/himuos-user-dual-host.log` | Matched concurrent `user_hello` and `user_counter` entry/output, runtime teardown, and profile termination anchors; no panic/STOP anchors. |
+| `user_dual` | TCG | `/tmp/himuos-user-dual-tcg.log` | Matched the same anchors as host; no panic/STOP anchors. |
+| `user_fault` | host | `/tmp/himuos-user-fault-host.log` | Matched user-mode `#DE`, user-mode `#PF`, `CR2`, foreground restore, `ps`, and `[HSH] HSH exited`; no panic/STOP anchors. |
+| `user_fault` | TCG | `/tmp/himuos-user-fault-tcg.log` | Matched the same anchors as host; no panic/STOP anchors. |
+
 ## Phase D Runtime Table Evidence 2026-04-30
 
 Build and list sanity:
@@ -179,7 +208,7 @@ and process-control child table with Ex runtime process/thread tables:
 | `demo_shell` | TCG | `/tmp/himuos-demo-shell-tcg.log` | Matched the same anchors as host; no panic/STOP anchors. |
 | `user_fault` | host | `/tmp/himuos-user-fault-host.log` | Matched user-mode `#DE`, user-mode `#PF`, `CR2`, foreground restore, wait completion, `ps`, and `[HSH] HSH exited`; no panic/STOP anchors. |
 | `user_fault` | TCG | `/tmp/himuos-user-fault-tcg.log` | Matched the same anchors as host; no panic/STOP anchors. |
-| `user_dual` | host | `/tmp/himuos-user-dual-host.log` | Matched user-mode entry, P1 gate, `user_hello`, `user_counter`, `SYS_RAW_EXIT`, `SYS_EXIT`, teardown, and reaper anchors; capture ended by watchdog after anchors. |
+| `user_dual` | host | `/tmp/himuos-user-dual-host.log` | Matched user-mode entry, sentinel P1 gate, `user_hello`, direct-entry `user_counter`, `SYS_RAW_EXIT`, `SYS_EXIT`, teardown, and reaper anchors; capture ended by watchdog after anchors. |
 | `user_dual` | TCG | `/tmp/himuos-user-dual-tcg.log` | Matched the same anchors as host; capture ended by watchdog after anchors. |
 | `user_input` | host | `/tmp/himuos-user-input-host.log` | Matched foreground handoff to `hsh`, `hsh` echo/handoff, foreground handoff to `calc`, `[CALC] 3 4 +`, teardown, and foreground owner reset anchors; capture ended by watchdog after anchors. |
 | `user_input` | TCG | `/tmp/himuos-user-input-tcg.log` | Matched the same anchors as host; capture ended by watchdog after anchors. |

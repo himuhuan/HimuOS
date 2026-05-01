@@ -25,6 +25,7 @@ typedef enum EX_PROGRAM_ID
     EX_PROGRAM_ID_FAULT_PF = 5,
     EX_PROGRAM_ID_USER_HELLO = 6,
     EX_PROGRAM_ID_USER_COUNTER = 7,
+    EX_PROGRAM_ID_USER_CAPS = 8,
 } EX_PROGRAM_ID;
 
 typedef enum EX_USER_IMAGE_KIND
@@ -54,6 +55,9 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS ExLookupProgramImageByName(const char *name
                                                                 const EX_USER_IMAGE **outImage);
 HO_KERNEL_API HO_NODISCARD HO_STATUS ExLookupProgramImageById(uint32_t programId,
                                                               const EX_USER_IMAGE **outImage);
+HO_KERNEL_API HO_NODISCARD HO_STATUS ExSpawnProgramImage(const EX_USER_IMAGE *image,
+                                                         uint32_t flags,
+                                                         uint32_t *outPid);
 HO_KERNEL_API HO_NODISCARD HO_STATUS ExProgramBuildRuntimeCreateParams(
     const EX_USER_IMAGE *image,
     uint32_t parentProcessId,

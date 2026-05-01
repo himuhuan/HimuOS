@@ -2,7 +2,7 @@
  * HimuOperatingSystem
  *
  * File: demo/user_input.c
- * Description: P1 demo-shell input regression profile: hsh first, then calc.
+ * Description: Demo-shell input regression profile: hsh first, then calc.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 

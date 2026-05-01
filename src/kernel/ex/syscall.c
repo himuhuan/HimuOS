@@ -34,6 +34,7 @@ static HO_STATUS KiPrepareUserRuntimeExit(uint64_t exitCode,
 static HO_STATUS KiPrepareUserRuntimeKillExit(uint32_t programId, EX_SYSCALL_DISPATCH_RESULT *result);
 static int64_t KiRejectRawWrite(uint64_t userBuffer, uint64_t length, HO_STATUS status);
 static int64_t KiHandleRawWrite(uint64_t userBuffer, uint64_t length);
+static BOOL KiCurrentProcessAllowsRawSyscalls(KTHREAD *thread);
 static HO_STATUS KiDispatchRawSyscall(const EX_SYSCALL_ARGUMENTS *args, EX_SYSCALL_DISPATCH_RESULT *result);
 static int64_t KiRejectCapabilitySyscall(const char *operation,
                                          uint64_t syscallNumber,
@@ -172,6 +173,21 @@ KiHandleRawWrite(uint64_t userBuffer, uint64_t length)
     return (int64_t)written;
 }
 
+static BOOL
+KiCurrentProcessAllowsRawSyscalls(KTHREAD *thread)
+{
+    EX_PROCESS *process = NULL;
+
+    if (thread == NULL)
+        return FALSE;
+
+    process = ExRuntimeLookupProcessByKernelThread(thread);
+    if (process == NULL)
+        return FALSE;
+
+    return process->ProgramId == EX_PROGRAM_ID_USER_HELLO || process->ProgramId == EX_PROGRAM_ID_USER_CAPS;
+}
+
 static HO_STATUS
 KiDispatchRawSyscall(const EX_SYSCALL_ARGUMENTS *args, EX_SYSCALL_DISPATCH_RESULT *result)
 {
@@ -184,6 +200,15 @@ KiDispatchRawSyscall(const EX_SYSCALL_ARGUMENTS *args, EX_SYSCALL_DISPATCH_RESUL
         klog(KLOG_LEVEL_ERROR, EX_USER_REGRESSION_LOG_INVALID_SYSCALL " nr=%lu thread=%u missing user-mode staging\n",
              (unsigned long)args->Number, thread ? thread->ThreadId : 0U);
         KiSetReturnResult(result, KiEncodeSyscallStatus(EC_INVALID_STATE));
+        return EC_SUCCESS;
+    }
+
+    if (!KiCurrentProcessAllowsRawSyscalls(thread))
+    {
+        klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_INVALID_SYSCALL
+                                " nr=%lu thread=%u rejected raw sentinel syscall outside bring-up profile\n",
+             (unsigned long)args->Number, thread->ThreadId);
+        KiSetReturnResult(result, KiEncodeSyscallStatus(EC_NOT_SUPPORTED));
         return EC_SUCCESS;
     }
 

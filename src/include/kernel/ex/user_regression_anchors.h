@@ -8,7 +8,7 @@
 
 #pragma once
 
-#define EX_USER_REGRESSION_LOG_ENTER_USER_MODE          "[USERBOOT] enter user mode"
+#define EX_USER_REGRESSION_LOG_ENTER_USER_MODE          "[USERRT] enter user mode"
 #define EX_USER_REGRESSION_LOG_P1_FIRST_ENTRY           EX_USER_REGRESSION_LOG_ENTER_USER_MODE
 #define EX_USER_REGRESSION_LOG_TIMER_FROM_USER_FORMAT   "[USERBOOT] timer from user #%u"
 #define EX_USER_REGRESSION_LOG_P1_GATE_ARMED            "[USERBOOT] P1 gate armed"
@@ -16,7 +16,7 @@
 #define EX_USER_REGRESSION_LOG_INVALID_RAW_WRITE        "[USERBOOT] invalid raw write rejected"
 #define EX_USER_REGRESSION_LOG_HELLO_WRITE_SUCCEEDED    "[USERBOOT] hello write succeeds"
 #define EX_USER_REGRESSION_LOG_SYS_RAW_EXIT             "[USERBOOT] SYS_RAW_EXIT"
-#define EX_USER_REGRESSION_LOG_SYS_EXIT                 "[USERBOOT] SYS_EXIT"
+#define EX_USER_REGRESSION_LOG_SYS_EXIT                 "[USERRT] SYS_EXIT"
 #define EX_USER_REGRESSION_LOG_INVALID_SYSCALL          "[USERBOOT] invalid raw syscall"
 #define EX_USER_REGRESSION_LOG_INVALID_CAP_SYSCALL      "[USERCAP] invalid capability syscall"
 #define EX_USER_REGRESSION_LOG_CAP_WRITE_SUCCEEDED      "[USERCAP] stdout capability write succeeds"
@@ -37,8 +37,8 @@
 #define EX_USER_REGRESSION_LOG_QUERY_SYSINFO_SUCCEEDED  "[SYSINFO] SYS_QUERY_SYSINFO succeeded"
 #define EX_USER_REGRESSION_LOG_QUERY_SYSINFO_REJECTED   "[SYSINFO] SYS_QUERY_SYSINFO rejected"
 #define EX_USER_REGRESSION_LOG_KILL_EXIT                "[DEMOSHELL] kill exit"
-#define EX_USER_REGRESSION_LOG_INVALID_USER_BUFFER      "[USERBOOT] invalid user buffer"
-#define EX_USER_REGRESSION_LOG_TEARDOWN_FAILED          "[USERBOOT] runtime teardown failed"
-#define EX_USER_REGRESSION_LOG_TEARDOWN_COMPLETE        "[USERBOOT] runtime teardown complete"
+#define EX_USER_REGRESSION_LOG_INVALID_USER_BUFFER      "[USERRT] invalid user buffer"
+#define EX_USER_REGRESSION_LOG_TEARDOWN_FAILED          "[USERRT] runtime teardown failed"
+#define EX_USER_REGRESSION_LOG_TEARDOWN_COMPLETE        "[USERRT] runtime teardown complete"
 #define EX_USER_REGRESSION_LOG_THREAD_TERMINATED_FORMAT "[SCHED] Thread %u terminated"
-#define EX_USER_REGRESSION_LOG_IDLE_REAPER              "[USERBOOT] idle/reaper reclaimed user_hello thread"
+#define EX_USER_REGRESSION_LOG_IDLE_REAPER              "[USERRT] idle/reaper reclaimed user runtime thread"

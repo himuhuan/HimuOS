@@ -19,7 +19,7 @@ ExRuntimeInit(void)
     if (status != EC_SUCCESS)
         return status;
 
-    status = KeUserModeRawSyscallInit();
+    status = KeUserModeSyscallInit();
     if (status != EC_SUCCESS)
         return status;
 

@@ -22,6 +22,7 @@ typedef struct KE_USER_MODE_CREATE_PARAMS
     uint64_t EntryOffset;
     const void *ConstBytes;
     uint64_t ConstLength;
+    BOOL EnableBringupMailbox;
 } KE_USER_MODE_CREATE_PARAMS;
 
 typedef struct KE_USER_MODE_LAYOUT
@@ -32,7 +33,6 @@ typedef struct KE_USER_MODE_LAYOUT
     HO_VIRTUAL_ADDRESS GuardBase;
     HO_VIRTUAL_ADDRESS StackBase;
     HO_VIRTUAL_ADDRESS StackTop;
-    HO_VIRTUAL_ADDRESS PhaseOneMailboxAddress;
     HO_PHYSICAL_ADDRESS OwnerRootPageTablePhys;
 } KE_USER_MODE_LAYOUT;
 
@@ -73,7 +73,7 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserModeWriteConsoleBytes(const char *byt
                                                                       uint64_t length,
                                                                       uint64_t *outWritten);
 
-HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserModeRawSyscallInit(void);
+HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserModeSyscallInit(void);
 
 HO_KERNEL_API void KeUserModeObserveCurrentThreadUserTimerPreemption(void);
 

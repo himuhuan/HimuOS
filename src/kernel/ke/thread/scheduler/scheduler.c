@@ -671,7 +671,7 @@ KiReapTerminatedThreads(void)
 
         if (userRuntimeOwned)
         {
-            klog(KLOG_LEVEL_INFO, "[USERBOOT] idle/reaper reclaimed user_hello thread thread=%u\n", threadId);
+            klog(KLOG_LEVEL_INFO, "[USERRT] idle/reaper reclaimed user runtime thread thread=%u\n", threadId);
         }
     }
 }

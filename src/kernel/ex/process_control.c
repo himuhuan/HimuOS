@@ -29,6 +29,12 @@ typedef struct EX_PROCESS_SPAWN_WORK
 
 static void KiUnexpectedExProcessControlKernelEntry(void *arg);
 static void KiExSpawnWorkerThread(void *arg);
+static HO_STATUS KiExCreateAndStartProcessImage(const EX_USER_IMAGE *image,
+                                                uint32_t flags,
+                                                uint32_t parentProcessId,
+                                                uint32_t previousForegroundOwnerThreadId,
+                                                uint32_t *outPid,
+                                                uint32_t *outThreadId);
 static HO_STATUS KiResolveCallerParentProcessId(uint32_t *outParentProcessId);
 static HO_STATUS KiRestoreForegroundOwner(const EX_PROCESS *process);
 
@@ -43,6 +49,28 @@ static void
 KiExSpawnWorkerThread(void *arg)
 {
     EX_PROCESS_SPAWN_WORK *work = (EX_PROCESS_SPAWN_WORK *)arg;
+    HO_STATUS status = EC_SUCCESS;
+
+    if (work == NULL)
+        HO_KPANIC(EC_ILLEGAL_ARGUMENT, "Ex process-control spawn work is required");
+
+    status = KiExCreateAndStartProcessImage(work->Image,
+                                            work->Flags,
+                                            work->ParentProcessId,
+                                            work->PreviousForegroundOwnerThreadId,
+                                            &work->ChildProcessId,
+                                            &work->ChildThreadId);
+    work->Status = status;
+}
+
+static HO_STATUS
+KiExCreateAndStartProcessImage(const EX_USER_IMAGE *image,
+                               uint32_t flags,
+                               uint32_t parentProcessId,
+                               uint32_t previousForegroundOwnerThreadId,
+                               uint32_t *outPid,
+                               uint32_t *outThreadId)
+{
     EX_RUNTIME_PROCESS_CREATE_PARAMS createParams = {0};
     EX_RUNTIME_THREAD_CREATE_PARAMS threadParams = {
         .EntryPoint = KiUnexpectedExProcessControlKernelEntry,
@@ -58,24 +86,23 @@ KiExSpawnWorkerThread(void *arg)
     BOOL foregroundOwnerChanged = FALSE;
     HO_STATUS status = EC_SUCCESS;
 
-    if (work == NULL)
-        HO_KPANIC(EC_ILLEGAL_ARGUMENT, "Ex process-control spawn work is required");
+    if (outPid == NULL || outThreadId == NULL)
+        return EC_ILLEGAL_ARGUMENT;
 
-    work->Status = EC_INVALID_STATE;
-    work->ChildProcessId = 0;
-    work->ChildThreadId = 0;
+    *outPid = 0;
+    *outThreadId = 0;
 
-    if (work->Image == NULL)
+    if (image == NULL)
     {
         status = EC_ILLEGAL_ARGUMENT;
         goto Cleanup;
     }
 
-    status = ExProgramBuildRuntimeCreateParams(work->Image, work->ParentProcessId, &createParams);
+    status = ExProgramBuildRuntimeCreateParams(image, parentProcessId, &createParams);
     if (status != EC_SUCCESS)
         goto Cleanup;
 
-    foregroundRequested = (work->Flags & EX_USER_SPAWN_FLAG_FOREGROUND) != 0U;
+    foregroundRequested = (flags & EX_USER_SPAWN_FLAG_FOREGROUND) != 0U;
 
     status = ExRuntimeCreateProcess(&createParams, &process);
     if (status != EC_SUCCESS)
@@ -109,7 +136,7 @@ KiExSpawnWorkerThread(void *arg)
         foregroundOwnerChanged = TRUE;
     }
 
-    status = ExRuntimeMarkProcessControl(runtimeProcess, foregroundRequested, work->PreviousForegroundOwnerThreadId);
+    status = ExRuntimeMarkProcessControl(runtimeProcess, foregroundRequested, previousForegroundOwnerThreadId);
     if (status != EC_SUCCESS)
         goto Cleanup;
 
@@ -117,15 +144,14 @@ KiExSpawnWorkerThread(void *arg)
     if (status != EC_SUCCESS)
         goto Cleanup;
 
-    work->ChildProcessId = childProcessId;
-    work->ChildThreadId = childThreadId;
-    work->Status = EC_SUCCESS;
-    return;
+    *outPid = childProcessId;
+    *outThreadId = childThreadId;
+    return EC_SUCCESS;
 
 Cleanup:
     if (foregroundOwnerChanged)
     {
-        HO_STATUS restoreStatus = KeInputSetForegroundOwnerThreadId(work->PreviousForegroundOwnerThreadId);
+        HO_STATUS restoreStatus = KeInputSetForegroundOwnerThreadId(previousForegroundOwnerThreadId);
         if (status == EC_SUCCESS)
             status = restoreStatus;
     }
@@ -143,7 +169,7 @@ Cleanup:
             status = destroyStatus;
     }
 
-    work->Status = status;
+    return status;
 }
 
 static HO_STATUS
@@ -190,10 +216,9 @@ KiRestoreForegroundOwner(const EX_PROCESS *process)
 }
 
 HO_KERNEL_API HO_STATUS
-ExSpawnProgram(const char *name, uint32_t nameLength, uint32_t flags, uint32_t *outPid)
+ExSpawnProgramImage(const EX_USER_IMAGE *image, uint32_t flags, uint32_t *outPid)
 {
     KTHREAD *currentThread = KeGetCurrentThread();
-    const EX_USER_IMAGE *image = NULL;
     EX_PROCESS_SPAWN_WORK work = {0};
     KTHREAD *workerThread = NULL;
     uint32_t parentProcessId = 0;
@@ -210,13 +235,23 @@ ExSpawnProgram(const char *name, uint32_t nameLength, uint32_t flags, uint32_t *
     if ((flags & ~EX_USER_SPAWN_FLAG_FOREGROUND) != 0U)
         return EC_ILLEGAL_ARGUMENT;
 
-    status = ExLookupProgramImageByName(name, nameLength, &image);
-    if (status != EC_SUCCESS)
-        return status;
+    if (image == NULL)
+        return EC_ILLEGAL_ARGUMENT;
 
     status = KiResolveCallerParentProcessId(&parentProcessId);
     if (status != EC_SUCCESS)
         return status;
+
+    if ((currentThread->Flags & KTHREAD_FLAG_IDLE) != 0)
+    {
+        uint32_t childThreadId = 0;
+        return KiExCreateAndStartProcessImage(image,
+                                              flags,
+                                              parentProcessId,
+                                              KeInputGetForegroundOwnerThreadId(),
+                                              outPid,
+                                              &childThreadId);
+    }
 
     work.Image = image;
     work.Flags = flags;
@@ -244,6 +279,18 @@ ExSpawnProgram(const char *name, uint32_t nameLength, uint32_t flags, uint32_t *
 
     *outPid = work.ChildProcessId;
     return EC_SUCCESS;
+}
+
+HO_KERNEL_API HO_STATUS
+ExSpawnProgram(const char *name, uint32_t nameLength, uint32_t flags, uint32_t *outPid)
+{
+    const EX_USER_IMAGE *image = NULL;
+
+    HO_STATUS status = ExLookupProgramImageByName(name, nameLength, &image);
+    if (status != EC_SUCCESS)
+        return status;
+
+    return ExSpawnProgramImage(image, flags, outPid);
 }
 
 HO_KERNEL_API HO_STATUS
