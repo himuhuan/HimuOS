@@ -2,6 +2,8 @@
 
 *A UEFI-based x86_64 Macro Kernel with an Executive Lite user runtime*
 
+**版本说明：release-1.0**
+
 ## 概要
 本项目旨在从零开始设计并实现一个名为 "HimuOS" 的x86_64架构宏内核操作系统。
 
