@@ -14,7 +14,7 @@ Plan format:
 The 'wait_for', 'capture', 'text', and 'key' payloads may reference captured
 variables using '{{name}}'.
 
-Only a bounded ASCII subset is supported because the P1 profile only needs
+Only a bounded ASCII subset is supported because the input profiles only need
 letters, digits, spaces and a few punctuation keys.
 """
 

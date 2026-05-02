@@ -42,6 +42,14 @@ extern const uint8_t gExBuiltinProgram_fault_pf_CodeBytesStart[];
 extern const uint8_t gExBuiltinProgram_fault_pf_CodeBytesEnd[];
 extern const uint8_t gExBuiltinProgram_fault_pf_ConstBytesStart[];
 extern const uint8_t gExBuiltinProgram_fault_pf_ConstBytesEnd[];
+extern const uint8_t gExBuiltinProgram_input_probe_CodeBytesStart[];
+extern const uint8_t gExBuiltinProgram_input_probe_CodeBytesEnd[];
+extern const uint8_t gExBuiltinProgram_input_probe_ConstBytesStart[];
+extern const uint8_t gExBuiltinProgram_input_probe_ConstBytesEnd[];
+extern const uint8_t gExBuiltinProgram_line_echo_CodeBytesStart[];
+extern const uint8_t gExBuiltinProgram_line_echo_CodeBytesEnd[];
+extern const uint8_t gExBuiltinProgram_line_echo_ConstBytesStart[];
+extern const uint8_t gExBuiltinProgram_line_echo_ConstBytesEnd[];
 
 typedef struct EX_PROGRAM_REGISTRY_ENTRY
 {
@@ -52,19 +60,20 @@ typedef struct EX_PROGRAM_REGISTRY_ENTRY
 
 #define EX_PROGRAM_REGISTRY_ENTRY(symbol, name, id)                                                                    \
     {                                                                                                                  \
-        .Image = {                                                                                                     \
-            .Name = (name),                                                                                            \
-            .NameLength = sizeof(name) - 1U,                                                                           \
-            .ProgramId = (id),                                                                                         \
-            .Kind = EX_USER_IMAGE_KIND_EMBEDDED_SPLIT,                                                                 \
-            .CodeBytes = gExBuiltinProgram_##symbol##_CodeBytesStart,                                                  \
-            .CodeLength = 0,                                                                                           \
-            .ConstBytes = gExBuiltinProgram_##symbol##_ConstBytesStart,                                                \
-            .ConstLength = 0,                                                                                          \
-            .EntryOffset = 0,                                                                                          \
-            .DefaultStackSize = EX_USER_IMAGE_PAGE_SIZE,                                                           \
-            .RequestedCapabilities = 0,                                                                                \
-        },                                                                                                             \
+        .Image =                                                                                                       \
+            {                                                                                                          \
+                .Name = (name),                                                                                        \
+                .NameLength = sizeof(name) - 1U,                                                                       \
+                .ProgramId = (id),                                                                                     \
+                .Kind = EX_USER_IMAGE_KIND_EMBEDDED_SPLIT,                                                             \
+                .CodeBytes = gExBuiltinProgram_##symbol##_CodeBytesStart,                                              \
+                .CodeLength = 0,                                                                                       \
+                .ConstBytes = gExBuiltinProgram_##symbol##_ConstBytesStart,                                            \
+                .ConstLength = 0,                                                                                      \
+                .EntryOffset = 0,                                                                                      \
+                .DefaultStackSize = EX_USER_IMAGE_PAGE_SIZE,                                                           \
+                .RequestedCapabilities = 0,                                                                            \
+            },                                                                                                         \
         .CodeEnd = gExBuiltinProgram_##symbol##_CodeBytesEnd,                                                          \
         .ConstEnd = gExBuiltinProgram_##symbol##_ConstBytesEnd,                                                        \
     }
@@ -78,6 +87,8 @@ static EX_PROGRAM_REGISTRY_ENTRY gExBuiltinPrograms[] = {
     EX_PROGRAM_REGISTRY_ENTRY(user_hello, "user_hello", EX_PROGRAM_ID_USER_HELLO),
     EX_PROGRAM_REGISTRY_ENTRY(user_counter, "user_counter", EX_PROGRAM_ID_USER_COUNTER),
     EX_PROGRAM_REGISTRY_ENTRY(user_caps, "user_caps", EX_PROGRAM_ID_USER_CAPS),
+    EX_PROGRAM_REGISTRY_ENTRY(input_probe, "input_probe", EX_PROGRAM_ID_INPUT_PROBE),
+    EX_PROGRAM_REGISTRY_ENTRY(line_echo, "line_echo", EX_PROGRAM_ID_LINE_ECHO),
 };
 
 static BOOL gExProgramRegistryValidated;

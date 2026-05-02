@@ -55,9 +55,10 @@ historical documentation.
 
 - `user_dual` now launches `user_hello` and `user_counter` through
   `ExSpawnProgram()` and waits for both with `ExWaitProcess()`.
-- `user_input` now launches `hsh` and `calc` through `ExSpawnProgram()`,
-  performs foreground handoff through `ExSetForegroundProcess()`, and waits for
-  both child processes with `ExWaitProcess()`.
+- `user_input` now launches dedicated `input_probe` and `line_echo` payloads
+  through `ExSpawnProgram()`, performs foreground handoff through
+  `ExSetForegroundProcess()`, and waits for both child processes with
+  `ExWaitProcess()`.
 - Contract demo profiles no longer call `ExBootstrapCreateProcess()`,
   `ExBootstrapCreateThread()`, `ExBootstrapStartThread()`, or
   `ExBootstrapBorrowKernelThread()` directly.

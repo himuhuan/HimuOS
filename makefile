@@ -342,7 +342,7 @@ TARGET_KERNEL := $(KRN_BINDIR)/kernel.bin
 # ------------------------------------------------------------------------------
 # Userspace artifacts
 # ------------------------------------------------------------------------------
-USER_PROGRAMS := user_hello user_counter user_caps hsh calc tick1s fault_de fault_pf
+USER_PROGRAMS := user_hello user_counter user_caps hsh calc tick1s fault_de fault_pf input_probe line_echo
 
 USER_PROGRAM_SRC_user_hello := src/user/user_hello/main.c
 USER_PROGRAM_SRC_user_counter := src/user/user_counter/main.c
@@ -352,6 +352,8 @@ USER_PROGRAM_SRC_calc := src/user/calc/main.c
 USER_PROGRAM_SRC_tick1s := src/user/tick1s/main.c
 USER_PROGRAM_SRC_fault_de := src/user/fault_de/main.c
 USER_PROGRAM_SRC_fault_pf := src/user/fault_pf/main.c
+USER_PROGRAM_SRC_input_probe := src/user/input_probe/main.c
+USER_PROGRAM_SRC_line_echo := src/user/line_echo/main.c
 
 SRCS_USER_COMMON_S := \
     src/user/crt0.S
@@ -520,7 +522,7 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  user_hello  - compiled minimal userspace hello regression profile"
 	@echo "  user_caps   - formal capability/wait regression"
 	@echo "  user_dual   - launch formal-ABI user_hello and user_counter together"
-	@echo "  user_input  - bounded demo-shell input profile (use qemu_capture host+tcg with sendkeys)"
+	@echo "  user_input  - foreground handoff profile with input_probe and line_echo"
 	@echo "  demo_shell  - P2 demo-shell control-plane regression profile"
 	@echo "  user_fault  - demo-shell child fault regression profile"
 	@echo "Recommended explicit workflow:"
@@ -579,7 +581,7 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  make test user_hello # select the compiled minimal userspace hello profile"
 	@echo "  make test user_caps  # select the formal capability/wait profile"
 	@echo "  make test user_dual  # select the dual compiled-userspace runtime profile (use qemu_capture host+tcg)"
-	@echo "  make test user_input # select the bounded demo-shell input profile (use qemu_capture host+tcg with sendkeys)"
+	@echo "  make test user_input # select the foreground handoff profile (use qemu_capture host+tcg with sendkeys)"
 	@echo "  make test demo_shell # select the P2 demo-shell control-plane profile (use qemu_capture host+tcg with sendkeys)"
 	@echo "  make test user_fault # select the demo-shell child fault profile (use qemu_capture host+tcg with sendkeys)"
 	@echo "  make test            # list available test modules"

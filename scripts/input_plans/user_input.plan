@@ -1,11 +1,11 @@
-# Drive the P1 profile off explicit foreground-handoff anchors so the same
-# plan can run on both host and tcg without relying on prompt timing.
-wait_for [USERINPUT] foreground -> hsh
+# Drive the foreground-handoff profile from explicit owner-change anchors so
+# the same plan can run on both host and tcg without relying on prompt timing.
+wait_for [USERINPUT] foreground -> input_probe
 wait 0.5
 text hello
 key ret
 
-wait_for [USERINPUT] foreground -> calc
+wait_for [USERINPUT] foreground -> line_echo
 wait 0.5
 text 3 4 +
 key ret

@@ -2,7 +2,7 @@
  * HimuOperatingSystem
  *
  * File: demo/user_input.c
- * Description: Demo-shell input regression profile: hsh first, then calc.
+ * Description: Foreground handoff regression profile for bounded input probes.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
@@ -13,8 +13,8 @@
 
 typedef struct KI_USER_INPUT_CONTEXT
 {
-    uint32_t HshPid;
-    uint32_t CalcPid;
+    uint32_t InputProbePid;
+    uint32_t LineEchoPid;
 } KI_USER_INPUT_CONTEXT;
 
 static KI_USER_INPUT_CONTEXT gKiUserInputContext;
@@ -33,34 +33,35 @@ KiUserInputControllerThread(void *arg)
 
     initialReadCount = KeInputGetCompletedReadCount();
 
-    status = ExSpawnProgram("hsh", sizeof("hsh") - 1U, EX_USER_SPAWN_FLAG_FOREGROUND, &context->HshPid);
+    status = ExSpawnProgram("input_probe", sizeof("input_probe") - 1U, EX_USER_SPAWN_FLAG_FOREGROUND,
+                            &context->InputProbePid);
     if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to spawn user_input hsh process");
-    klog(KLOG_LEVEL_INFO, "[USERINPUT] foreground -> hsh pid=%u\n", context->HshPid);
-
-    status = ExSpawnProgram("calc", sizeof("calc") - 1U, EX_USER_SPAWN_FLAG_NONE, &context->CalcPid);
-    if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to spawn user_input calc process");
+        HO_KPANIC(status, "Failed to spawn user_input input_probe process");
+    klog(KLOG_LEVEL_INFO, "[USERINPUT] foreground -> input_probe pid=%u\n", context->InputProbePid);
 
     while (KeInputGetCompletedReadCount() == initialReadCount)
         KeSleep(KE_DEFAULT_QUANTUM_NS);
 
-    status = ExSetForegroundProcess(context->CalcPid);
+    status = ExSpawnProgram("line_echo", sizeof("line_echo") - 1U, EX_USER_SPAWN_FLAG_NONE, &context->LineEchoPid);
     if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to set calc foreground process");
-    klog(KLOG_LEVEL_INFO, "[USERINPUT] foreground -> calc pid=%u\n", context->CalcPid);
+        HO_KPANIC(status, "Failed to spawn user_input line_echo process");
 
-    status = ExWaitProcess(context->CalcPid);
+    status = ExSetForegroundProcess(context->LineEchoPid);
     if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to wait calc process");
+        HO_KPANIC(status, "Failed to set line_echo foreground process");
+    klog(KLOG_LEVEL_INFO, "[USERINPUT] foreground -> line_echo pid=%u\n", context->LineEchoPid);
 
-    status = ExWaitProcess(context->HshPid);
+    status = ExWaitProcess(context->LineEchoPid);
     if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to wait hsh process");
+        HO_KPANIC(status, "Failed to wait line_echo process");
+
+    status = ExWaitProcess(context->InputProbePid);
+    if (status != EC_SUCCESS)
+        HO_KPANIC(status, "Failed to wait input_probe process");
 
     status = KeInputSetForegroundOwnerThreadId(0U);
     if (status != EC_SUCCESS)
-        HO_KPANIC(status, "Failed to clear foreground owner after calc");
+        HO_KPANIC(status, "Failed to clear foreground owner after line_echo");
 }
 
 void
@@ -69,8 +70,8 @@ RunUserInputDemo(void)
     KTHREAD *controllerThread = NULL;
     HO_STATUS status = EC_SUCCESS;
 
-    gKiUserInputContext.HshPid = 0;
-    gKiUserInputContext.CalcPid = 0;
+    gKiUserInputContext.InputProbePid = 0;
+    gKiUserInputContext.LineEchoPid = 0;
 
     status = KeThreadCreate(&controllerThread, KiUserInputControllerThread, &gKiUserInputContext);
     if (status != EC_SUCCESS)

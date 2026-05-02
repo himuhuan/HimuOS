@@ -66,7 +66,7 @@ teardown, foreground input, or scheduling must have both.
 | `user_hello` | formal ABI smoke profile | `libsys.h` write + clean exit payload | `test-user_hello` | `HO_DEMO_TEST_USER_HELLO` | none | host normally enough | `[USERRT] enter user mode`, `[USERRT] invalid user buffer`, `[USERHELLO] hello`, `[USERRT] SYS_EXIT`, `[USERRT] runtime teardown complete` |
 | `user_caps` | formal capability/wait regression | `libsys.h` capability seed + handle syscalls + clean exit | `test-user_caps` | `HO_DEMO_TEST_USER_CAPS` | none | host normally enough | `[USERCAP] stdout capability write succeeds`, `[USERCAP] SYS_CLOSE succeeded`, `[USERCAP] capability syscall rejected`, `[USERCAP] SYS_WAIT_ONE timed out`, `[USERRT] SYS_EXIT` |
 | `user_dual` | official contract (timing-sensitive) | `ExSpawnProgram()` / `ExWaitProcess()` compiled-userspace path | `test-user_dual` | `HO_DEMO_TEST_USER_DUAL` | none | host and TCG required | formal-ABI `user_hello`, direct-entry `user_counter`, `SYS_EXIT`, runtime teardown, no raw/P1 anchors, no teardown panic |
-| `user_input` | official contract (timing-sensitive) | `ExSpawnProgram()` / `ExSetForegroundProcess()` / `ExWaitProcess()` foreground path | `test-user_input` | `HO_DEMO_TEST_USER_INPUT` | `scripts/input_plans/user_input.plan` | host and TCG required | `[USERINPUT] foreground -> hsh`, `[HSH] hello`, `[HSH] handoff`, `[USERINPUT] foreground -> calc`, `[CALC] 3 4 +`, clean teardown |
+| `user_input` | official contract (timing-sensitive) | `ExSpawnProgram()` / `ExSetForegroundProcess()` / `ExWaitProcess()` foreground path | `test-user_input` | `HO_DEMO_TEST_USER_INPUT` | `scripts/input_plans/user_input.plan` | host and TCG required | `[USERINPUT] foreground -> input_probe`, `[INPUTPROBE] hello`, `[INPUTPROBE] handoff`, `[USERINPUT] foreground -> line_echo`, `[LINEECHO] 3 4 +`, clean teardown |
 | `demo_shell` | official contract (timing-sensitive) | `ExSpawnProgram()` / `ExWaitProcess()` shell path; `ps` formats `EX_SYSINFO_CLASS_PROCESS_LIST` in user space | `test-demo_shell` | `HO_DEMO_TEST_DEMO_SHELL` | `scripts/input_plans/demo_shell.plan` | host and TCG required | `HimuOS System Information`, `HimuOS Virtual Memory Map`, `SYS_QUERY_SYSINFO succeeded class=6`, `PID  STATE`, `[CALC] result=7`, `[HSH] killed pid=`, `[HSH] HSH exited` |
 | `user_fault` | official contract (timing-sensitive) | `demo_shell` control plane + user-fault recovery; `ps` formats `EX_SYSINFO_CLASS_PROCESS_LIST` in user space | `test-user_fault` | `HO_DEMO_TEST_USER_FAULT` | `scripts/input_plans/user_fault.plan` | host and TCG required | `[USERFAULT] #DE`, `[USERFAULT] #PF`, `[USERFAULT] CR2=`, `SYS_QUERY_SYSINFO succeeded class=6`, `[DEMOSHELL] foreground restored`, `[HSH] HSH exited` |
 | `guard_wait` | targeted mechanism sentinel | guard misuse panic | `test-guard_wait` | `HO_DEMO_TEST_GUARD_WAIT` | none | targeted panic evidence | `[GUARDWAIT-`, diagnosable guard violation |
@@ -160,6 +160,26 @@ For failures, keep the log path and record:
 - last matched anchor
 - first failure or panic anchor
 - whether the failure appears host-only, TCG-only, or common
+
+## Phase D New-Era Clean Evidence 2026-05-02
+
+Build and capture sanity after removing profile-conditioned `hsh`/`calc`
+userspace behavior and moving `user_input` onto explicit input probes:
+
+- `make all BUILD_FLAVOR=test-user_input HO_DEMO_TEST_NAME=user_input HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_INPUT`:
+  passed.
+- `make all BUILD_FLAVOR=test-demo_shell HO_DEMO_TEST_NAME=demo_shell HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_DEMO_SHELL`:
+  passed.
+- `make all BUILD_FLAVOR=test-user_fault HO_DEMO_TEST_NAME=user_fault HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_FAULT`:
+  passed.
+- `rg "HO_DEMO_TEST_" src/user`: no matches.
+
+Timing-sensitive evidence:
+
+| Profile | Mode | Log | Result |
+| --- | --- | --- | --- |
+| `user_input` | host | `/tmp/himuos-user-input-host.log` | Matched foreground handoff to `input_probe`, `[INPUTPROBE] hello`, `[INPUTPROBE] handoff`, foreground handoff to `line_echo`, `[LINEECHO] 3 4 +`, foreground reset, and no panic/STOP anchors. |
+| `user_input` | TCG | `/tmp/himuos-user-input-tcg.log` | Matched the same anchors as host; no panic/STOP anchors. |
 
 ## Phase C New-Era Clean Evidence 2026-05-02
 

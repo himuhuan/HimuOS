@@ -3,15 +3,12 @@
  *
  * File: user/hsh/main.c
  * Description: Minimal demo-shell REPL for the stable Ex user runtime.
- *              built for the demo_shell profile.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
 #include "libsys.h"
 
 static const char gHshPrompt[] = "hsh> ";
-
-#if defined(HO_DEMO_TEST_DEMO_SHELL) || defined(HO_DEMO_TEST_USER_FAULT)
 
 enum
 {
@@ -453,42 +450,3 @@ main(void)
         HoHshMustWriteLiteral(gUnknownCommand);
     }
 }
-
-#else
-
-static const char gHshPrefix[] = "[HSH] ";
-static const char gHshHandoff[] = "[HSH] handoff\n";
-static const char gNewLine[] = "\n";
-
-int
-main(void)
-{
-    char line[EX_USER_READLINE_MAX_LENGTH];
-    int64_t status = HoUserWriteStdout(gHshPrompt, sizeof(gHshPrompt) - 1U);
-    if (status != (int64_t)(sizeof(gHshPrompt) - 1U))
-        HoUserAbort();
-
-    status = HoUserReadLine(line, sizeof(line));
-    if (status < 0)
-        HoUserAbort();
-
-    if (HoUserWriteStdout(gHshPrefix, sizeof(gHshPrefix) - 1U) != (int64_t)(sizeof(gHshPrefix) - 1U))
-        HoUserAbort();
-
-    if (status != 0 && HoUserWriteStdout(line, (uint64_t)status) != status)
-        HoUserAbort();
-
-    if (HoUserWriteStdout(gNewLine, sizeof(gNewLine) - 1U) != (int64_t)(sizeof(gNewLine) - 1U))
-        HoUserAbort();
-
-    status = HoUserReadLine(line, sizeof(line));
-    if (status != -(int64_t)EC_INVALID_STATE)
-        HoUserAbort();
-
-    if (HoUserWriteStdout(gHshHandoff, sizeof(gHshHandoff) - 1U) != (int64_t)(sizeof(gHshHandoff) - 1U))
-        HoUserAbort();
-
-    HoUserExit(0);
-}
-
-#endif

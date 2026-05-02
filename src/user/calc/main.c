@@ -3,15 +3,12 @@
  *
  * File: user/calc/main.c
  * Description: Minimal calc REPL for the stable Ex user runtime.
- *              built for the demo_shell profile.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
 #include "libsys.h"
 
 static const char gCalcPrompt[] = "calc> ";
-
-#if defined(HO_DEMO_TEST_DEMO_SHELL) || defined(HO_DEMO_TEST_USER_FAULT)
 
 enum
 {
@@ -53,8 +50,6 @@ HoCalcMustWriteLiteral(const char *literal)
     HoCalcMustWrite(literal, HoCalcStringLength(literal));
 }
 
-#endif
-
 static int64_t
 HoCalcReadLineBlocking(char *buffer, uint64_t capacity)
 {
@@ -68,8 +63,6 @@ HoCalcReadLineBlocking(char *buffer, uint64_t capacity)
             HoUserAbort();
     }
 }
-
-#if defined(HO_DEMO_TEST_DEMO_SHELL) || defined(HO_DEMO_TEST_USER_FAULT)
 
 static BOOL
 HoCalcLineEquals(const char *line, uint64_t length, const char *literal)
@@ -349,33 +342,3 @@ main(void)
         HoCalcWriteResult(value);
     }
 }
-
-#else
-
-static const char gCalcPrefix[] = "[CALC] ";
-static const char gNewLine[] = "\n";
-
-int
-main(void)
-{
-    char line[EX_USER_READLINE_MAX_LENGTH];
-    int64_t status = HoUserWriteStdout(gCalcPrompt, sizeof(gCalcPrompt) - 1U);
-
-    if (status != (int64_t)(sizeof(gCalcPrompt) - 1U))
-        HoUserAbort();
-
-    status = HoCalcReadLineBlocking(line, sizeof(line));
-
-    if (HoUserWriteStdout(gCalcPrefix, sizeof(gCalcPrefix) - 1U) != (int64_t)(sizeof(gCalcPrefix) - 1U))
-        HoUserAbort();
-
-    if (status != 0 && HoUserWriteStdout(line, (uint64_t)status) != status)
-        HoUserAbort();
-
-    if (HoUserWriteStdout(gNewLine, sizeof(gNewLine) - 1U) != (int64_t)(sizeof(gNewLine) - 1U))
-        HoUserAbort();
-
-    HoUserExit(0);
-}
-
-#endif
