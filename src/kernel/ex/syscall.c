@@ -11,7 +11,6 @@
 #include <kernel/ex/ex_user_runtime.h>
 #include <kernel/ex/ex_syscall.h>
 #include <kernel/ex/program.h>
-#include <kernel/ex/user_bringup_sentinel_abi.h>
 #include <kernel/ex/user_regression_anchors.h>
 #include <kernel/ex/user_syscall_abi.h>
 #include <kernel/hodbg.h>
@@ -32,10 +31,6 @@ static HO_STATUS KiPrepareUserRuntimeExit(uint64_t exitCode,
                                           const char *exitKind,
                                           EX_SYSCALL_DISPATCH_RESULT *result);
 static HO_STATUS KiPrepareUserRuntimeKillExit(uint32_t programId, EX_SYSCALL_DISPATCH_RESULT *result);
-static int64_t KiRejectRawWrite(uint64_t userBuffer, uint64_t length, HO_STATUS status);
-static int64_t KiHandleRawWrite(uint64_t userBuffer, uint64_t length);
-static BOOL KiCurrentProcessAllowsRawSyscalls(KTHREAD *thread);
-static HO_STATUS KiDispatchRawSyscall(const EX_SYSCALL_ARGUMENTS *args, EX_SYSCALL_DISPATCH_RESULT *result);
 static int64_t KiRejectCapabilitySyscall(const char *operation,
                                          uint64_t syscallNumber,
                                          EX_HANDLE handle,
@@ -129,103 +124,6 @@ KiPrepareUserRuntimeKillExit(uint32_t programId, EX_SYSCALL_DISPATCH_RESULT *res
 
     KiSetExitResult(result);
     return EC_SUCCESS;
-}
-
-static int64_t
-KiRejectRawWrite(uint64_t userBuffer, uint64_t length, HO_STATUS status)
-{
-    klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_INVALID_RAW_WRITE " addr=%p len=%lu status=%s (%d)\n",
-         (void *)(uint64_t)userBuffer, (unsigned long)length, KrGetStatusMessage(status), status);
-    return KiEncodeSyscallStatus(status);
-}
-
-static int64_t
-KiHandleRawWrite(uint64_t userBuffer, uint64_t length)
-{
-    if (length > EX_USER_SYSCALL_WRITE_MAX_LENGTH)
-    {
-        klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_INVALID_USER_BUFFER " raw=write addr=%p len=%lu exceeds=%u\n",
-             (void *)(uint64_t)userBuffer, (unsigned long)length, EX_USER_SYSCALL_WRITE_MAX_LENGTH);
-        return KiRejectRawWrite(userBuffer, length, EC_ILLEGAL_ARGUMENT);
-    }
-
-    if (length == 0)
-        return 0;
-
-    char scratch[EX_USER_SYSCALL_WRITE_MAX_LENGTH];
-    HO_STATUS status = KeUserModeCopyInBytes(scratch, (HO_VIRTUAL_ADDRESS)userBuffer, length);
-    if (status != EC_SUCCESS)
-        return KiRejectRawWrite(userBuffer, length, status);
-
-    KTHREAD *thread = KeGetCurrentThread();
-    uint64_t written = 0;
-    status = KeUserModeWriteConsoleBytes(scratch, length, &written);
-    if (status != EC_SUCCESS)
-    {
-        klog(KLOG_LEVEL_ERROR, "[USERBOOT] SYS_RAW_WRITE console emit failed index=%lu thread=%u\n",
-             (unsigned long)written, thread ? thread->ThreadId : 0U);
-        return KiEncodeSyscallStatus(status);
-    }
-
-    klog(KLOG_LEVEL_INFO, EX_USER_REGRESSION_LOG_HELLO_WRITE_SUCCEEDED " bytes=%lu thread=%u\n", (unsigned long)written,
-         thread ? thread->ThreadId : 0U);
-
-    return (int64_t)written;
-}
-
-static BOOL
-KiCurrentProcessAllowsRawSyscalls(KTHREAD *thread)
-{
-    EX_PROCESS *process = NULL;
-
-    if (thread == NULL)
-        return FALSE;
-
-    process = ExRuntimeLookupProcessByKernelThread(thread);
-    if (process == NULL)
-        return FALSE;
-
-    return process->ProgramId == EX_PROGRAM_ID_USER_CAPS;
-}
-
-static HO_STATUS
-KiDispatchRawSyscall(const EX_SYSCALL_ARGUMENTS *args, EX_SYSCALL_DISPATCH_RESULT *result)
-{
-    KTHREAD *thread = KeGetCurrentThread();
-    if (!thread || ExUserRuntimeQueryThreadStaging(thread) == NULL)
-    {
-        if (args->Number == EX_USER_BRINGUP_SYS_RAW_EXIT)
-            KiAbortUserRuntimeExit(thread, args->Arg0, EC_INVALID_STATE, "raw", "User-runtime raw exit missing staging");
-
-        klog(KLOG_LEVEL_ERROR, EX_USER_REGRESSION_LOG_INVALID_SYSCALL " nr=%lu thread=%u missing user-mode staging\n",
-             (unsigned long)args->Number, thread ? thread->ThreadId : 0U);
-        KiSetReturnResult(result, KiEncodeSyscallStatus(EC_INVALID_STATE));
-        return EC_SUCCESS;
-    }
-
-    if (!KiCurrentProcessAllowsRawSyscalls(thread))
-    {
-        klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_INVALID_SYSCALL
-                                " nr=%lu thread=%u rejected raw sentinel syscall outside bring-up profile\n",
-             (unsigned long)args->Number, thread->ThreadId);
-        KiSetReturnResult(result, KiEncodeSyscallStatus(EC_NOT_SUPPORTED));
-        return EC_SUCCESS;
-    }
-
-    switch (args->Number)
-    {
-    case EX_USER_BRINGUP_SYS_RAW_WRITE:
-        KiSetReturnResult(result, KiHandleRawWrite(args->Arg0, args->Arg1));
-        return EC_SUCCESS;
-    case EX_USER_BRINGUP_SYS_RAW_EXIT:
-        return KiPrepareUserRuntimeExit(args->Arg0, EX_USER_REGRESSION_LOG_SYS_RAW_EXIT, "raw", result);
-    default:
-        klog(KLOG_LEVEL_WARNING, EX_USER_REGRESSION_LOG_INVALID_SYSCALL " nr=%lu thread=%u args=(%p,%p,%p)\n",
-             (unsigned long)args->Number, thread->ThreadId, (void *)(uint64_t)args->Arg0, (void *)(uint64_t)args->Arg1,
-             (void *)(uint64_t)args->Arg2);
-        KiSetReturnResult(result, KiEncodeSyscallStatus(EC_NOT_SUPPORTED));
-        return EC_SUCCESS;
-    }
 }
 
 static int64_t
@@ -633,15 +531,7 @@ ExDispatchSyscall(const EX_SYSCALL_ARGUMENTS *args, EX_SYSCALL_DISPATCH_RESULT *
 
     KiSetReturnResult(outResult, 0);
 
-    HO_STATUS status;
-    if (args->Number < EX_USER_SYSCALL_BASE)
-    {
-        status = KiDispatchRawSyscall(args, outResult);
-    }
-    else
-    {
-        status = KiDispatchFormalSyscall(args, outResult);
-    }
+    HO_STATUS status = KiDispatchFormalSyscall(args, outResult);
 
     if (status != EC_SUCCESS)
         return status;

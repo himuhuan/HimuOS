@@ -18,6 +18,10 @@ extern const uint8_t gExBuiltinProgram_user_counter_CodeBytesStart[];
 extern const uint8_t gExBuiltinProgram_user_counter_CodeBytesEnd[];
 extern const uint8_t gExBuiltinProgram_user_counter_ConstBytesStart[];
 extern const uint8_t gExBuiltinProgram_user_counter_ConstBytesEnd[];
+extern const uint8_t gExBuiltinProgram_user_caps_CodeBytesStart[];
+extern const uint8_t gExBuiltinProgram_user_caps_CodeBytesEnd[];
+extern const uint8_t gExBuiltinProgram_user_caps_ConstBytesStart[];
+extern const uint8_t gExBuiltinProgram_user_caps_ConstBytesEnd[];
 extern const uint8_t gExBuiltinProgram_hsh_CodeBytesStart[];
 extern const uint8_t gExBuiltinProgram_hsh_CodeBytesEnd[];
 extern const uint8_t gExBuiltinProgram_hsh_ConstBytesStart[];
@@ -73,6 +77,7 @@ static EX_PROGRAM_REGISTRY_ENTRY gExBuiltinPrograms[] = {
     EX_PROGRAM_REGISTRY_ENTRY(fault_pf, "fault_pf", EX_PROGRAM_ID_FAULT_PF),
     EX_PROGRAM_REGISTRY_ENTRY(user_hello, "user_hello", EX_PROGRAM_ID_USER_HELLO),
     EX_PROGRAM_REGISTRY_ENTRY(user_counter, "user_counter", EX_PROGRAM_ID_USER_COUNTER),
+    EX_PROGRAM_REGISTRY_ENTRY(user_caps, "user_caps", EX_PROGRAM_ID_USER_CAPS),
 };
 
 static BOOL gExProgramRegistryValidated;

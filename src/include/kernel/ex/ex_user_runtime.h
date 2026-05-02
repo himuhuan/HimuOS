@@ -50,7 +50,7 @@ HO_KERNEL_API BOOL ExUserRuntimeHasWrapper(const struct KTHREAD *thread);
 HO_KERNEL_API struct KE_USER_MODE_STAGING *ExUserRuntimeQueryThreadStaging(const struct KTHREAD *thread);
 
 /**
- * Validate a clean EX_USER_SYS_EXIT / EX_USER_BRINGUP_SYS_RAW_EXIT handoff.
+ * Validate a clean EX_USER_SYS_EXIT handoff.
  * Exit must not consume user-mode staging in place; the terminated-thread
  * finalizer remains responsible for payload teardown and final wrapper release.
  */

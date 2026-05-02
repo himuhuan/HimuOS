@@ -54,7 +54,7 @@ typedef HO_STATUS (*KE_USER_RUNTIME_FINALIZE_THREAD_HOOK)(struct KTHREAD *thread
 
 /**
  * User-runtime timer observe hook - called from the timer ISR when the
- * interrupted context was in user mode (CPL 3).
+ * interrupted context was in user mode (CPL 3). Optional.
  */
 typedef void (*KE_USER_RUNTIME_OBSERVE_TIMER_HOOK)(struct KTHREAD *thread);
 
@@ -67,7 +67,8 @@ typedef void (*KE_USER_RUNTIME_FAULT_HOOK)(struct KTHREAD *thread,
                                            const KE_USER_RUNTIME_FAULT_CONTEXT *context) HO_NORETURN;
 
 /**
- * Register user-runtime hooks. All six must be non-NULL.
+ * Register user-runtime hooks. The timer observe hook is optional; all other
+ * hooks must be non-NULL.
  * Must be called before any user-runtime thread can be dispatched.
  * May only be called once.
  */

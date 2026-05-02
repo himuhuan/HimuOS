@@ -64,13 +64,12 @@ Current runtime reality:
   Ex-owned `ExSpawnProgram()` / `ExWaitProcess()` / `ExKillProcess()` control
   plane. `user_input` also uses `ExSetForegroundProcess()` for foreground
   handoff.
-- `user_hello` is a minimal formal-ABI smoke profile, while `user_caps` is the
-  only remaining legacy raw/P1 bring-up sentinel.
-- `hsh`, `calc`, `tick1s`, `fault_de`, `fault_pf`, `user_counter`, and
-  `user_hello` include the normal `src/user/libsys.h` wrapper surface over the
-  formal `EX_USER_SYS_*` services and enter without phase-gate waits. The
-  kernel-embedded `user_caps` payload remains an explicit raw syscall /
-  phase-gate sentinel until that path is retired.
+- `user_hello` is a minimal formal-ABI smoke profile, while `user_caps` is a
+  formal capability/wait regression profile.
+- `hsh`, `calc`, `tick1s`, `fault_de`, `fault_pf`, `user_counter`,
+  `user_hello`, and `user_caps` include the normal `src/user/libsys.h` wrapper
+  surface over the formal `EX_USER_SYS_*` services. No active user-runtime path
+  uses raw syscalls or phase-gate waits.
 - Structured Ex sysinfo classes are the stable userspace contract. `hsh ps`
   queries `EX_SYSINFO_CLASS_PROCESS_LIST` and formats the process view in user
   space; text sysinfo classes remain convenience renderers for `sysinfo`,

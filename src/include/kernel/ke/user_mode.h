@@ -22,7 +22,6 @@ typedef struct KE_USER_MODE_CREATE_PARAMS
     uint64_t EntryOffset;
     const void *ConstBytes;
     uint64_t ConstLength;
-    BOOL EnableBringupMailbox;
 } KE_USER_MODE_CREATE_PARAMS;
 
 typedef struct KE_USER_MODE_LAYOUT
@@ -74,7 +73,5 @@ HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserModeWriteConsoleBytes(const char *byt
                                                                       uint64_t *outWritten);
 
 HO_KERNEL_API HO_NODISCARD HO_STATUS KeUserModeSyscallInit(void);
-
-HO_KERNEL_API void KeUserModeObserveCurrentThreadUserTimerPreemption(void);
 
 HO_KERNEL_API HO_NORETURN void KeUserModeEnterCurrentThread(void);

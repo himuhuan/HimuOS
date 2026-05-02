@@ -8,7 +8,6 @@
 
 #include <arch/amd64/pm.h>
 #include <kernel/ex/ex_user_runtime.h>
-#include <kernel/ex/user_bringup_sentinel_abi.h>
 #include <kernel/ex/user_image_abi.h>
 #include <kernel/ex/user_regression_anchors.h>
 #include <kernel/ke/mm.h>
@@ -41,11 +40,6 @@ struct KE_USER_MODE_STAGING
     HO_VIRTUAL_ADDRESS StackBase;
     HO_VIRTUAL_ADDRESS StackTop;
     HO_VIRTUAL_ADDRESS GuardBase;
-    HO_VIRTUAL_ADDRESS PhaseOneMailboxAddress;
-    BOOL BringupMailboxEnabled;
-    uint32_t PhaseOneUserTimerHitCount;
-    BOOL PhaseOneFirstEntryObserved;
-    BOOL PhaseOneGateArmed;
     uint32_t MappingCount;
     HO_PHYSICAL_ADDRESS OwnerRootPageTablePhys;
     KTHREAD *AttachedThread;
@@ -294,9 +288,6 @@ KeUserModeCreateStaging(const KE_USER_MODE_CREATE_PARAMS *params,
     staging->StackBase = EX_USER_IMAGE_STACK_BASE;
     staging->StackTop = EX_USER_IMAGE_STACK_TOP;
     staging->GuardBase = EX_USER_IMAGE_STACK_GUARD_BASE;
-    staging->BringupMailboxEnabled = params->EnableBringupMailbox;
-    staging->PhaseOneMailboxAddress =
-        params->EnableBringupMailbox ? EX_USER_BRINGUP_P1_MAILBOX_ADDRESS : 0;
     staging->OwnerRootPageTablePhys = targetSpace->RootPageTablePhys;
 
     status = KiAllocateAndMapUserPage(space,
@@ -335,32 +326,6 @@ KeUserModeCreateStaging(const KE_USER_MODE_CREATE_PARAMS *params,
     status = KiValidateUserModeHole(space, staging->GuardBase);
     if (status != EC_SUCCESS)
         goto cleanup;
-
-    const KE_USER_MODE_MAPPING_RECORD *stackRecord =
-        KiFindMappedPage(staging, KE_USER_MODE_MAPPING_KIND_STACK);
-    HO_KASSERT(stackRecord != NULL, EC_INVALID_STATE);
-
-    if (staging->BringupMailboxEnabled)
-    {
-        KE_TEMP_PHYS_MAP_HANDLE mailboxHandle = {0};
-        HO_VIRTUAL_ADDRESS mailboxTempVirt = 0;
-        status = KeTempPhysMapAcquire(stackRecord->PhysicalBase,
-                                      PTE_WRITABLE | PTE_NO_EXECUTE,
-                                      &mailboxHandle,
-                                      &mailboxTempVirt);
-        if (status != EC_SUCCESS)
-            goto cleanup;
-
-        *(volatile uint32_t *)(uint64_t)(mailboxTempVirt + EX_USER_BRINGUP_P1_MAILBOX_OFFSET) =
-            EX_USER_BRINGUP_P1_MAILBOX_CLOSED;
-
-        HO_STATUS mailboxRelease = KeTempPhysMapRelease(&mailboxHandle);
-        if (mailboxRelease != EC_SUCCESS)
-        {
-            status = mailboxRelease;
-            goto cleanup;
-        }
-    }
 
     *outStaging = staging;
     return EC_SUCCESS;
@@ -540,42 +505,6 @@ KeUserModeQueryCurrentThreadLayout(KE_USER_MODE_LAYOUT *outLayout)
     return EC_SUCCESS;
 }
 
-HO_KERNEL_API void
-KeUserModeObserveCurrentThreadUserTimerPreemption(void)
-{
-    KTHREAD *thread = KeGetCurrentThread();
-    KE_USER_MODE_STAGING *staging = KiGetCurrentThreadStaging();
-    if (!thread || !staging)
-        return;
-
-    if (!staging->BringupMailboxEnabled || !staging->PhaseOneFirstEntryObserved || staging->PhaseOneGateArmed)
-        return;
-
-    HO_KASSERT(KiFindMappedPage(staging, KE_USER_MODE_MAPPING_KIND_STACK) != NULL, EC_INVALID_STATE);
-    HO_KASSERT(staging->PhaseOneMailboxAddress == EX_USER_BRINGUP_P1_MAILBOX_ADDRESS, EC_INVALID_STATE);
-
-    if (staging->PhaseOneUserTimerHitCount < 2)
-    {
-        ++staging->PhaseOneUserTimerHitCount;
-    }
-
-    klog(KLOG_LEVEL_INFO,
-         EX_USER_REGRESSION_LOG_TIMER_FROM_USER_FORMAT " thread=%u\n",
-         staging->PhaseOneUserTimerHitCount,
-         thread->ThreadId);
-
-    if (staging->PhaseOneUserTimerHitCount >= 2)
-    {
-        *(volatile uint32_t *)(uint64_t)staging->PhaseOneMailboxAddress = EX_USER_BRINGUP_P1_MAILBOX_GATE_OPEN;
-        staging->PhaseOneGateArmed = TRUE;
-
-        klog(KLOG_LEVEL_INFO,
-             EX_USER_REGRESSION_LOG_P1_GATE_ARMED " thread=%u mailbox=%p\n",
-             thread->ThreadId,
-             (void *)(uint64_t)staging->PhaseOneMailboxAddress);
-    }
-}
-
 HO_KERNEL_API HO_NORETURN void
 KeUserModeEnterCurrentThread(void)
 {
@@ -592,9 +521,7 @@ KeUserModeEnterCurrentThread(void)
     HO_KASSERT(staging->StackBase == EX_USER_IMAGE_STACK_BASE, EC_INVALID_STATE);
     HO_KASSERT(staging->StackTop == EX_USER_IMAGE_STACK_TOP, EC_INVALID_STATE);
 
-    staging->PhaseOneFirstEntryObserved = TRUE;
-
-    klog(KLOG_LEVEL_INFO, EX_USER_REGRESSION_LOG_P1_FIRST_ENTRY "\n");
+    klog(KLOG_LEVEL_INFO, EX_USER_REGRESSION_LOG_ENTER_USER_MODE "\n");
 
     KiUserModeIretq(
         staging->EntryPoint, staging->StackTop, KE_USER_MODE_INITIAL_RFLAGS, GDT_USER_CODE_SEL, GDT_USER_DATA_SEL);

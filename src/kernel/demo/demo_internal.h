@@ -10,7 +10,6 @@
 #pragma once
 
 #include <kernel/demo.h>
-#include <kernel/ex/user_bringup_sentinel_abi.h>
 #include <kernel/ex/user_capability_abi.h>
 #include <kernel/ex/user_syscall_abi.h>
 #include <kernel/hodbg.h>

@@ -114,14 +114,10 @@ user-runtime ABI now lives in focused contracts:
 - `src/include/kernel/ex/user_image_abi.h`
 - `src/include/kernel/ex/user_capability_abi.h`
 
-Bring-up-only raw syscall, P1 mailbox, and regression-log anchors are separate:
-
-- `src/include/kernel/ex/user_bringup_sentinel_abi.h`
-- `src/include/kernel/ex/user_regression_anchors.h`
-
-`src/user/libsys.h` is the normal userspace wrapper surface. No normal built-in
-program includes `src/user/libsys_bringup.h` or waits on the phase gate. The
-kernel-embedded `user_caps` payload is the only remaining raw/P1 sentinel.
+`src/user/libsys.h` is the normal userspace wrapper surface. The raw syscall
+dispatcher, P1 mailbox, `src/user/libsys_bringup.h`, and the bring-up sentinel
+ABI header have been retired; active user programs consume only formal
+`EX_USER_SYS_*` services.
 
 Historical deletion context for retired debt is tracked in
 `docs/architecture/bootstrap-debt-index.md`.
@@ -130,10 +126,10 @@ Historical deletion context for retired debt is tracked in
 
 - `demo_shell`, `user_fault`, `user_input`, and `user_dual` validate the
   Ex-owned control plane.
-- `user_hello` is a formal-ABI smoke profile; `user_caps` is the remaining
-  legacy raw/P1 bring-up sentinel.
-- Normal userspace programs use `src/user/libsys.h` and do not wait on the P1
-  mailbox.
+- `user_hello` is a formal-ABI smoke profile; `user_caps` is a formal
+  capability/wait regression profile.
+- Normal userspace programs use `src/user/libsys.h` and do not wait on a phase
+  gate.
 
 ## Near-Term Non-Goals
 
@@ -141,7 +137,6 @@ Near-term cleanup must not:
 
 - change syscall numbers, return values, or register ABI
 - change user program layout or embedded artifact rules
-- remove raw bring-up syscalls before their sentinel value is retired
 - replace demo shell lifecycle behavior with full TTY-lite or POSIX job control
 - alter QEMU profile input plans or expected anchors unless the existing
   profile is already failing and the failure is documented

@@ -1,9 +1,8 @@
 # Regression Profiles
 
 This index tracks HimuOS profile-driven regression for the cleanup plan. It
-records which profiles are official cleanup contracts, which
-ones are legacy bring-up sentinels, and which anchors prove the expected
-behavior.
+records which profiles are official cleanup contracts, which profiles are
+targeted mechanism sentinels, and which anchors prove the expected behavior.
 
 ## Phase A Contract Split
 
@@ -16,12 +15,12 @@ Official cleanup contracts:
 - `user_fault`: user fault isolation and recovery-to-shell safety net.
 
 These four profiles remain the timing-sensitive safety net. They now launch
-through the permanent Ex process-control surface; legacy raw bring-up launch
-coverage is isolated to the sentinel bucket.
+through the permanent Ex process-control surface.
 
-Legacy bring-up sentinels:
+Legacy raw/P1 bring-up sentinels:
 
-- `user_caps`: seeded capability/stdout/wait bring-up sentinel.
+- None. The raw syscall dispatcher, P1 mailbox, and bring-up helper ABI were
+  retired during New-Era Clean Phase C.
 
 Targeted mechanism sentinels:
 
@@ -65,7 +64,7 @@ teardown, foreground input, or scheduling must have both.
 | `schedule` | targeted mechanism sentinel | Ke scheduler/thread demo | `test-schedule` | `HO_DEMO_TEST_SCHEDULE` | none | host normally enough | `[DEMO] Selected profile: schedule`, scheduler/thread demo pass anchors |
 | `kthread_pool_race` | targeted mechanism sentinel | Ke pool synchronization | `test-kthread_pool_race` | `HO_DEMO_TEST_KTHREAD_POOL_RACE` | none | host normally enough | `[TEST] KTHREAD pool race regression suite passed` |
 | `user_hello` | formal ABI smoke profile | `libsys.h` write + clean exit payload | `test-user_hello` | `HO_DEMO_TEST_USER_HELLO` | none | host normally enough | `[USERRT] enter user mode`, `[USERRT] invalid user buffer`, `[USERHELLO] hello`, `[USERRT] SYS_EXIT`, `[USERRT] runtime teardown complete` |
-| `user_caps` | legacy bring-up sentinel | seeded capability/wait raw/P1 payload | `test-user_caps` | `HO_DEMO_TEST_USER_CAPS` | none | host normally enough | `[USERCAP] stdout capability write succeeds`, `[USERCAP] SYS_CLOSE succeeded`, `[USERCAP] capability syscall rejected`, `[USERCAP] SYS_WAIT_ONE timed out`, `[USERBOOT] SYS_RAW_EXIT` |
+| `user_caps` | formal capability/wait regression | `libsys.h` capability seed + handle syscalls + clean exit | `test-user_caps` | `HO_DEMO_TEST_USER_CAPS` | none | host normally enough | `[USERCAP] stdout capability write succeeds`, `[USERCAP] SYS_CLOSE succeeded`, `[USERCAP] capability syscall rejected`, `[USERCAP] SYS_WAIT_ONE timed out`, `[USERRT] SYS_EXIT` |
 | `user_dual` | official contract (timing-sensitive) | `ExSpawnProgram()` / `ExWaitProcess()` compiled-userspace path | `test-user_dual` | `HO_DEMO_TEST_USER_DUAL` | none | host and TCG required | formal-ABI `user_hello`, direct-entry `user_counter`, `SYS_EXIT`, runtime teardown, no raw/P1 anchors, no teardown panic |
 | `user_input` | official contract (timing-sensitive) | `ExSpawnProgram()` / `ExSetForegroundProcess()` / `ExWaitProcess()` foreground path | `test-user_input` | `HO_DEMO_TEST_USER_INPUT` | `scripts/input_plans/user_input.plan` | host and TCG required | `[USERINPUT] foreground -> hsh`, `[HSH] hello`, `[HSH] handoff`, `[USERINPUT] foreground -> calc`, `[CALC] 3 4 +`, clean teardown |
 | `demo_shell` | official contract (timing-sensitive) | `ExSpawnProgram()` / `ExWaitProcess()` shell path; `ps` formats `EX_SYSINFO_CLASS_PROCESS_LIST` in user space | `test-demo_shell` | `HO_DEMO_TEST_DEMO_SHELL` | `scripts/input_plans/demo_shell.plan` | host and TCG required | `HimuOS System Information`, `HimuOS Virtual Memory Map`, `SYS_QUERY_SYSINFO succeeded class=6`, `PID  STATE`, `[CALC] result=7`, `[HSH] killed pid=`, `[HSH] HSH exited` |
@@ -161,6 +160,21 @@ For failures, keep the log path and record:
 - last matched anchor
 - first failure or panic anchor
 - whether the failure appears host-only, TCG-only, or common
+
+## Phase C New-Era Clean Evidence 2026-05-02
+
+Build and capture sanity after deleting raw/P1 support and moving `user_caps`
+onto the formal ABI:
+
+- `make all`: passed.
+- `make all BUILD_FLAVOR=test-user_caps HO_DEMO_TEST_NAME=user_caps HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_CAPS`:
+  passed.
+
+Formal capability/wait evidence:
+
+| Profile | Mode | Log | Result |
+| --- | --- | --- | --- |
+| `user_caps` | host | `/tmp/himuos-user-caps-host.log` | Matched capability write, close, stale-handle rejection, wait timeout, `SYS_EXIT`, runtime teardown, and reaper anchors; no raw/P1, panic, or STOP anchors. |
 
 ## Phase B New-Era Clean Evidence 2026-05-02
 

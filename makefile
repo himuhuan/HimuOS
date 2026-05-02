@@ -342,10 +342,11 @@ TARGET_KERNEL := $(KRN_BINDIR)/kernel.bin
 # ------------------------------------------------------------------------------
 # Userspace artifacts
 # ------------------------------------------------------------------------------
-USER_PROGRAMS := user_hello user_counter hsh calc tick1s fault_de fault_pf
+USER_PROGRAMS := user_hello user_counter user_caps hsh calc tick1s fault_de fault_pf
 
 USER_PROGRAM_SRC_user_hello := src/user/user_hello/main.c
 USER_PROGRAM_SRC_user_counter := src/user/user_counter/main.c
+USER_PROGRAM_SRC_user_caps := src/user/user_caps/main.c
 USER_PROGRAM_SRC_hsh := src/user/hsh/main.c
 USER_PROGRAM_SRC_calc := src/user/calc/main.c
 USER_PROGRAM_SRC_tick1s := src/user/tick1s/main.c
@@ -517,7 +518,7 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  pf_heap     - page-fault demo: NX execute fault in heap-backed KVA page"
 	@echo "  kthread_pool_race - regression suite for KTHREAD pool synchronization"
 	@echo "  user_hello  - compiled minimal userspace hello regression profile"
-	@echo "  user_caps   - staged capability/wait regression"
+	@echo "  user_caps   - formal capability/wait regression"
 	@echo "  user_dual   - launch formal-ABI user_hello and user_counter together"
 	@echo "  user_input  - bounded demo-shell input profile (use qemu_capture host+tcg with sendkeys)"
 	@echo "  demo_shell  - P2 demo-shell control-plane regression profile"
@@ -576,7 +577,7 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  make test pf_heap    # run heap-backed page-fault observability demo"
 	@echo "  make test kthread_pool_race # run the KTHREAD pool race regression suite"
 	@echo "  make test user_hello # select the compiled minimal userspace hello profile"
-	@echo "  make test user_caps  # select the staged capability/wait profile"
+	@echo "  make test user_caps  # select the formal capability/wait profile"
 	@echo "  make test user_dual  # select the dual compiled-userspace runtime profile (use qemu_capture host+tcg)"
 	@echo "  make test user_input # select the bounded demo-shell input profile (use qemu_capture host+tcg with sendkeys)"
 	@echo "  make test demo_shell # select the P2 demo-shell control-plane profile (use qemu_capture host+tcg with sendkeys)"

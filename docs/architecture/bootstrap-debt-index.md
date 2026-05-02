@@ -1,12 +1,27 @@
 # Bootstrap Runtime Debt Index
 
 This index covers runtime and public-ABI debt only. True early boot under
-`src/boot/v2` is not debt for this plan. Existing regression log anchors stay
-fixed until an explicit replacement contract retires them.
+`src/boot/v2` is not debt for this plan. Current regression log anchors describe
+the formal user-runtime ABI; older raw/P1 anchors remain only in historical
+evidence notes.
 
 No active runtime debt remains in this index. Searching active source and
-headers for `Bootstrap` should now find only true early-machine boot state,
-early allocator/MM comments, or historical documentation.
+headers for `Bootstrap`, raw bring-up helpers, or P1 mailbox state should now
+find only true early-machine boot state, early allocator/MM comments, or
+historical documentation.
+
+## Retired During New-Era Clean Phase C
+
+- `src/user/libsys_bringup.h` and
+  `src/include/kernel/ex/user_bringup_sentinel_abi.h` were deleted.
+- The raw syscall dispatcher and syscall-number split were deleted; all active
+  user syscalls now enter the formal `EX_USER_SYS_*` dispatcher.
+- `KE_USER_MODE_STAGING` no longer stores mailbox state, and
+  `KE_USER_MODE_CREATE_PARAMS` no longer carries an `EnableBringupMailbox`
+  policy flag.
+- `user_caps` moved from a kernel-embedded raw/P1 payload to a normal
+  `src/user/user_caps` program using `src/user/libsys.h` and formal
+  `SYS_EXIT`.
 
 ## Retired During Phase I
 
@@ -29,13 +44,12 @@ early allocator/MM comments, or historical documentation.
 
 ## Retired During Phase G
 
-- `tick1s`, `fault_de`, `fault_pf`, and `user_counter` now include
+- `tick1s`, `fault_de`, `fault_pf`, `user_counter`, `user_hello`, and
+  `user_caps` now include
   `src/user/libsys.h` and enter directly without `HoUserWaitForP1Gate()`.
 - Normal userspace no longer includes `src/user/libsys_bringup.h`, calls
   `HoUserRaw*()`, or waits on the P1 mailbox.
-- `user_caps` is the only remaining raw syscall / phase-gate sentinel. The
-  `user_hello` payload now runs on `src/user/libsys.h` and exits through
-  `EX_USER_SYS_EXIT`.
+- No raw syscall / phase-gate sentinel remains in active source.
 
 ## Retired During Phase F
 
@@ -89,22 +103,22 @@ early allocator/MM comments, or historical documentation.
 ## Retired During Phase B
 
 - The monolithic bootstrap ABI umbrella `src/include/kernel/ex/ex_bootstrap_abi.h`
-  was deleted. Its contents now live in focused contracts:
+  was deleted. Its still-active contents now live in focused contracts:
   `src/include/kernel/ex/user_syscall_abi.h`,
   `src/include/kernel/ex/user_sysinfo_abi.h`,
   `src/include/kernel/ex/user_image_abi.h`,
-  `src/include/kernel/ex/user_capability_abi.h`,
-  `src/include/kernel/ex/user_bringup_sentinel_abi.h`, and
+  `src/include/kernel/ex/user_capability_abi.h`, and
   `src/include/kernel/ex/user_regression_anchors.h`.
 - `src/user/libsys.h` includes only the stable user-runtime ABI contracts.
-  Raw bring-up helpers and P1 mailbox waits moved to `src/user/libsys_bringup.h`.
+  The temporary raw bring-up helper split was later deleted during New-Era
+  Clean Phase C.
 - `src/include/kernel/ke/input.h` owns its mechanism capacity directly instead
   of including an Ex bootstrap ABI header for `KE_INPUT_LINE_CAPACITY`.
 
-## Legacy Bring-Up Sentinels Intentionally Kept During Phase A
+## Legacy Bring-Up Sentinels Previously Kept During Phase A
 
-- `user_caps` preserves capability-seed, stdout-handle, stale-handle rejection,
-  and process wait-handle timeout coverage.
+- `user_caps` preserved capability-seed, stdout-handle, stale-handle rejection,
+  and process wait-handle timeout coverage while raw/P1 still existed.
 
-It remains valid only until later phases replace its unique regression value or
-retire the underlying bring-up path.
+That coverage now exists through the formal `src/user/user_caps` payload, so
+the underlying bring-up path has been retired.

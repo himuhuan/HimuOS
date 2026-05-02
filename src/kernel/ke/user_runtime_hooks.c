@@ -24,7 +24,7 @@ KeRegisterUserRuntimeHooks(KE_USER_RUNTIME_ENTER_HOOK enterFn,
                            KE_USER_RUNTIME_FAULT_HOOK faultFn)
 {
     if (enterFn == NULL || ownsThreadFn == NULL || resolveRootFn == NULL || finalizeThreadFn == NULL ||
-        observeTimerFn == NULL || faultFn == NULL)
+        faultFn == NULL)
     {
         return EC_ILLEGAL_ARGUMENT;
     }

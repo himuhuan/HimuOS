@@ -20,7 +20,6 @@
 static uint32_t gNextRuntimeProcessId = 1;
 
 static uint32_t KiAllocateRuntimeProcessId(void);
-static BOOL KiProgramUsesBringupMailbox(uint32_t programId);
 static HO_STATUS KiDestroyProcessObject(EX_OBJECT_HEADER *objectHeader);
 
 static uint32_t
@@ -138,12 +137,6 @@ ExRuntimeReleaseProcess(EX_PROCESS *process)
     return ExObjectRelease(&process->Header, EX_OBJECT_TYPE_PROCESS, &remainingReferences);
 }
 
-static BOOL
-KiProgramUsesBringupMailbox(uint32_t programId)
-{
-    return programId == EX_PROGRAM_ID_USER_CAPS;
-}
-
 static HO_STATUS
 KiDestroyProcessObject(EX_OBJECT_HEADER *objectHeader)
 {
@@ -186,7 +179,6 @@ ExRuntimeCreateProcess(const EX_RUNTIME_PROCESS_CREATE_PARAMS *params, EX_PROCES
     keParams.CodeBytes = params->CodeBytes;
     keParams.CodeLength = params->CodeLength;
     keParams.EntryOffset = params->EntryOffset;
-    keParams.EnableBringupMailbox = KiProgramUsesBringupMailbox(params->ProgramId);
 
     process = (EX_PROCESS *)kzalloc(sizeof(*process));
     if (process == NULL)

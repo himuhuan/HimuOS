@@ -104,13 +104,6 @@ ExUserRuntimeFinalizeThreadHook(KTHREAD *thread)
     return ExUserRuntimeFinalizeThread(thread);
 }
 
-static void
-ExUserRuntimeObserveTimerHook(KTHREAD *thread)
-{
-    (void)thread;
-    KeUserModeObserveCurrentThreadUserTimerPreemption();
-}
-
 static HO_NORETURN void
 ExUserRuntimeFaultHook(KTHREAD *thread, const KE_USER_RUNTIME_FAULT_CONTEXT *context)
 {
@@ -140,8 +133,7 @@ HO_STATUS
 ExUserRuntimeInit(void)
 {
     return KeRegisterUserRuntimeHooks(ExUserRuntimeEnterHook, ExUserRuntimeOwnsThreadHook, ExUserRuntimeResolveRootHook,
-                                      ExUserRuntimeFinalizeThreadHook, ExUserRuntimeObserveTimerHook,
-                                      ExUserRuntimeFaultHook);
+                                      ExUserRuntimeFinalizeThreadHook, NULL, ExUserRuntimeFaultHook);
 }
 
 HO_STATUS

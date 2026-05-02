@@ -96,6 +96,18 @@ HoUserWriteStdout(const void *buffer, uint64_t length)
     return HoUserWrite(stdoutHandle, buffer, length);
 }
 
+static inline int64_t
+HoUserClose(uint32_t handle)
+{
+    return HoUserSyscall3(EX_USER_SYS_CLOSE, handle, 0, 0);
+}
+
+static inline int64_t
+HoUserWaitOne(uint32_t handle, uint64_t timeoutMs)
+{
+    return HoUserSyscall3(EX_USER_SYS_WAIT_ONE, handle, timeoutMs, 0);
+}
+
 static inline HO_NORETURN void
 HoUserExit(uint64_t exitCode)
 {
