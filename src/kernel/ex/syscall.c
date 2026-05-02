@@ -185,7 +185,7 @@ KiCurrentProcessAllowsRawSyscalls(KTHREAD *thread)
     if (process == NULL)
         return FALSE;
 
-    return process->ProgramId == EX_PROGRAM_ID_USER_HELLO || process->ProgramId == EX_PROGRAM_ID_USER_CAPS;
+    return process->ProgramId == EX_PROGRAM_ID_USER_CAPS;
 }
 
 static HO_STATUS

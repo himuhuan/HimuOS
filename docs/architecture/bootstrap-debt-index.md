@@ -33,8 +33,9 @@ early allocator/MM comments, or historical documentation.
   `src/user/libsys.h` and enter directly without `HoUserWaitForP1Gate()`.
 - Normal userspace no longer includes `src/user/libsys_bringup.h`, calls
   `HoUserRaw*()`, or waits on the P1 mailbox.
-- `user_hello` and the kernel-embedded `user_caps` payload are the only
-  remaining raw syscall / phase-gate sentinels.
+- `user_caps` is the only remaining raw syscall / phase-gate sentinel. The
+  `user_hello` payload now runs on `src/user/libsys.h` and exits through
+  `EX_USER_SYS_EXIT`.
 
 ## Retired During Phase F
 
@@ -102,9 +103,8 @@ early allocator/MM comments, or historical documentation.
 
 ## Legacy Bring-Up Sentinels Intentionally Kept During Phase A
 
-- `user_hello` preserves raw syscall, phase-gate, and teardown anchors.
 - `user_caps` preserves capability-seed, stdout-handle, stale-handle rejection,
   and process wait-handle timeout coverage.
 
-They remain valid only until later phases replace their unique regression value
-or retire the underlying bring-up path.
+It remains valid only until later phases replace its unique regression value or
+retire the underlying bring-up path.

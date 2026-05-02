@@ -75,7 +75,7 @@ BUILD_FLAVOR=<flavor> HO_DEMO_TEST_NAME=<profile> HO_DEMO_TEST_DEFINE=<define> \
 | Profile | Build flavor | Define | Outcome class | Intent |
 | ------ | ------ | ------ | ------ | ------ |
 | `schedule` | `test-schedule` | `HO_DEMO_TEST_SCHEDULE` | clean pass with continued boot/idle | scheduler smoke coverage, thread/event/semaphore/mutex 基线路径 |
-| `user_hello` | `test-user_hello` | `HO_DEMO_TEST_USER_HELLO` | compiled minimal userspace bring-up | 由 `src/user/user_hello` 源码编译并接入 kernel 的最小 Ring 3 进入、来自 CPL3 的 P1 timer round-trip、P1 gate 之后的 rejected raw write probe / successful hello write / `SYS_RAW_EXIT`、P3 thread-terminated → finalizer teardown → idle/reaper reclaimed 证据链 |
+| `user_hello` | `test-user_hello` | `HO_DEMO_TEST_USER_HELLO` | formal ABI smoke profile | 由 `src/user/user_hello` 源码编译并接入 kernel 的最小 Ring 3 进入、formal `SYS_WRITE` guard-page rejection、stdout hello write、`SYS_EXIT`、thread-terminated → finalizer teardown → idle/reaper reclaimed 证据链 |
 | `user_caps` | `test-user_caps` | `HO_DEMO_TEST_USER_CAPS` | bring-up capability pilot | 版本化 capability seed block、stdout capability write、`SYS_CLOSE`、stale-handle rejection、`SYS_WAIT_ONE` 与 clean exit 证据链 |
 | `guard_wait` | `test-guard_wait` | `HO_DEMO_TEST_GUARD_WAIT` | diagnosable contract violation or panic | critical-section guard misuse |
 | `owned_exit` | `test-owned_exit` | `HO_DEMO_TEST_OWNED_EXIT` | diagnosable contract violation or panic | exit while owning a mutex |
@@ -88,9 +88,9 @@ BUILD_FLAVOR=<flavor> HO_DEMO_TEST_NAME=<profile> HO_DEMO_TEST_DEFINE=<define> \
 | `pf_fixmap` | `test-pf_fixmap` | `HO_DEMO_TEST_PF_FIXMAP` | intentional fatal page-fault halt with bounded diagnostics | active fixmap alias diagnosis |
 | `pf_heap` | `test-pf_heap` | `HO_DEMO_TEST_PF_HEAP` | intentional fatal page-fault halt with bounded diagnostics | heap-backed KVA diagnosis |
 
-当前用户态相关的稳定锚点主要是 `user_hello` 与 `user_caps`。前者已经固定为**由 `src/user/user_hello` 源码编译产生的用户程序**的最小 Ring 3 进入与 clean exit 证据链，后者固定 capability / handle 路径的最小合同。README 描述的 MVP 主线，是在这两条稳定锚点之上继续推进到**编译型、Ex-facing、demo-shell vertical slice**；因此，这两条 profile 应被视为 `hsh` / `tick1s` / `calc` 官方演示切片的阶段性回归基础，而不是完整用户 ABI 的全部形态。
+当前用户态相关的稳定锚点主要是 `demo_shell`、`user_input`、`user_dual` 与 `user_fault`。`user_hello` 是最小 formal ABI smoke profile，固定 `src/user/libsys.h`、stdout write、invalid-buffer rejection 与 clean exit 证据链；`user_caps` 暂时保留为 capability / handle raw bring-up sentinel，直到其独特回归价值被替代或退休。
 
-`user_dual` 则应被视为**双进程 bring-up 的时序敏感回归项**：当它涉及 teardown / preemption 相关结论时，必须同时检查 `QEMU_CAPTURE_MODE=host` 与 `QEMU_CAPTURE_MODE=tcg` 两条路径。
+`user_dual` 则应被视为**正式 ABI 双进程运行时的时序敏感回归项**：当它涉及 teardown / preemption 相关结论时，必须同时检查 `QEMU_CAPTURE_MODE=host` 与 `QEMU_CAPTURE_MODE=tcg` 两条路径。
 
 ### 例子
 
@@ -113,7 +113,7 @@ bear -- make all BUILD_FLAVOR=test-user_caps HO_DEMO_TEST_NAME=user_caps HO_DEMO
 BUILD_FLAVOR=test-user_caps HO_DEMO_TEST_NAME=user_caps HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_CAPS \
     bash scripts/qemu_capture.sh 30 /tmp/himuos-user-caps.log
 
-# dual userspace bring-up (timing-sensitive: collect both execution models)
+# formal-ABI dual userspace runtime (timing-sensitive: collect both execution models)
 make clean
 bear -- make all BUILD_FLAVOR=test-user_dual HO_DEMO_TEST_NAME=user_dual HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_DUAL
 BUILD_FLAVOR=test-user_dual HO_DEMO_TEST_NAME=user_dual HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_DUAL \

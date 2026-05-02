@@ -141,7 +141,7 @@ ExRuntimeReleaseProcess(EX_PROCESS *process)
 static BOOL
 KiProgramUsesBringupMailbox(uint32_t programId)
 {
-    return programId == EX_PROGRAM_ID_USER_HELLO || programId == EX_PROGRAM_ID_USER_CAPS;
+    return programId == EX_PROGRAM_ID_USER_CAPS;
 }
 
 static HO_STATUS

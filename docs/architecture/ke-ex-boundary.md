@@ -119,9 +119,9 @@ Bring-up-only raw syscall, P1 mailbox, and regression-log anchors are separate:
 - `src/include/kernel/ex/user_bringup_sentinel_abi.h`
 - `src/include/kernel/ex/user_regression_anchors.h`
 
-`src/user/libsys.h` is the normal userspace wrapper surface. Raw helpers and
-phase-gate waiting are isolated in `src/user/libsys_bringup.h` for the
-`user_hello` sentinel and in the kernel-embedded `user_caps` payload.
+`src/user/libsys.h` is the normal userspace wrapper surface. No normal built-in
+program includes `src/user/libsys_bringup.h` or waits on the phase gate. The
+kernel-embedded `user_caps` payload is the only remaining raw/P1 sentinel.
 
 Historical deletion context for retired debt is tracked in
 `docs/architecture/bootstrap-debt-index.md`.
@@ -130,8 +130,8 @@ Historical deletion context for retired debt is tracked in
 
 - `demo_shell`, `user_fault`, `user_input`, and `user_dual` validate the
   Ex-owned control plane.
-- `user_hello` and `user_caps` are legacy raw/P1 bring-up sentinels, not the
-  default runtime story.
+- `user_hello` is a formal-ABI smoke profile; `user_caps` is the remaining
+  legacy raw/P1 bring-up sentinel.
 - Normal userspace programs use `src/user/libsys.h` and do not wait on the P1
   mailbox.
 

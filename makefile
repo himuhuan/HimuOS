@@ -518,7 +518,7 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  kthread_pool_race - regression suite for KTHREAD pool synchronization"
 	@echo "  user_hello  - compiled minimal userspace hello regression profile"
 	@echo "  user_caps   - staged capability/wait regression"
-	@echo "  user_dual   - launch compiled user_hello and user_counter together"
+	@echo "  user_dual   - launch formal-ABI user_hello and user_counter together"
 	@echo "  user_input  - bounded demo-shell input profile (use qemu_capture host+tcg with sendkeys)"
 	@echo "  demo_shell  - P2 demo-shell control-plane regression profile"
 	@echo "  user_fault  - demo-shell child fault regression profile"

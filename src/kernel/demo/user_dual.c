@@ -3,7 +3,8 @@
  *
  * File: demo/user_dual.c
  * Description: Dual compiled-userspace runtime profile that launches both the
- *              user_hello and user_counter payloads through Ex process control.
+ *              formal-ABI user_hello and user_counter payloads through Ex
+ *              process control.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 

@@ -12,7 +12,7 @@
 #define EX_USER_REGRESSION_LOG_P1_FIRST_ENTRY           EX_USER_REGRESSION_LOG_ENTER_USER_MODE
 #define EX_USER_REGRESSION_LOG_TIMER_FROM_USER_FORMAT   "[USERBOOT] timer from user #%u"
 #define EX_USER_REGRESSION_LOG_P1_GATE_ARMED            "[USERBOOT] P1 gate armed"
-#define EX_USER_REGRESSION_LOG_HELLO                    "[USERBOOT] hello"
+#define EX_USER_REGRESSION_LOG_HELLO                    "[USERHELLO] hello"
 #define EX_USER_REGRESSION_LOG_INVALID_RAW_WRITE        "[USERBOOT] invalid raw write rejected"
 #define EX_USER_REGRESSION_LOG_HELLO_WRITE_SUCCEEDED    "[USERBOOT] hello write succeeds"
 #define EX_USER_REGRESSION_LOG_SYS_RAW_EXIT             "[USERBOOT] SYS_RAW_EXIT"

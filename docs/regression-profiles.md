@@ -21,7 +21,6 @@ coverage is isolated to the sentinel bucket.
 
 Legacy bring-up sentinels:
 
-- `user_hello`: raw syscall, phase-gate, and runtime teardown sentinel.
 - `user_caps`: seeded capability/stdout/wait bring-up sentinel.
 
 Targeted mechanism sentinels:
@@ -65,9 +64,9 @@ teardown, foreground input, or scheduling must have both.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `schedule` | targeted mechanism sentinel | Ke scheduler/thread demo | `test-schedule` | `HO_DEMO_TEST_SCHEDULE` | none | host normally enough | `[DEMO] Selected profile: schedule`, scheduler/thread demo pass anchors |
 | `kthread_pool_race` | targeted mechanism sentinel | Ke pool synchronization | `test-kthread_pool_race` | `HO_DEMO_TEST_KTHREAD_POOL_RACE` | none | host normally enough | `[TEST] KTHREAD pool race regression suite passed` |
-| `user_hello` | legacy bring-up sentinel | raw bring-up payload + P1 gate | `test-user_hello` | `HO_DEMO_TEST_USER_HELLO` | none | host normally enough | `[USERRT] enter user mode`, `[USERBOOT] hello`, `[USERBOOT] SYS_RAW_EXIT`, `[USERRT] runtime teardown complete` |
+| `user_hello` | formal ABI smoke profile | `libsys.h` write + clean exit payload | `test-user_hello` | `HO_DEMO_TEST_USER_HELLO` | none | host normally enough | `[USERRT] enter user mode`, `[USERRT] invalid user buffer`, `[USERHELLO] hello`, `[USERRT] SYS_EXIT`, `[USERRT] runtime teardown complete` |
 | `user_caps` | legacy bring-up sentinel | seeded capability/wait raw/P1 payload | `test-user_caps` | `HO_DEMO_TEST_USER_CAPS` | none | host normally enough | `[USERCAP] stdout capability write succeeds`, `[USERCAP] SYS_CLOSE succeeded`, `[USERCAP] capability syscall rejected`, `[USERCAP] SYS_WAIT_ONE timed out`, `[USERBOOT] SYS_RAW_EXIT` |
-| `user_dual` | official contract (timing-sensitive) | `ExSpawnProgram()` / `ExWaitProcess()` compiled-userspace path | `test-user_dual` | `HO_DEMO_TEST_USER_DUAL` | none | host and TCG required | `user_hello` raw sentinel and direct-entry `user_counter` enter/exit evidence, no teardown panic |
+| `user_dual` | official contract (timing-sensitive) | `ExSpawnProgram()` / `ExWaitProcess()` compiled-userspace path | `test-user_dual` | `HO_DEMO_TEST_USER_DUAL` | none | host and TCG required | formal-ABI `user_hello`, direct-entry `user_counter`, `SYS_EXIT`, runtime teardown, no raw/P1 anchors, no teardown panic |
 | `user_input` | official contract (timing-sensitive) | `ExSpawnProgram()` / `ExSetForegroundProcess()` / `ExWaitProcess()` foreground path | `test-user_input` | `HO_DEMO_TEST_USER_INPUT` | `scripts/input_plans/user_input.plan` | host and TCG required | `[USERINPUT] foreground -> hsh`, `[HSH] hello`, `[HSH] handoff`, `[USERINPUT] foreground -> calc`, `[CALC] 3 4 +`, clean teardown |
 | `demo_shell` | official contract (timing-sensitive) | `ExSpawnProgram()` / `ExWaitProcess()` shell path; `ps` formats `EX_SYSINFO_CLASS_PROCESS_LIST` in user space | `test-demo_shell` | `HO_DEMO_TEST_DEMO_SHELL` | `scripts/input_plans/demo_shell.plan` | host and TCG required | `HimuOS System Information`, `HimuOS Virtual Memory Map`, `SYS_QUERY_SYSINFO succeeded class=6`, `PID  STATE`, `[CALC] result=7`, `[HSH] killed pid=`, `[HSH] HSH exited` |
 | `user_fault` | official contract (timing-sensitive) | `demo_shell` control plane + user-fault recovery; `ps` formats `EX_SYSINFO_CLASS_PROCESS_LIST` in user space | `test-user_fault` | `HO_DEMO_TEST_USER_FAULT` | `scripts/input_plans/user_fault.plan` | host and TCG required | `[USERFAULT] #DE`, `[USERFAULT] #PF`, `[USERFAULT] CR2=`, `SYS_QUERY_SYSINFO succeeded class=6`, `[DEMOSHELL] foreground restored`, `[HSH] HSH exited` |
@@ -163,7 +162,21 @@ For failures, keep the log path and record:
 - first failure or panic anchor
 - whether the failure appears host-only, TCG-only, or common
 
-## Final New-Era Audit Evidence 2026-05-01
+## Phase B New-Era Clean Evidence 2026-05-02
+
+Build and capture sanity after moving `user_hello` onto the formal ABI:
+
+- `make all BUILD_FLAVOR=test-user_dual HO_DEMO_TEST_NAME=user_dual HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_DUAL`:
+  passed.
+
+Timing-sensitive evidence:
+
+| Profile | Mode | Log | Result |
+| --- | --- | --- | --- |
+| `user_dual` | host | `/tmp/himuos-user-dual-host.log` | Matched formal-ABI `[USERHELLO] hello`, `user_counter`, `SYS_EXIT`, runtime teardown, and reaper anchors; no `SYS_RAW_EXIT`, P1 gate, timer-gate, panic, or STOP anchors. |
+| `user_dual` | TCG | `/tmp/himuos-user-dual-tcg.log` | Matched the same anchors as host; no `SYS_RAW_EXIT`, P1 gate, timer-gate, panic, or STOP anchors. |
+
+## Historical New-Era Audit Evidence 2026-05-01
 
 Build and list sanity after retiring the Bootstrap compatibility surfaces and
 scoping raw/P1 behavior to sentinels:
@@ -208,7 +221,7 @@ and process-control child table with Ex runtime process/thread tables:
 | `demo_shell` | TCG | `/tmp/himuos-demo-shell-tcg.log` | Matched the same anchors as host; no panic/STOP anchors. |
 | `user_fault` | host | `/tmp/himuos-user-fault-host.log` | Matched user-mode `#DE`, user-mode `#PF`, `CR2`, foreground restore, wait completion, `ps`, and `[HSH] HSH exited`; no panic/STOP anchors. |
 | `user_fault` | TCG | `/tmp/himuos-user-fault-tcg.log` | Matched the same anchors as host; no panic/STOP anchors. |
-| `user_dual` | host | `/tmp/himuos-user-dual-host.log` | Matched user-mode entry, sentinel P1 gate, `user_hello`, direct-entry `user_counter`, `SYS_RAW_EXIT`, `SYS_EXIT`, teardown, and reaper anchors; capture ended by watchdog after anchors. |
+| `user_dual` | host | `/tmp/himuos-user-dual-host.log` | Historical pre-Phase-B evidence matched user-mode entry, sentinel P1 gate, `user_hello`, direct-entry `user_counter`, `SYS_RAW_EXIT`, `SYS_EXIT`, teardown, and reaper anchors; capture ended by watchdog after anchors. |
 | `user_dual` | TCG | `/tmp/himuos-user-dual-tcg.log` | Matched the same anchors as host; capture ended by watchdog after anchors. |
 | `user_input` | host | `/tmp/himuos-user-input-host.log` | Matched foreground handoff to `hsh`, `hsh` echo/handoff, foreground handoff to `calc`, `[CALC] 3 4 +`, teardown, and foreground owner reset anchors; capture ended by watchdog after anchors. |
 | `user_input` | TCG | `/tmp/himuos-user-input-tcg.log` | Matched the same anchors as host; capture ended by watchdog after anchors. |

@@ -2,12 +2,13 @@
  * HimuOperatingSystem
  *
  * File: user/user_hello/main.c
- * Description: Bring-up C userspace hello payload matching the current
- *              staged raw-write/raw-exit evidence chain.
+ * Description: Minimal formal-ABI userspace hello payload.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
-#include "libsys_bringup.h"
+#include "libsys.h"
+
+#include <kernel/ex/user_regression_anchors.h>
 
 static const char gKiUserHelloMessage[] = EX_USER_REGRESSION_LOG_HELLO "\n";
 
@@ -21,15 +22,16 @@ main(void)
 {
     int64_t status = 0;
 
-    HoUserWaitForP1Gate();
+    if (!HoUserCurrentCapabilitySeedBlockIsValid())
+        HoUserAbort();
 
-    status = HoUserRawProbeGuardPageByte();
+    status = HoUserWriteStdout(HoUserImageStackGuardBase(), 1U);
     if (status != -(int64_t)EC_ILLEGAL_ARGUMENT)
         HoUserAbort();
 
-    status = HoUserRawWrite(gKiUserHelloMessage, KI_USER_HELLO_MESSAGE_LENGTH);
+    status = HoUserWriteStdout(gKiUserHelloMessage, KI_USER_HELLO_MESSAGE_LENGTH);
     if (status != (int64_t)KI_USER_HELLO_MESSAGE_LENGTH)
         HoUserAbort();
 
-    HoUserRawExit(0);
+    HoUserExit(0);
 }
