@@ -43,14 +43,14 @@ These are the mechanisms Ex should consume rather than duplicate.
 - `src/kernel/ex/program.c` maps embedded program names and IDs to user images.
 - `src/kernel/ex/runtime.c` is the Ex runtime init facade.
 
-## Phase I Runtime Naming
+## Runtime Naming
 
 The active user-runtime surface no longer exposes Bootstrap-named headers,
 source files, wrappers, or helper families. Ke low-level user entry now lives
 under `user_mode` names, Ex launch/runtime code lives under `runtime` and
 `user_runtime` names, and the empty compatibility translation unit was deleted.
 
-## Phase F Demo Runtime APIs
+## Demo Runtime APIs
 
 The contract demo profiles now launch scenarios through permanent Ex process
 control:
@@ -58,12 +58,13 @@ control:
 - `user_dual` uses `ExSpawnProgram()` and `ExWaitProcess()` for its concurrent
   `user_hello` / `user_counter` evidence.
 - `user_input` uses `ExSpawnProgram()`, `ExSetForegroundProcess()`, and
-  `ExWaitProcess()` for foreground handoff and cleanup evidence.
+  `ExWaitProcess()` with `input_probe` and `line_echo` for foreground handoff
+  and cleanup evidence.
 
 Those profiles no longer call retired launch helpers, borrow backing
 `KTHREAD` pointers, or join user threads directly.
 
-## Phase E Waitability
+## Waitability
 
 Pilot wait objects are retired. Ex process and thread objects own embedded
 completion events, and `SYS_WAIT_ONE` resolves wait-right handles directly to
@@ -74,7 +75,7 @@ completion state. They no longer borrow the process main backing `KTHREAD`, and
 normal Ex-spawned user threads are detached so the idle reaper finalizes
 user-runtime resources and signals process completion.
 
-## Phase D Runtime Tables
+## Runtime Tables
 
 The runtime alias registry and process-control child table are retired.
 `src/kernel/ex/runtime_table.c` now publishes bounded Ex process and thread
@@ -82,7 +83,7 @@ tables. Process objects carry parent PID, main TID, lifecycle state, exit
 status, termination reason, kill request, foreground restore metadata, and
 completion state.
 
-## Phase H Structured Sysinfo
+## Structured Sysinfo
 
 `src/include/kernel/ex/user_sysinfo_abi.h` is the stable user-facing sysinfo
 contract. `EX_SYSINFO_CLASS_OVERVIEW`, `EX_SYSINFO_CLASS_PROCESS_LIST`, and
@@ -94,7 +95,7 @@ VMM/KVA snapshots and the current user layout.
 space. Process and thread identities come from Ex runtime tables; Ke contributes
 mechanism snapshots through `KeQuerySystemInformation()`.
 
-## Phase C User-Runtime Hooks
+## User-Runtime Hooks
 
 Ke now exposes the permanent user-runtime hook contract through
 `src/include/kernel/ke/user_runtime_hooks.h` and
@@ -104,7 +105,7 @@ hooks instead of bootstrap callback names.
 
 Ex implements that hook contract in `src/kernel/ex/user_runtime_bridge.c`.
 
-## Phase B ABI Split
+## ABI Split
 
 The old `src/include/kernel/ex/ex_bootstrap_abi.h` umbrella is gone. Stable
 user-runtime ABI now lives in focused contracts:
@@ -131,9 +132,9 @@ Historical deletion context for retired debt is tracked in
 - Normal userspace programs use `src/user/libsys.h` and do not wait on a phase
   gate.
 
-## Near-Term Non-Goals
+## Non-Goals
 
-Near-term cleanup must not:
+Current cleanup must not:
 
 - change syscall numbers, return values, or register ABI
 - change user program layout or embedded artifact rules
@@ -141,5 +142,5 @@ Near-term cleanup must not:
 - alter QEMU profile input plans or expected anchors unless the existing
   profile is already failing and the failure is documented
 
-The near-term job is to keep the current boundary explicit while later phases
-move behavior behind smaller, permanent Ex-owned contracts.
+The ongoing job is to keep the current boundary explicit while behavior moves
+behind smaller, permanent Ex-owned contracts.

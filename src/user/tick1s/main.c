@@ -2,7 +2,7 @@
  * HimuOperatingSystem
  *
  * File: user/tick1s/main.c
- * Description: Continuous P3 ticker used to prove background output during foreground work.
+ * Description: Continuous ticker used to prove background output during foreground work.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 

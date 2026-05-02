@@ -2,7 +2,7 @@
  * HimuOperatingSystem
  *
  * File: demo/demo_shell.c
- * Description: P2 demo-shell regression profile that launches hsh as the
+ * Description: Interactive Ex runtime profile that launches hsh as the
  *              userspace-owned entry point.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */

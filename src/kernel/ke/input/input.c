@@ -2,7 +2,7 @@
  * HimuOperatingSystem
  *
  * File: ke/input/input.c
- * Description: Bounded runtime keyboard input lane for demo-shell P1.
+ * Description: Bounded runtime keyboard input lane for foreground-owned lines.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 

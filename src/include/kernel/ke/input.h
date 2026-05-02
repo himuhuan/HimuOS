@@ -2,7 +2,7 @@
  * HimuOperatingSystem
  *
  * File: ke/input.h
- * Description: Ke runtime input subsystem for the bounded demo-shell input lane.
+ * Description: Ke runtime input subsystem for foreground-owned line input.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 

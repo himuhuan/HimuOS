@@ -4,7 +4,7 @@ This index tracks HimuOS profile-driven regression for the cleanup plan. It
 records which profiles are official cleanup contracts, which profiles are
 targeted mechanism sentinels, and which anchors prove the expected behavior.
 
-## Phase A Contract Split
+## Current Contract Split
 
 Official cleanup contracts:
 
@@ -80,7 +80,7 @@ teardown, foreground input, or scheduling must have both.
 | `pf_fixmap` | targeted mechanism sentinel | fixmap NX fault | `test-pf_fixmap` | `HO_DEMO_TEST_PF_FIXMAP` | none | targeted page-fault evidence | fixmap NX page-fault diagnostic output |
 | `pf_heap` | targeted mechanism sentinel | heap-backed KVA NX fault | `test-pf_heap` | `HO_DEMO_TEST_PF_HEAP` | none | targeted page-fault evidence | heap-backed KVA page-fault diagnostic output |
 
-## Canonical Phase A Commands
+## Canonical Commands
 
 ### Build Sanity
 
@@ -108,9 +108,11 @@ make clean
 bear -- make all BUILD_FLAVOR=test-user_input HO_DEMO_TEST_NAME=user_input HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_INPUT
 BUILD_FLAVOR=test-user_input HO_DEMO_TEST_NAME=user_input HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_INPUT \
     QEMU_CAPTURE_MODE=host QEMU_SENDKEY_PLAN=scripts/input_plans/user_input.plan \
+    QEMU_CAPTURE_EXIT_ON='[INPUT] foreground owner=0' \
     bash scripts/qemu_capture.sh 20 /tmp/himuos-user-input-host.log
 BUILD_FLAVOR=test-user_input HO_DEMO_TEST_NAME=user_input HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_INPUT \
     QEMU_CAPTURE_MODE=tcg QEMU_SENDKEY_PLAN=scripts/input_plans/user_input.plan \
+    QEMU_CAPTURE_EXIT_ON='[INPUT] foreground owner=0' \
     bash scripts/qemu_capture.sh 20 /tmp/himuos-user-input-tcg.log
 ```
 
@@ -150,9 +152,9 @@ For normal clean passes, record the command, log path, QEMU mode, and matched
 anchors in the PR or change notes. Raw logs do not need to be committed unless
 they document a bug or a hard-to-reproduce timing issue.
 
-No-exit-on captures such as `user_dual` and `user_input` may end through the
-watchdog after the expected anchors have appeared. Treat those runs by anchor
-evidence, not by the capture wrapper status alone.
+No-exit-on captures such as `user_dual` may end through the watchdog after the
+expected anchors have appeared. Treat those runs by anchor evidence, not by the
+capture wrapper status alone.
 
 For failures, keep the log path and record:
 
@@ -207,105 +209,11 @@ Timing-sensitive evidence:
 
 | Profile | Mode | Log | Result |
 | --- | --- | --- | --- |
-| `user_dual` | host | `/tmp/himuos-user-dual-host.log` | Matched formal-ABI `[USERHELLO] hello`, `user_counter`, `SYS_EXIT`, runtime teardown, and reaper anchors; no `SYS_RAW_EXIT`, P1 gate, timer-gate, panic, or STOP anchors. |
-| `user_dual` | TCG | `/tmp/himuos-user-dual-tcg.log` | Matched the same anchors as host; no `SYS_RAW_EXIT`, P1 gate, timer-gate, panic, or STOP anchors. |
+| `user_dual` | host | `/tmp/himuos-user-dual-host.log` | Matched formal-ABI `[USERHELLO] hello`, `user_counter`, `SYS_EXIT`, runtime teardown, and reaper anchors; no retired raw-exit, phase-gate, panic, or STOP anchors. |
+| `user_dual` | TCG | `/tmp/himuos-user-dual-tcg.log` | Matched the same anchors as host; no retired raw-exit, phase-gate, panic, or STOP anchors. |
 
-## Historical New-Era Audit Evidence 2026-05-01
+## Historical Notes
 
-Build and list sanity after retiring the Bootstrap compatibility surfaces and
-scoping raw/P1 behavior to sentinels:
-
-- `make all`: passed for the default build.
-- `make test TEST_MODULE=list`: passed and listed the expected profile set.
-- `git diff --check`: passed.
-
-Raw/P1 sentinel evidence:
-
-| Profile | Mode | Log | Result |
-| --- | --- | --- | --- |
-| `user_hello` | host | `/tmp/himuos-user-hello-host.log` | Matched P1 gate, rejected guard-page raw write, `SYS_RAW_EXIT`, runtime teardown, and reaper anchors; no panic/STOP anchors. |
-| `user_caps` | host | `/tmp/himuos-user-caps-host.log` | Matched capability write/close/stale-handle/wait-timeout anchors plus `SYS_RAW_EXIT` and runtime teardown; no panic/STOP anchors. |
-
-Timing-sensitive final acceptance evidence:
-
-| Profile | Mode | Log | Result |
-| --- | --- | --- | --- |
-| `demo_shell` | host | `/tmp/himuos-demo-shell-host.log` | Matched sysinfo, memmap, `ps`, foreground `calc`, kill, and `[HSH] HSH exited`; no panic/STOP anchors. |
-| `demo_shell` | TCG | `/tmp/himuos-demo-shell-tcg.log` | Matched the same anchors as host; no panic/STOP anchors. |
-| `user_input` | host | `/tmp/himuos-user-input-host.log` | Matched foreground handoff to `hsh`, `hsh` echo/handoff, foreground handoff to `calc`, `[CALC] 3 4 +`, teardown, and foreground owner reset anchors; no panic/STOP anchors. |
-| `user_input` | TCG | `/tmp/himuos-user-input-tcg.log` | Matched the same anchors as host; no panic/STOP anchors. |
-| `user_dual` | host | `/tmp/himuos-user-dual-host.log` | Matched concurrent `user_hello` and `user_counter` entry/output, runtime teardown, and profile termination anchors; no panic/STOP anchors. |
-| `user_dual` | TCG | `/tmp/himuos-user-dual-tcg.log` | Matched the same anchors as host; no panic/STOP anchors. |
-| `user_fault` | host | `/tmp/himuos-user-fault-host.log` | Matched user-mode `#DE`, user-mode `#PF`, `CR2`, foreground restore, `ps`, and `[HSH] HSH exited`; no panic/STOP anchors. |
-| `user_fault` | TCG | `/tmp/himuos-user-fault-tcg.log` | Matched the same anchors as host; no panic/STOP anchors. |
-
-## Phase D Runtime Table Evidence 2026-04-30
-
-Build and list sanity:
-
-- `make all`: passed for the default build.
-- `make test TEST_MODULE=list`: passed and listed the expected profile set.
-
-Timing-sensitive profile evidence after replacing the runtime alias registry
-and process-control child table with Ex runtime process/thread tables:
-
-| Profile | Mode | Log | Result |
-| --- | --- | --- | --- |
-| `demo_shell` | host | `/tmp/himuos-demo-shell-host.log` | Matched sysinfo, memmap, `ps`, foreground `calc`, kill, and `[HSH] HSH exited`; no panic/STOP anchors. |
-| `demo_shell` | TCG | `/tmp/himuos-demo-shell-tcg.log` | Matched the same anchors as host; no panic/STOP anchors. |
-| `user_fault` | host | `/tmp/himuos-user-fault-host.log` | Matched user-mode `#DE`, user-mode `#PF`, `CR2`, foreground restore, wait completion, `ps`, and `[HSH] HSH exited`; no panic/STOP anchors. |
-| `user_fault` | TCG | `/tmp/himuos-user-fault-tcg.log` | Matched the same anchors as host; no panic/STOP anchors. |
-| `user_dual` | host | `/tmp/himuos-user-dual-host.log` | Historical pre-Phase-B evidence matched user-mode entry, sentinel P1 gate, `user_hello`, direct-entry `user_counter`, `SYS_RAW_EXIT`, `SYS_EXIT`, teardown, and reaper anchors; capture ended by watchdog after anchors. |
-| `user_dual` | TCG | `/tmp/himuos-user-dual-tcg.log` | Matched the same anchors as host; capture ended by watchdog after anchors. |
-| `user_input` | host | `/tmp/himuos-user-input-host.log` | Matched foreground handoff to `hsh`, `hsh` echo/handoff, foreground handoff to `calc`, `[CALC] 3 4 +`, teardown, and foreground owner reset anchors; capture ended by watchdog after anchors. |
-| `user_input` | TCG | `/tmp/himuos-user-input-tcg.log` | Matched the same anchors as host; capture ended by watchdog after anchors. |
-
-## Phase C Hook Rename Evidence 2026-04-30
-
-Build and list sanity:
-
-- `make clean`: passed.
-- `bear -- make all`: passed for the default build.
-- `make test list`: passed and listed the expected profile set.
-
-Timing-sensitive profile evidence after renaming the Ke/Ex runtime hook
-contract:
-
-| Profile | Mode | Log | Result |
-| --- | --- | --- | --- |
-| `demo_shell` | host | `/tmp/himuos-demo-shell-host.log` | Matched sysinfo, memmap, `ps`, foreground `calc`, kill, and `[HSH] HSH exited`; capture exit watcher returned success. |
-| `demo_shell` | TCG | `/tmp/himuos-demo-shell-tcg.log` | Matched the same anchors as host; capture exit watcher returned success. |
-| `user_fault` | host | `/tmp/himuos-user-fault-host.log` | Matched user-mode `#DE`, user-mode `#PF`, `CR2`, foreground restore, wait completion, `ps`, and `[HSH] HSH exited`; capture exit watcher returned success. |
-| `user_fault` | TCG | `/tmp/himuos-user-fault-tcg.log` | Matched the same anchors as host; capture exit watcher returned success. |
-| `user_dual` | host | `/tmp/himuos-user-dual-host.log` | Matched user-mode entry, timer gate, `user_hello`, `user_counter`, `SYS_RAW_EXIT`, `SYS_EXIT`, teardown, and reaper anchors; capture ended by watchdog after anchors. |
-| `user_dual` | TCG | `/tmp/himuos-user-dual-tcg.log` | Matched the same anchors as host; capture ended by watchdog after anchors. |
-| `user_input` | host | `/tmp/himuos-user-input-host.log` | Matched foreground handoff to `hsh`, `hsh` echo/handoff, foreground handoff to `calc`, `[CALC] 3 4 +`, and teardown anchors; capture ended by watchdog after anchors. |
-| `user_input` | TCG | `/tmp/himuos-user-input-tcg.log` | Matched the same anchors as host; capture ended by watchdog after anchors. |
-
-## Phase A Baseline Evidence 2026-04-28
-
-Build and list sanity:
-
-- `make clean`: passed.
-- `bear -- make all`: passed for the default build.
-- `make test list`: passed and listed the expected profile set.
-
-Timing-sensitive profile evidence:
-
-| Profile | Mode | Log | Result |
-| --- | --- | --- | --- |
-| `user_dual` | host | `/tmp/himuos-user-dual-host.log` | Matched user-mode entry, `user_hello`, `user_counter`, `SYS_RAW_EXIT`, `SYS_EXIT`, teardown, and reaper anchors; capture ended by watchdog after anchors. |
-| `user_dual` | TCG | `/tmp/himuos-user-dual-tcg.log` | Matched the same anchors as host; capture ended by watchdog after anchors. |
-| `user_input` | host | `/tmp/himuos-user-input-host.log` | Matched foreground handoff to `hsh`, `hsh` echo/handoff, foreground handoff to `calc`, `[CALC] 3 4 +`, and teardown anchors; capture ended by watchdog after anchors. |
-| `user_input` | TCG | `/tmp/himuos-user-input-tcg.log` | Matched the same anchors as host; capture ended by watchdog after anchors. |
-| `demo_shell` | host | `/tmp/himuos-demo-shell-host.log` | Matched sysinfo, memmap, ps, background `tick1s`, foreground `calc`, kill, and `[HSH] HSH exited`; capture exit watcher returned success. |
-| `demo_shell` | TCG | `/tmp/himuos-demo-shell-tcg.log` | Matched the same anchors as host; capture exit watcher returned success. |
-| `user_fault` | host | `/tmp/himuos-user-fault-host.log` | Matched user-mode `#DE`, user-mode `#PF`, `CR2`, foreground restore, wait completion, `ps`, and `[HSH] HSH exited`; capture exit watcher returned success. |
-| `user_fault` | TCG | `/tmp/himuos-user-fault-tcg.log` | Matched the same anchors as host; capture exit watcher returned success. |
-
-Harness note:
-
-- `scripts/input_plans/user_fault.plan` was adjusted during the baseline freeze to avoid a
-  log-order race between `calc>` and `SYS_SPAWN_PROGRAM`; the plan now waits on
-  stable behavior anchors instead of capturing the child PID from an
-  order-sensitive log line.
+Older pre-cleanup logs and bug investigations are kept in dated fix reports
+under `docs/`. They are not current profile contracts and should not be used as
+anchors for new regression evidence.

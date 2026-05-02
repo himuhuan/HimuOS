@@ -2,8 +2,8 @@
 
 This index covers runtime and public-ABI debt only. True early boot under
 `src/boot/v2` is not debt for this plan. Current regression log anchors describe
-the formal user-runtime ABI; older raw/P1 anchors remain only in historical
-evidence notes.
+the formal user-runtime ABI; older raw/P1 anchors remain only in dated
+historical notes and fix reports.
 
 No active runtime debt remains in this index. Searching active source and
 headers for `Bootstrap`, raw bring-up helpers, or P1 mailbox state should now
@@ -22,6 +22,23 @@ historical documentation.
 - `user_caps` moved from a kernel-embedded raw/P1 payload to a normal
   `src/user/user_caps` program using `src/user/libsys.h` and formal
   `SYS_EXIT`.
+
+## Retired During New-Era Clean Phase E
+
+- The unused `EX_PRIVATE_HANDLE*` typedef and rights aliases were deleted from
+  the private Ex runtime header.
+- The unused `ExRuntime*PrivateHandle()` wrappers were deleted; active code
+  calls the canonical `ExHandle*()` API directly.
+- The unused `ExRuntimeInitializeObjectHeader()`,
+  `ExRuntimeRetainObject()`, and `ExRuntimeReleaseObject()` wrappers were
+  deleted; active code calls the canonical `ExObject*()` API directly.
+
+## Retired During New-Era Clean Phase D
+
+- `hsh` and `calc` now always build as their full REPL implementations.
+- The `user_input` profile no longer depends on alternate `hsh` / `calc`
+  semantics selected by profile macros. It uses explicit `input_probe` and
+  `line_echo` payloads for bounded input handoff evidence.
 
 ## Retired During Phase I
 

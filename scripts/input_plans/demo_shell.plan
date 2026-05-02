@@ -1,4 +1,4 @@
-# Drive the P4 demo_shell profile through prompt/log anchors so the same plan
+# Drive the demo_shell profile through prompt/log anchors so the same plan
 # works on both host and tcg paths without fixed keyboard timing assumptions.
 wait_for hsh> 
 text sysinfo

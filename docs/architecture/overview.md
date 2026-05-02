@@ -1,7 +1,7 @@
 # HimuOS Architecture Overview
 
-This document records the current cleanup baseline: what is true in-tree now
-after the runtime Bootstrap compatibility names were retired.
+This document records the current implementation baseline for the Ex-owned user
+runtime and the Ke mechanisms underneath it.
 
 ## Boot And Handoff
 
@@ -67,9 +67,9 @@ Current runtime reality:
 - `user_hello` is a minimal formal-ABI smoke profile, while `user_caps` is a
   formal capability/wait regression profile.
 - `hsh`, `calc`, `tick1s`, `fault_de`, `fault_pf`, `user_counter`,
-  `user_hello`, and `user_caps` include the normal `src/user/libsys.h` wrapper
-  surface over the formal `EX_USER_SYS_*` services. No active user-runtime path
-  uses raw syscalls or phase-gate waits.
+  `user_hello`, `user_caps`, `input_probe`, and `line_echo` include the normal
+  `src/user/libsys.h` wrapper surface over the formal `EX_USER_SYS_*`
+  services. No active user-runtime path uses raw syscalls or phase-gate waits.
 - Structured Ex sysinfo classes are the stable userspace contract. `hsh ps`
   queries `EX_SYSINFO_CLASS_PROCESS_LIST` and formats the process view in user
   space; text sysinfo classes remain convenience renderers for `sysinfo`,
@@ -99,7 +99,7 @@ safe. The canonical contract/sentinel index is `docs/regression-profiles.md`.
 The cleanup baseline is healthy when:
 
 - this architecture map matches the checked-in implementation
-- `new_era_next.md` remains the cleanup roadmap source
+- current cleanup notes remain separate from stable architecture docs
 - `docs/architecture/ke-ex-boundary.md` records the current Ke/Ex split
 - `docs/architecture/bootstrap-debt-index.md` records retired Bootstrap-era
   runtime concepts and confirms that remaining Bootstrap names are true
