@@ -1,0 +1,37 @@
+/**
+ * HimuOperatingSystem
+ *
+ * File: ex/user_regression_anchors.h
+ * Description: User-runtime serial-log anchors used by regression profiles.
+ * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
+ */
+
+#pragma once
+
+#define EX_USER_REGRESSION_LOG_ENTER_USER_MODE          "[USERRT] enter user mode"
+#define EX_USER_REGRESSION_LOG_HELLO                    "[USERHELLO] hello"
+#define EX_USER_REGRESSION_LOG_SYS_EXIT                 "[USERRT] SYS_EXIT"
+#define EX_USER_REGRESSION_LOG_INVALID_CAP_SYSCALL      "[USERCAP] invalid capability syscall"
+#define EX_USER_REGRESSION_LOG_CAP_WRITE_SUCCEEDED      "[USERCAP] stdout capability write succeeds"
+#define EX_USER_REGRESSION_LOG_CAP_CLOSE_SUCCEEDED      "[USERCAP] SYS_CLOSE succeeded"
+#define EX_USER_REGRESSION_LOG_CAP_WAIT_SUCCEEDED       "[USERCAP] SYS_WAIT_ONE succeeded"
+#define EX_USER_REGRESSION_LOG_CAP_WAIT_TIMED_OUT       "[USERCAP] SYS_WAIT_ONE timed out"
+#define EX_USER_REGRESSION_LOG_CAP_REJECTED             "[USERCAP] capability syscall rejected"
+#define EX_USER_REGRESSION_LOG_READLINE_SUCCEEDED       "[USERINPUT] SYS_READLINE succeeded"
+#define EX_USER_REGRESSION_LOG_READLINE_REJECTED        "[USERINPUT] SYS_READLINE rejected"
+#define EX_USER_REGRESSION_LOG_SPAWN_PROGRAM_SUCCEEDED  "[DEMOSHELL] SYS_SPAWN_PROGRAM succeeded"
+#define EX_USER_REGRESSION_LOG_SPAWN_PROGRAM_REJECTED   "[DEMOSHELL] SYS_SPAWN_PROGRAM rejected"
+#define EX_USER_REGRESSION_LOG_WAIT_PID_SUCCEEDED       "[DEMOSHELL] SYS_WAIT_PID succeeded"
+#define EX_USER_REGRESSION_LOG_WAIT_PID_REJECTED        "[DEMOSHELL] SYS_WAIT_PID rejected"
+#define EX_USER_REGRESSION_LOG_SLEEP_MS_SUCCEEDED       "[DEMOSHELL] SYS_SLEEP_MS succeeded"
+#define EX_USER_REGRESSION_LOG_SLEEP_MS_REJECTED        "[DEMOSHELL] SYS_SLEEP_MS rejected"
+#define EX_USER_REGRESSION_LOG_KILL_PID_SUCCEEDED       "[DEMOSHELL] SYS_KILL_PID succeeded"
+#define EX_USER_REGRESSION_LOG_KILL_PID_REJECTED        "[DEMOSHELL] SYS_KILL_PID rejected"
+#define EX_USER_REGRESSION_LOG_QUERY_SYSINFO_SUCCEEDED  "[SYSINFO] SYS_QUERY_SYSINFO succeeded"
+#define EX_USER_REGRESSION_LOG_QUERY_SYSINFO_REJECTED   "[SYSINFO] SYS_QUERY_SYSINFO rejected"
+#define EX_USER_REGRESSION_LOG_KILL_EXIT                "[DEMOSHELL] kill exit"
+#define EX_USER_REGRESSION_LOG_INVALID_USER_BUFFER      "[USERRT] invalid user buffer"
+#define EX_USER_REGRESSION_LOG_TEARDOWN_FAILED          "[USERRT] runtime teardown failed"
+#define EX_USER_REGRESSION_LOG_TEARDOWN_COMPLETE        "[USERRT] runtime teardown complete"
+#define EX_USER_REGRESSION_LOG_THREAD_TERMINATED_FORMAT "[SCHED] Thread %u terminated"
+#define EX_USER_REGRESSION_LOG_IDLE_REAPER              "[USERRT] idle/reaper reclaimed user runtime thread"

@@ -2,8 +2,8 @@
  * HimuOperatingSystem
  *
  * File: user/user_counter/main.c
- * Description: Minimal compiled userspace counter payload for later dual-user
- *              bring-up.
+ * Description: Minimal compiled userspace counter payload for dual-user runtime
+ *              coverage.
  * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
  */
 
@@ -17,8 +17,6 @@ int
 main(void)
 {
     int64_t status = 0;
-
-    HoUserWaitForP1Gate();
 
     if (!HoUserCurrentCapabilitySeedBlockIsValid())
         HoUserAbort();

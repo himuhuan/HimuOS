@@ -16,6 +16,9 @@
 HO_KERNEL_API uint64_t
 KLogWriteFmt(enum KE_LOG_LEVEL level, const char *fmt, ...)
 {
+    if (level < HO_LOG_MIN_LEVEL)
+        return 0;
+
     uint64_t written = 0;
     KE_CRITICAL_SECTION criticalSection = {0};
     KeEnterCriticalSection(&criticalSection);

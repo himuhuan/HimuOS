@@ -1,9 +1,11 @@
 #include "arch/amd64/idt.h"
 #include "arch/amd64/pm.h"
 #include "kernel/hodbg.h"
-#include <kernel/ex/ex_bootstrap_abi.h>
+#include <kernel/ex/user_syscall_abi.h>
 #include <kernel/init.h>
+#include <kernel/ke/user_runtime_hooks.h>
 #include <kernel/ke/irql.h>
+#include <kernel/ke/scheduler.h>
 #include <libc/string.h>
 
 static IDT_ENTRY kInterruptDescriptorTable[256];
@@ -22,6 +24,12 @@ extern void *gIsrStubTable[];
 static uint8_t GetVectorGateType(uint8_t vectorNumber);
 static uint8_t GetVectorIstIndex(uint8_t vectorNumber);
 static BOOL IsSynchronousTrapVector(uint8_t vectorNumber);
+static void CaptureCpuExceptionContext(INTERRUPT_FRAME *frame, HO_CPU_EXCEPTION_CONTEXT *outContext);
+static BOOL IsUserModeExceptionFrame(const INTERRUPT_FRAME *frame);
+static BOOL IsUserRuntimeFaultVector(uint8_t vectorNumber);
+static void PopulateUserRuntimeFaultContext(const HO_CPU_EXCEPTION_CONTEXT *cpuContext,
+                                            KE_USER_RUNTIME_FAULT_CONTEXT *outContext);
+static BOOL TryHandleUserRuntimeFault(const HO_CPU_EXCEPTION_CONTEXT *cpuContext);
 
 static inline HO_VIRTUAL_ADDRESS
 ReadCr2(void)
@@ -70,7 +78,7 @@ GetVectorGateType(uint8_t vectorNumber)
 {
     switch (vectorNumber)
     {
-    case KE_USER_BOOTSTRAP_SYSCALL_VECTOR:
+    case EX_USER_SYSCALL_VECTOR:
         return IDT_FLAG_USER_TRAP_GATE;
     case 3: // #BP Breakpoint
     case 4: // #OF Overflow
@@ -97,7 +105,88 @@ GetVectorIstIndex(uint8_t vectorNumber)
 static BOOL
 IsSynchronousTrapVector(uint8_t vectorNumber)
 {
-    return vectorNumber == KE_USER_BOOTSTRAP_SYSCALL_VECTOR;
+    return vectorNumber == EX_USER_SYSCALL_VECTOR;
+}
+
+static void
+CaptureCpuExceptionContext(INTERRUPT_FRAME *frame, HO_CPU_EXCEPTION_CONTEXT *outContext)
+{
+    HO_KASSERT(frame != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(outContext != NULL, EC_ILLEGAL_ARGUMENT);
+
+    memset(outContext, 0, sizeof(*outContext));
+    outContext->Frame = frame;
+
+    if ((uint8_t)frame->VectorNumber == 14U)
+    {
+        outContext->HasFaultAddress = TRUE;
+        outContext->FaultAddress = ReadCr2();
+        outContext->PageFaultErrorCode = (uint32_t)frame->ErrorCode;
+        outContext->IsSafePageFaultContext = IsCurrentPageFaultDiagnosticContext();
+    }
+}
+
+static BOOL
+IsUserModeExceptionFrame(const INTERRUPT_FRAME *frame)
+{
+    return frame != NULL && (frame->CS & 0x3ULL) == 0x3ULL;
+}
+
+static BOOL
+IsUserRuntimeFaultVector(uint8_t vectorNumber)
+{
+    return vectorNumber == 0U || vectorNumber == 14U;
+}
+
+static void
+PopulateUserRuntimeFaultContext(const HO_CPU_EXCEPTION_CONTEXT *cpuContext, KE_USER_RUNTIME_FAULT_CONTEXT *outContext)
+{
+    const INTERRUPT_FRAME *frame = NULL;
+
+    HO_KASSERT(cpuContext != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(cpuContext->Frame != NULL, EC_ILLEGAL_ARGUMENT);
+    HO_KASSERT(outContext != NULL, EC_ILLEGAL_ARGUMENT);
+
+    frame = (const INTERRUPT_FRAME *)cpuContext->Frame;
+
+    memset(outContext, 0, sizeof(*outContext));
+    outContext->VectorNumber = (uint8_t)frame->VectorNumber;
+    outContext->HasFaultAddress = cpuContext->HasFaultAddress;
+    outContext->IsSafePageFaultContext = cpuContext->IsSafePageFaultContext;
+    outContext->InstructionPointer = (HO_VIRTUAL_ADDRESS)frame->RIP;
+    outContext->ErrorCode = frame->ErrorCode;
+    outContext->FaultAddress = cpuContext->FaultAddress;
+    outContext->PageFaultErrorCode = cpuContext->PageFaultErrorCode;
+}
+
+static BOOL
+TryHandleUserRuntimeFault(const HO_CPU_EXCEPTION_CONTEXT *cpuContext)
+{
+    const INTERRUPT_FRAME *frame = NULL;
+    KTHREAD *currentThread = NULL;
+    KE_USER_RUNTIME_OWNS_THREAD_HOOK ownsThreadFn = NULL;
+    KE_USER_RUNTIME_FAULT_HOOK faultFn = NULL;
+    KE_USER_RUNTIME_FAULT_CONTEXT faultContext = {0};
+
+    if (cpuContext == NULL || cpuContext->Frame == NULL)
+        return FALSE;
+
+    frame = (const INTERRUPT_FRAME *)cpuContext->Frame;
+
+    if (!IsUserRuntimeFaultVector((uint8_t)frame->VectorNumber) || !IsUserModeExceptionFrame(frame))
+    {
+        return FALSE;
+    }
+
+    currentThread = KeGetCurrentThread();
+    ownsThreadFn = KiGetUserRuntimeOwnsThreadHook();
+    faultFn = KiGetUserRuntimeFaultHook();
+    if (currentThread == NULL || ownsThreadFn == NULL || faultFn == NULL || !ownsThreadFn(currentThread))
+        return FALSE;
+
+    PopulateUserRuntimeFaultContext(cpuContext, &faultContext);
+    faultFn(currentThread, &faultContext);
+    __builtin_unreachable();
 }
 
 void
@@ -122,16 +211,10 @@ IdtExceptionHandler(void *frame)
     if (vectorNumber < 32)
     {
         HO_CPU_EXCEPTION_CONTEXT context;
-        memset(&context, 0, sizeof(context));
-        context.Frame = dump;
+        CaptureCpuExceptionContext(dump, &context);
 
-        if (vectorNumber == 14) // #PF
-        {
-            context.HasFaultAddress = TRUE;
-            context.FaultAddress = ReadCr2();
-            context.PageFaultErrorCode = (uint32_t)dump->ErrorCode;
-            context.IsSafePageFaultContext = IsCurrentPageFaultDiagnosticContext();
-        }
+        if (TryHandleUserRuntimeFault(&context))
+            __builtin_unreachable();
 
         KernelHalt(-(int64_t)vectorNumber, &context);
         return;

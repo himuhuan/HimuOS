@@ -1,0 +1,23 @@
+/**
+ * HimuOperatingSystem
+ *
+ * File: ex/user_image_abi.h
+ * Description: Stable user image layout contract for current embedded userspace.
+ * Copyright(c) 2024-2026 HimuOS, ONLY FOR EDUCATIONAL PURPOSES.
+ */
+
+#pragma once
+
+#define EX_USER_IMAGE_PAGE_SIZE         0x1000ULL
+#define EX_USER_IMAGE_WINDOW_BASE       0x0000000080000000ULL
+#define EX_USER_IMAGE_WINDOW_PAGE_COUNT 4ULL
+#define EX_USER_IMAGE_WINDOW_END_EXCLUSIVE                                                                         \
+    (EX_USER_IMAGE_WINDOW_BASE + (EX_USER_IMAGE_WINDOW_PAGE_COUNT * EX_USER_IMAGE_PAGE_SIZE))
+
+#define EX_USER_IMAGE_CODE_BASE              EX_USER_IMAGE_WINDOW_BASE
+#define EX_USER_IMAGE_CONST_BASE             (EX_USER_IMAGE_CODE_BASE + EX_USER_IMAGE_PAGE_SIZE)
+#define EX_USER_IMAGE_STACK_GUARD_BASE       (EX_USER_IMAGE_CONST_BASE + EX_USER_IMAGE_PAGE_SIZE)
+#define EX_USER_IMAGE_STACK_BASE             (EX_USER_IMAGE_STACK_GUARD_BASE + EX_USER_IMAGE_PAGE_SIZE)
+#define EX_USER_IMAGE_STACK_TOP              (EX_USER_IMAGE_STACK_BASE + EX_USER_IMAGE_PAGE_SIZE)
+#define EX_USER_IMAGE_STACK_PAGE_COUNT       1ULL
+#define EX_USER_IMAGE_STACK_GUARD_PAGE_COUNT 1ULL

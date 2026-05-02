@@ -1,12 +1,12 @@
-#include <kernel/ex/ex_bootstrap_abi.h>
+#include <kernel/ex/user_syscall_abi.h>
 
 /*
  * Public compiled-userspace startup/return path:
  * - _start enters main() with a 16-byte aligned stack.
- * - Returning from main issues the formal SYS_EXIT contract over int 0x80.
+ * - Returning from main issues the formal EX_USER_SYS_EXIT contract over int 0x80.
  * - RAX carries the syscall number / return value, while RDI, RSI, and RDX
  *   carry the first three arguments.
- * - Failures return negative HO_STATUS values in RAX, but SYS_EXIT is a
+ * - Failures return negative HO_STATUS values in RAX, but EX_USER_SYS_EXIT is a
  *   no-return termination path for the normal contract.
  */
 
@@ -19,10 +19,10 @@ _start:
     call main
 
     movl %eax, %edi
-    movl $SYS_EXIT, %eax
+    movl $EX_USER_SYS_EXIT, %eax
     xorl %esi, %esi
     xorl %edx, %edx
-    int $KE_USER_BOOTSTRAP_SYSCALL_VECTOR
+    int $EX_USER_SYSCALL_VECTOR
     ud2
 
     .size _start, . - _start

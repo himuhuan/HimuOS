@@ -8,6 +8,7 @@
  */
 
 #include "console_device.h"
+#include <kernel/ke/console.h>
 #include <drivers/basic_color.h>
 
 enum
@@ -27,8 +28,8 @@ HO_KERNEL_API void
 KeConDevInit(KE_CONSOLE_DEVICE *dev, struct KE_CONSOLE_SINK *sink)
 {
     memset(dev, 0, sizeof(KE_CONSOLE_DEVICE));
-    dev->Foreground = COLOR_TEXT;
-    dev->Background = COLOR_BLACK;
+    dev->Foreground = HO_CONSOLE_DEFAULT_FOREGROUND;
+    dev->Background = HO_CONSOLE_DEFAULT_BACKGROUND;
     dev->Sink = sink;
 }
 
@@ -194,8 +195,8 @@ ApplyAnsiCode(KE_CONSOLE_DEVICE *dev, int code)
     if (code == 0)
     {
         // Reset
-        dev->Foreground = COLOR_TEXT;
-        dev->Background = COLOR_BLACK;
+        dev->Foreground = HO_CONSOLE_DEFAULT_FOREGROUND;
+        dev->Background = HO_CONSOLE_DEFAULT_BACKGROUND;
     }
     else if (code >= 30 && code <= 37)
     {

@@ -10,7 +10,8 @@
 #pragma once
 
 #include <kernel/demo.h>
-#include <kernel/ex/ex_bootstrap_abi.h>
+#include <kernel/ex/user_capability_abi.h>
+#include <kernel/ex/user_syscall_abi.h>
 #include <kernel/hodbg.h>
 #include <kernel/ke/scheduler.h>
 #include <kernel/ke/kthread.h>
@@ -40,6 +41,9 @@
 #define HO_DEMO_TEST_USER_HELLO        17
 #define HO_DEMO_TEST_USER_CAPS         18
 #define HO_DEMO_TEST_USER_DUAL         19
+#define HO_DEMO_TEST_USER_INPUT        20
+#define HO_DEMO_TEST_DEMO_SHELL        21
+#define HO_DEMO_TEST_USER_FAULT        22
 
 #ifndef HO_DEMO_TEST_SELECTION
 #define HO_DEMO_TEST_SELECTION HO_DEMO_TEST_NONE
@@ -55,14 +59,6 @@ extern KMUTEX gTestMutex;
 extern KEVENT gCriticalSectionGuardEvent;
 extern KEVENT gDispatchGuardEvent;
 extern KMUTEX gOwnedExitMutex;
-
-typedef struct _KI_USER_EMBEDDED_ARTIFACTS
-{
-    const uint8_t *CodeBytes;
-    uint64_t CodeLength;
-    const uint8_t *ConstBytes;
-    uint64_t ConstLength;
-} KI_USER_EMBEDDED_ARTIFACTS;
 
 void TestThreadA(void *arg);
 void TestThreadB(void *arg);
@@ -110,8 +106,8 @@ void RunPageFaultGuardDemo(void);
 void RunPageFaultFixmapDemo(void);
 void RunPageFaultHeapDemo(void);
 void RunKthreadPoolRaceDemo(void);
-void KiUserHelloGetEmbeddedArtifacts(KI_USER_EMBEDDED_ARTIFACTS *artifacts);
-void KiUserCounterGetEmbeddedArtifacts(KI_USER_EMBEDDED_ARTIFACTS *artifacts);
 void RunUserHelloDemo(void);
 void RunUserCapsDemo(void);
 void RunUserDualDemo(void);
+void RunUserInputDemo(void);
+void RunDemoShellDemo(void);

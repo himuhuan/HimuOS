@@ -9,7 +9,7 @@
 
 #include "scheduler_internal.h"
 
-#include <kernel/ke/bootstrap_callbacks.h>
+#include <kernel/ke/user_runtime_hooks.h>
 
 uint64_t
 KiNowNs(void)
@@ -38,14 +38,14 @@ KiSchedulerTimerISR(void *frame, void *context)
 
     if (interruptedFromUserMode)
     {
-        KE_BOOTSTRAP_TIMER_OBSERVE_FN timerObserveFn = KiGetBootstrapTimerObserveCallback();
-        KE_BOOTSTRAP_THREAD_OWNERSHIP_QUERY_FN threadOwnershipQueryFn = KiGetBootstrapThreadOwnershipQueryCallback();
-        if (timerObserveFn != NULL && threadOwnershipQueryFn != NULL)
+        KE_USER_RUNTIME_OBSERVE_TIMER_HOOK observeTimerFn = KiGetUserRuntimeObserveTimerHook();
+        KE_USER_RUNTIME_OWNS_THREAD_HOOK ownsThreadFn = KiGetUserRuntimeOwnsThreadHook();
+        if (observeTimerFn != NULL && ownsThreadFn != NULL)
         {
             KTHREAD *current = KeGetCurrentThread();
-            if (current != NULL && threadOwnershipQueryFn(current))
+            if (current != NULL && ownsThreadFn(current))
             {
-                timerObserveFn(current);
+                observeTimerFn(current);
             }
         }
     }

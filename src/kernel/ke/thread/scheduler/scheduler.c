@@ -9,7 +9,7 @@
 
 #include "scheduler_internal.h"
 
-#include <kernel/ke/bootstrap_callbacks.h>
+#include <kernel/ke/user_runtime_hooks.h>
 
 // ─────────────────────────────────────────────────────────────
 // Globals
@@ -34,14 +34,14 @@ void
 KiThreadTrampoline(void)
 {
     KTHREAD *self = KeGetCurrentThread();
-    KE_BOOTSTRAP_THREAD_OWNERSHIP_QUERY_FN threadOwnershipQueryFn = KiGetBootstrapThreadOwnershipQueryCallback();
+    KE_USER_RUNTIME_OWNS_THREAD_HOOK ownsThreadFn = KiGetUserRuntimeOwnsThreadHook();
 
-    if (threadOwnershipQueryFn != NULL && threadOwnershipQueryFn(self))
+    if (ownsThreadFn != NULL && ownsThreadFn(self))
     {
-        KE_BOOTSTRAP_ENTER_FN enterFn = KiGetBootstrapEnterCallback();
+        KE_USER_RUNTIME_ENTER_HOOK enterFn = KiGetUserRuntimeEnterHook();
         if (enterFn == NULL)
         {
-            HO_KPANIC(EC_INVALID_STATE, "Bootstrap enter callback not registered");
+            HO_KPANIC(EC_INVALID_STATE, "User-runtime enter hook not registered");
         }
 
         enterFn(self);
@@ -138,8 +138,8 @@ KeThreadStart(KTHREAD *thread)
     gStats.ActiveThreadCount++;
 
     // If the CPU is idle, arm the timer with a minimal delta so the ISR
-    // fires promptly and picks up the newly-ready thread.  This
-    // bootstraps the tickless loop the very first time a thread is started.
+    // fires promptly and picks up the newly-ready thread. This starts the
+    // tickless loop the very first time a thread is started.
     if (gCurrentThread == gIdleThread && gNextProgrammedDeadlineNs == 0)
     {
         KiArmClockEvent(KeClockEventGetMinDeltaNs());
@@ -294,13 +294,13 @@ KiReleaseThreadJoinClaim(KTHREAD *thread)
 }
 
 static BOOL
-KiIsBootstrapOwnedThread(const KTHREAD *thread)
+KiIsUserRuntimeOwnedThread(const KTHREAD *thread)
 {
-    KE_BOOTSTRAP_THREAD_OWNERSHIP_QUERY_FN threadOwnershipQueryFn = KiGetBootstrapThreadOwnershipQueryCallback();
-    if (thread == NULL || threadOwnershipQueryFn == NULL)
+    KE_USER_RUNTIME_OWNS_THREAD_HOOK ownsThreadFn = KiGetUserRuntimeOwnsThreadHook();
+    if (thread == NULL || ownsThreadFn == NULL)
         return FALSE;
 
-    return threadOwnershipQueryFn(thread);
+    return ownsThreadFn(thread);
 }
 
 static HO_PHYSICAL_ADDRESS
@@ -308,14 +308,14 @@ KiResolveDispatchRoot(const KTHREAD *thread)
 {
     HO_KASSERT(thread != NULL, EC_ILLEGAL_ARGUMENT);
 
-    KE_BOOTSTRAP_THREAD_ROOT_QUERY_FN threadRootQueryFn = KiGetBootstrapThreadRootQueryCallback();
-    if (threadRootQueryFn == NULL)
+    KE_USER_RUNTIME_RESOLVE_ROOT_HOOK resolveRootFn = KiGetUserRuntimeResolveRootHook();
+    if (resolveRootFn == NULL)
     {
-        HO_KPANIC(EC_INVALID_STATE, "Bootstrap root query callback not registered");
+        HO_KPANIC(EC_INVALID_STATE, "User-runtime root hook not registered");
     }
 
     HO_PHYSICAL_ADDRESS rootPageTablePhys = 0;
-    HO_STATUS status = threadRootQueryFn(thread, &rootPageTablePhys);
+    HO_STATUS status = resolveRootFn(thread, &rootPageTablePhys);
     if (status != EC_SUCCESS)
     {
         HO_KPANIC(status, "Failed to resolve dispatch root for KTHREAD");
@@ -323,7 +323,7 @@ KiResolveDispatchRoot(const KTHREAD *thread)
 
     if (rootPageTablePhys == 0)
     {
-        HO_KPANIC(EC_INVALID_STATE, "Bootstrap root query returned invalid root");
+        HO_KPANIC(EC_INVALID_STATE, "User-runtime root hook returned invalid root");
     }
 
     return rootPageTablePhys;
@@ -337,18 +337,18 @@ KiFinalizeThread(KTHREAD *thread)
     HO_KASSERT(thread->State == KTHREAD_STATE_TERMINATED, EC_INVALID_STATE);
     HO_KASSERT(thread->TerminationClaimState == KTHREAD_TERMINATION_CLAIM_STATE_CONSUMED, EC_INVALID_STATE);
 
-    if (KiIsBootstrapOwnedThread(thread))
+    if (KiIsUserRuntimeOwnedThread(thread))
     {
-        KE_BOOTSTRAP_FINALIZE_FN finalizeFn = KiGetBootstrapFinalizeCallback();
+        KE_USER_RUNTIME_FINALIZE_THREAD_HOOK finalizeFn = KiGetUserRuntimeFinalizeThreadHook();
         if (finalizeFn == NULL)
         {
-            HO_KPANIC(EC_INVALID_STATE, "Bootstrap finalize callback not registered");
+            HO_KPANIC(EC_INVALID_STATE, "User-runtime finalize hook not registered");
         }
 
         HO_STATUS finalizeStatus = finalizeFn(thread);
         if (finalizeStatus != EC_SUCCESS)
         {
-            HO_KPANIC(finalizeStatus, "Failed to release terminated KTHREAD bootstrap resources");
+            HO_KPANIC(finalizeStatus, "Failed to release terminated KTHREAD user-runtime resources");
         }
     }
 
@@ -619,7 +619,9 @@ KiSchedule(void)
     BOOT_CAPSULE *capsule = KeGetBootCapsule();
     capsule->CpuInfo.Tss.RSP0 = next->StackBase + next->StackSize;
 
+#if HO_ENABLE_SCHED_SWITCH_LOG
     klog(KLOG_LEVEL_DEBUG, "[SCHED] Switch %u -> %u\n", prev->ThreadId, next->ThreadId);
+#endif
 
     // Arm clock event for next deadline
     uint64_t nowNs = KiNowNs();
@@ -663,13 +665,13 @@ KiReapTerminatedThreads(void)
         if (!thread)
             return;
 
-        BOOL bootstrapOwned = KiIsBootstrapOwnedThread(thread);
+        BOOL userRuntimeOwned = KiIsUserRuntimeOwnedThread(thread);
         uint32_t threadId = thread->ThreadId;
         KiFinalizeThread(thread);
 
-        if (bootstrapOwned)
+        if (userRuntimeOwned)
         {
-            klog(KLOG_LEVEL_INFO, "[USERBOOT] idle/reaper reclaimed user_hello thread thread=%u\n", threadId);
+            klog(KLOG_LEVEL_INFO, "[USERRT] idle/reaper reclaimed user runtime thread thread=%u\n", threadId);
         }
     }
 }

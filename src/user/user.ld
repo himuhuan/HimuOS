@@ -1,9 +1,9 @@
 /*
- * Minimal bootstrap userspace linker script.
+ * Minimal staged userspace linker script.
  *
  * Keep .text at the staged code page base and start .rodata at the const-page
  * payload slot so the runtime-owned capability seed block can be prepended at
- * KE_USER_BOOTSTRAP_CONST_BASE without requiring a runtime ELF loader.
+ * EX_USER_IMAGE_CONST_BASE without requiring a runtime ELF loader.
  */
 
 OUTPUT_FORMAT(elf64-x86-64)
@@ -42,7 +42,7 @@ SECTIONS
     }
 }
 
-ASSERT(SIZEOF(.text) <= 0x1000, "userspace bootstrap .text exceeds one code page");
-ASSERT((SIZEOF(.rodata) + 0x18) <= 0x1000, "userspace bootstrap .rodata exceeds const payload page");
-ASSERT(SIZEOF(.data) == 0, "userspace bootstrap .data is unsupported");
-ASSERT(SIZEOF(.bss) == 0, "userspace bootstrap .bss is unsupported");
+ASSERT(SIZEOF(.text) <= 0x1000, "userspace .text exceeds one code page");
+ASSERT((SIZEOF(.rodata) + 0x18) <= 0x1000, "userspace .rodata exceeds const payload page");
+ASSERT(SIZEOF(.data) == 0, "userspace .data is unsupported");
+ASSERT(SIZEOF(.bss) == 0, "userspace .bss is unsupported");

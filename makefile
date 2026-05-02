@@ -28,18 +28,46 @@ ASFLAGS     := -f elf64 -g -F dwarf
 
 BUILD_FLAVOR ?=
 
+DEFAULT_INTERACTIVE_BUILD_FLAVOR ?= default-demo_shell
+DEFAULT_INTERACTIVE_PROFILE_NAME ?= demo_shell
+DEFAULT_INTERACTIVE_PROFILE_DEFINE ?= HO_DEMO_TEST_DEMO_SHELL
+INTERACTIVE_ENTRY_GOALS := copy run debug iso run_iso
+QUIET_INTERACTIVE_LOG_GOALS := run iso run_iso
+
+ifeq ($(strip $(BUILD_FLAVOR)$(HO_DEMO_TEST_NAME)$(HO_DEMO_TEST_DEFINE)),)
+ifneq ($(filter $(INTERACTIVE_ENTRY_GOALS),$(MAKECMDGOALS)),)
+BUILD_FLAVOR := $(DEFAULT_INTERACTIVE_BUILD_FLAVOR)
+HO_DEMO_TEST_NAME := $(DEFAULT_INTERACTIVE_PROFILE_NAME)
+HO_DEMO_TEST_DEFINE := $(DEFAULT_INTERACTIVE_PROFILE_DEFINE)
+endif
+endif
+
 KRNL_VER_MAJOR  := 1
 KRNL_VER_MINOR  := 0
 KRNL_VER_PATCH  := 0
 KRNL_BUILD_DATE := $(shell date +'%y%m%d')
 KRNL_VERSTR     := "$(KRNL_VER_MAJOR).$(KRNL_VER_MINOR).$(KRNL_VER_PATCH) $(KRNL_BUILD_DATE)"
 KRNL_ENTRY_POINT := 0xFFFF800000000000
+comma := ,
 
 HO_DEBUG_BUILD ?= 1
 HO_ENABLE_TIMESTAMP_LOG ?= $(HO_DEBUG_BUILD)
+HO_ENABLE_SCHED_SWITCH_LOG ?= 0
+HO_ENABLE_CONSOLE_LIGHT_THEME ?= 0
 SUDO ?= sudo
 QEMU_ACCEL_MODE ?= host
 QEMU_DISPLAY ?= gtk
+QEMU_MONITOR_SOCKET ?=
+
+ifeq ($(origin HO_LOG_MIN_LEVEL), undefined)
+ifneq ($(filter $(QUIET_INTERACTIVE_LOG_GOALS),$(MAKECMDGOALS)),)
+ifeq ($(QEMU_DISPLAY),gtk)
+HO_LOG_MIN_LEVEL := KLOG_LEVEL_WARNING
+endif
+endif
+endif
+
+HO_LOG_MIN_LEVEL ?= KLOG_LEVEL_DEBUG
 
 ifeq ($(QEMU_ACCEL_MODE),host)
 QEMU_ACCEL_ARGS ?= -enable-kvm
@@ -79,7 +107,10 @@ CFLAGS := -Wall -Wextra -Wmissing-prototypes -Wstrict-prototypes -Werror \
           -Isrc -Isrc/include -Isrc/include/libc \
           -DKRNL_VERSTR=\"$(KRNL_VERSTR)\" \
           -D__HO_DEBUG_BUILD__=$(HO_DEBUG_BUILD) \
+		  -DHO_LOG_MIN_LEVEL=$(HO_LOG_MIN_LEVEL) \
 		  -DHO_ENABLE_TIMESTAMP_LOG=$(HO_ENABLE_TIMESTAMP_LOG) \
+		  -DHO_ENABLE_SCHED_SWITCH_LOG=$(HO_ENABLE_SCHED_SWITCH_LOG) \
+		  -DHO_ENABLE_CONSOLE_LIGHT_THEME=$(HO_ENABLE_CONSOLE_LIGHT_THEME) \
 		  -DHO_ENABLE_NULL_DETECTION=$(HO_ENABLE_NULL_DETECTION)
 
 ifneq ($(strip $(HO_DEMO_TEST_DEFINE)),)
@@ -97,6 +128,11 @@ USER_CFLAGS := -Wall -Wextra -Werror \
                -Isrc -Isrc/include -Isrc/include/libc -Isrc/user
 USER_LDFLAGS := -nostdlib -static --build-id=none -z max-page-size=0x1000
 
+ifneq ($(strip $(HO_DEMO_TEST_DEFINE)),)
+USER_CFLAGS += -D$(HO_DEMO_TEST_DEFINE)=1 \
+               -DHO_DEMO_TEST_SELECTION_NAME=\"$(HO_DEMO_TEST_NAME)\"
+endif
+
 # Output directories (explicit per-target)
 EFI_OBJDIR    := build/efi/obj
 EFI_BINDIR    := build/efi/bin
@@ -107,7 +143,7 @@ USR_BUILDROOT := build/user$(if $(strip $(BUILD_FLAVOR)),/$(BUILD_FLAVOR),)
 USR_OBJDIR    := $(USR_BUILDROOT)/obj
 USR_BINDIR    := $(USR_BUILDROOT)/bin
 
-VALID_TEST_MODULES := schedule guard_wait owned_exit irql_wait irql_sleep irql_yield irql_exit pf_imported pf_guard pf_fixmap pf_heap kthread_pool_race user_hello user_caps user_dual list
+VALID_TEST_MODULES := schedule guard_wait owned_exit irql_wait irql_sleep irql_yield irql_exit pf_imported pf_guard pf_fixmap pf_heap kthread_pool_race user_hello user_caps user_dual user_input demo_shell user_fault list
 TEST_MODULE_GOALS  := $(filter-out test,$(MAKECMDGOALS))
 TEST_MODULE        := $(if $(strip $(TEST_MODULE_GOALS)),$(firstword $(TEST_MODULE_GOALS)),list)
 TEST_BUILD_FLAVOR  := test-$(TEST_MODULE)
@@ -127,14 +163,17 @@ TEST_DEFINE_kthread_pool_race := HO_DEMO_TEST_KTHREAD_POOL_RACE
 TEST_DEFINE_user_hello := HO_DEMO_TEST_USER_HELLO
 TEST_DEFINE_user_caps := HO_DEMO_TEST_USER_CAPS
 TEST_DEFINE_user_dual := HO_DEMO_TEST_USER_DUAL
+TEST_DEFINE_user_input := HO_DEMO_TEST_USER_INPUT
+TEST_DEFINE_demo_shell := HO_DEMO_TEST_DEMO_SHELL
+TEST_DEFINE_user_fault := HO_DEMO_TEST_USER_FAULT
 
 ifneq ($(filter test,$(MAKECMDGOALS)),)
 ifneq ($(words $(TEST_MODULE_GOALS)),0)
 ifneq ($(words $(TEST_MODULE_GOALS)),1)
-$(error Usage: make test <module>. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap, kthread_pool_race, user_hello, user_caps, user_dual. Use `make test` or `make test list` to inspect supported modules)
+$(error Usage: make test <module>. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap, kthread_pool_race, user_hello, user_caps, user_dual, user_input, demo_shell, user_fault. Use `make test` or `make test list` to inspect supported modules)
 endif
 ifneq ($(filter $(TEST_MODULE),$(VALID_TEST_MODULES)), $(TEST_MODULE))
-$(error Unknown test module '$(TEST_MODULE)'. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap, kthread_pool_race, user_hello, user_caps, user_dual. Use `make test list` to inspect supported modules)
+$(error Unknown test module '$(TEST_MODULE)'. Available modules: schedule, guard_wait, owned_exit, irql_wait, irql_sleep, irql_yield, irql_exit, pf_imported, pf_guard, pf_fixmap, pf_heap, kthread_pool_race, user_hello, user_caps, user_dual, user_input, demo_shell, user_fault. Use `make test list` to inspect supported modules)
 endif
 endif
 endif
@@ -211,13 +250,13 @@ SRCS_KERNEL_C := \
     src/kernel/demo/mutex.c                             \
     src/kernel/demo/pagefault.c                         \
 	src/kernel/demo/kthread_pool_race.c                 \
-    src/kernel/demo/semaphore.c                         \
+	src/kernel/demo/semaphore.c                         \
     src/kernel/demo/thread.c                            \
-    src/kernel/demo/user_counter_artifact_bridge.c      \
-    src/kernel/demo/user_hello_artifact_bridge.c        \
+    src/kernel/demo/demo_shell.c                        \
 	src/kernel/demo/user_hello.c                        \
     src/kernel/demo/user_dual.c                         \
 	src/kernel/demo/user_caps.c                         \
+    src/kernel/demo/user_input.c                        \
     src/kernel/init/cpu.c                               \
     src/kernel/init/font.c                              \
     src/kernel/init/hhdm.c                              \
@@ -248,11 +287,23 @@ SRCS_KERNEL_C := \
     src/kernel/ke/mm/kva.c                              \
     src/kernel/ke/mm/allocator.c                        \
     src/kernel/ke/mm/pool.c                             \
-	src/kernel/ke/bootstrap_callbacks.c                 \
-	src/kernel/ke/user_bootstrap.c                      \
-	src/kernel/ke/user_bootstrap_syscall.c              \
-	src/kernel/ex/ex_bootstrap.c                        \
-	src/kernel/ex/ex_bootstrap_adapter.c                \
+    src/kernel/ke/user_runtime_hooks.c                 \
+    src/kernel/ke/user_mode.c                          \
+    src/kernel/ke/user_mode_syscall.c                  \
+    src/kernel/ex/runtime.c                            \
+    src/kernel/ex/object.c                              \
+    src/kernel/ex/handle.c                              \
+    src/kernel/ex/runtime_table.c                       \
+    src/kernel/ex/image.c                               \
+    src/kernel/ex/program.c                             \
+    src/kernel/ex/process.c                             \
+    src/kernel/ex/process_control.c                     \
+    src/kernel/ex/thread.c                              \
+    src/kernel/ex/sysinfo.c                             \
+    src/kernel/ex/syscall.c                             \
+    src/kernel/ex/user_runtime_bridge.c                \
+    src/kernel/ke/input/input.c                         \
+    src/kernel/ke/input/sinks/ps2_keyboard_sink.c       \
     src/kernel/ke/thread/kthread.c                      \
     src/kernel/ke/thread/scheduler/scheduler.c          \
     src/kernel/ke/thread/scheduler/wait.c               \
@@ -267,6 +318,7 @@ SRCS_KERNEL_C := \
     src/drivers/time/pmtimer_driver.c                   \
     src/drivers/time/hpet_driver.c                      \
     src/drivers/time/lapic_timer_driver.c               \
+    src/drivers/input/ps2_keyboard_driver.c             \
     src/drivers/video/video_driver.c                    \
     src/drivers/video/efi/video_efi.c                   \
     src/drivers/serial/serial.c                         \
@@ -277,7 +329,7 @@ SRCS_KERNEL_C := \
 SRCS_KERNEL_ASM := \
     src/arch/amd64/intr_stub.asm \
 	src/arch/amd64/context_switch.asm \
-	src/arch/amd64/user_bootstrap.asm
+	src/arch/amd64/user_mode.asm
 
 # Kernel target: kernel sources + full libc + elf
 SRCS_KERNEL_ALL := $(SRCS_KERNEL_C) $(SRCS_LIBC) $(SRCS_ELF) $(SRCS_KERNEL_ASM)
@@ -288,49 +340,55 @@ OBJS_KERNEL_ASM := $(patsubst src/%.asm,$(KRN_OBJDIR)/%.o,$(filter %.asm,$(SRCS_
 TARGET_KERNEL := $(KRN_BINDIR)/kernel.bin
 
 # ------------------------------------------------------------------------------
-# Userspace bootstrap artifacts
+# Userspace artifacts
 # ------------------------------------------------------------------------------
-SRCS_USER_HELLO_C := \
-    src/user/user_hello/main.c
+USER_PROGRAMS := user_hello user_counter user_caps hsh calc tick1s fault_de fault_pf input_probe line_echo
 
-SRCS_USER_COUNTER_C := \
-    src/user/user_counter/main.c
+USER_PROGRAM_SRC_user_hello := src/user/user_hello/main.c
+USER_PROGRAM_SRC_user_counter := src/user/user_counter/main.c
+USER_PROGRAM_SRC_user_caps := src/user/user_caps/main.c
+USER_PROGRAM_SRC_hsh := src/user/hsh/main.c
+USER_PROGRAM_SRC_calc := src/user/calc/main.c
+USER_PROGRAM_SRC_tick1s := src/user/tick1s/main.c
+USER_PROGRAM_SRC_fault_de := src/user/fault_de/main.c
+USER_PROGRAM_SRC_fault_pf := src/user/fault_pf/main.c
+USER_PROGRAM_SRC_input_probe := src/user/input_probe/main.c
+USER_PROGRAM_SRC_line_echo := src/user/line_echo/main.c
 
 SRCS_USER_COMMON_S := \
     src/user/crt0.S
 
-OBJS_USER_HELLO_C := $(patsubst src/%.c,$(USR_OBJDIR)/%.o,$(SRCS_USER_HELLO_C))
-OBJS_USER_COUNTER_C := $(patsubst src/%.c,$(USR_OBJDIR)/%.o,$(SRCS_USER_COUNTER_C))
-OBJS_USER_HELLO_S := $(patsubst src/%.S,$(USR_OBJDIR)/%.o,$(SRCS_USER_COMMON_S))
-OBJS_USER_HELLO   := $(OBJS_USER_HELLO_C) $(OBJS_USER_HELLO_S)
-OBJS_USER_COUNTER := $(OBJS_USER_COUNTER_C) $(OBJS_USER_HELLO_S)
-
-TARGET_USER_HELLO_ELF       := $(USR_BINDIR)/user_hello.elf
-TARGET_USER_HELLO_CODE_BIN  := $(USR_BINDIR)/user_hello.code.bin
-TARGET_USER_HELLO_CONST_BIN := $(USR_BINDIR)/user_hello.const.bin
-TARGET_USER_HELLO           := $(TARGET_USER_HELLO_ELF) $(TARGET_USER_HELLO_CODE_BIN) $(TARGET_USER_HELLO_CONST_BIN)
-
-TARGET_USER_COUNTER_ELF       := $(USR_BINDIR)/user_counter.elf
-TARGET_USER_COUNTER_CODE_BIN  := $(USR_BINDIR)/user_counter.code.bin
-TARGET_USER_COUNTER_CONST_BIN := $(USR_BINDIR)/user_counter.const.bin
-TARGET_USER_COUNTER           := $(TARGET_USER_COUNTER_ELF) $(TARGET_USER_COUNTER_CODE_BIN) $(TARGET_USER_COUNTER_CONST_BIN)
-
 path_to_symbol = $(subst -,_,$(subst .,_,$(subst /,_,$(1))))
 
-TARGET_USER_HELLO_CODE_OBJ  := $(KRN_OBJDIR)/demo/user_hello.code.bin.o
-TARGET_USER_HELLO_CONST_OBJ := $(KRN_OBJDIR)/demo/user_hello.const.bin.o
-TARGET_USER_COUNTER_CODE_OBJ  := $(KRN_OBJDIR)/demo/user_counter.code.bin.o
-TARGET_USER_COUNTER_CONST_OBJ := $(KRN_OBJDIR)/demo/user_counter.const.bin.o
-OBJS_KERNEL_EMBEDDED          := $(TARGET_USER_HELLO_CODE_OBJ) $(TARGET_USER_HELLO_CONST_OBJ) \
-                                 $(TARGET_USER_COUNTER_CODE_OBJ) $(TARGET_USER_COUNTER_CONST_OBJ)
-OBJS_KERNEL                 := $(OBJS_KERNEL_C) $(OBJS_KERNEL_ASM) $(OBJS_KERNEL_EMBEDDED)
+OBJS_USER_COMMON_S := $(patsubst src/%.S,$(USR_OBJDIR)/%.o,$(SRCS_USER_COMMON_S))
+USER_TARGETS :=
+USER_ELF_TARGETS :=
+USER_DEP_OBJS := $(OBJS_USER_COMMON_S)
+OBJS_KERNEL_EMBEDDED :=
 
-USER_HELLO_CODE_BIN_SYMBOL_BASE  := _binary_$(call path_to_symbol,$(TARGET_USER_HELLO_CODE_BIN))
-USER_HELLO_CONST_BIN_SYMBOL_BASE := _binary_$(call path_to_symbol,$(TARGET_USER_HELLO_CONST_BIN))
-USER_COUNTER_CODE_BIN_SYMBOL_BASE  := _binary_$(call path_to_symbol,$(TARGET_USER_COUNTER_CODE_BIN))
-USER_COUNTER_CONST_BIN_SYMBOL_BASE := _binary_$(call path_to_symbol,$(TARGET_USER_COUNTER_CONST_BIN))
+define USER_PROGRAM_TEMPLATE
+OBJS_USER_$(1) := $$(patsubst src/%.c,$$(USR_OBJDIR)/%.o,$$(USER_PROGRAM_SRC_$(1))) $$(OBJS_USER_COMMON_S)
+TARGET_USER_$(1)_ELF := $$(USR_BINDIR)/$(1).elf
+TARGET_USER_$(1)_CODE_BIN := $$(USR_BINDIR)/$(1).code.bin
+TARGET_USER_$(1)_CONST_BIN := $$(USR_BINDIR)/$(1).const.bin
+TARGET_USER_$(1) := $$(TARGET_USER_$(1)_ELF) $$(TARGET_USER_$(1)_CODE_BIN) $$(TARGET_USER_$(1)_CONST_BIN)
+TARGET_USER_$(1)_CODE_OBJ := $$(KRN_OBJDIR)/ex/program/$(1).code.bin.o
+TARGET_USER_$(1)_CONST_OBJ := $$(KRN_OBJDIR)/ex/program/$(1).const.bin.o
+TARGET_USER_$(1)_CODE_BIN_SYMBOL_BASE := _binary_$$(call path_to_symbol,$$(TARGET_USER_$(1)_CODE_BIN))
+TARGET_USER_$(1)_CONST_BIN_SYMBOL_BASE := _binary_$$(call path_to_symbol,$$(TARGET_USER_$(1)_CONST_BIN))
 
-.PHONY: all clean copy run efi install clean_code vmware_img kernel user debug run_iso test schedule user_hello user_caps user_dual list
+USER_TARGETS += $$(TARGET_USER_$(1))
+USER_ELF_TARGETS += $$(TARGET_USER_$(1)_ELF)
+USER_DEP_OBJS += $$(OBJS_USER_$(1))
+OBJS_KERNEL_EMBEDDED += $$(TARGET_USER_$(1)_CODE_OBJ) $$(TARGET_USER_$(1)_CONST_OBJ)
+endef
+
+$(foreach program,$(USER_PROGRAMS),$(eval $(call USER_PROGRAM_TEMPLATE,$(program))))
+
+OBJS_USER_ALL := $(sort $(USER_DEP_OBJS))
+OBJS_KERNEL   := $(OBJS_KERNEL_C) $(OBJS_KERNEL_ASM) $(OBJS_KERNEL_EMBEDDED)
+
+.PHONY: all clean copy run efi install clean_code vmware_img kernel user debug run_iso test schedule user_hello user_caps user_dual user_input demo_shell user_fault list
 
 all: efi kernel user
 
@@ -365,74 +423,45 @@ $(KRN_OBJDIR)/%.o: src/%.asm
 	@echo "ASM $<"
 	@nasm $(ASFLAGS) -o $@ $<
 
-user: $(TARGET_USER_HELLO) $(TARGET_USER_COUNTER)
-	@echo "User build complete: $(TARGET_USER_HELLO_ELF) $(TARGET_USER_COUNTER_ELF)"
+user: $(USER_TARGETS)
+	@echo "User build complete: $(USER_ELF_TARGETS)"
 
-$(TARGET_USER_HELLO_ELF): $(OBJS_USER_HELLO) src/user/user.ld
-	@mkdir -p $(dir $@)
-	@echo "USER LD $@"
-	@$(LD) -o $@ $(OBJS_USER_HELLO) $(USER_LDFLAGS) -T src/user/user.ld -Map=$(USR_BINDIR)/user_hello.map
+define USER_PROGRAM_RULES
+$$(TARGET_USER_$(1)_ELF): $$(OBJS_USER_$(1)) src/user/user.ld
+	@mkdir -p $$(dir $$@)
+	@echo "USER LD $$@"
+	@$$(LD) -o $$@ $$(OBJS_USER_$(1)) $$(USER_LDFLAGS) -T src/user/user.ld -Map=$$(USR_BINDIR)/$(1).map
 
-$(TARGET_USER_HELLO_CODE_BIN): $(TARGET_USER_HELLO_ELF)
-	@mkdir -p $(dir $@)
-	@echo "USER OBJCOPY $@"
-	@$(OBJCOPY) -O binary --only-section=.text $< $@
+$$(TARGET_USER_$(1)_CODE_BIN): $$(TARGET_USER_$(1)_ELF)
+	@mkdir -p $$(dir $$@)
+	@echo "USER OBJCOPY $$@"
+	@$$(OBJCOPY) -O binary --only-section=.text $$< $$@
 
-$(TARGET_USER_HELLO_CONST_BIN): $(TARGET_USER_HELLO_ELF)
-	@mkdir -p $(dir $@)
-	@echo "USER OBJCOPY $@"
-	@$(OBJCOPY) -O binary --only-section=.rodata $< $@
+$$(TARGET_USER_$(1)_CONST_BIN): $$(TARGET_USER_$(1)_ELF)
+	@mkdir -p $$(dir $$@)
+	@echo "USER OBJCOPY $$@"
+	@$$(OBJCOPY) -O binary --only-section=.rodata $$< $$@
 
-$(TARGET_USER_COUNTER_ELF): $(OBJS_USER_COUNTER) src/user/user.ld
-	@mkdir -p $(dir $@)
-	@echo "USER LD $@"
-	@$(LD) -o $@ $(OBJS_USER_COUNTER) $(USER_LDFLAGS) -T src/user/user.ld -Map=$(USR_BINDIR)/user_counter.map
+$$(TARGET_USER_$(1)_CODE_OBJ): $$(TARGET_USER_$(1)_CODE_BIN)
+	@mkdir -p $$(dir $$@)
+	@echo "BINOBJ $$@"
+	@$$(LD) -r -b binary -o $$@ $$<
+	@$$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
+		--redefine-sym $$(TARGET_USER_$(1)_CODE_BIN_SYMBOL_BASE)_start=gExBuiltinProgram_$(1)_CodeBytesStart \
+		--redefine-sym $$(TARGET_USER_$(1)_CODE_BIN_SYMBOL_BASE)_end=gExBuiltinProgram_$(1)_CodeBytesEnd \
+		$$@
 
-$(TARGET_USER_COUNTER_CODE_BIN): $(TARGET_USER_COUNTER_ELF)
-	@mkdir -p $(dir $@)
-	@echo "USER OBJCOPY $@"
-	@$(OBJCOPY) -O binary --only-section=.text $< $@
+$$(TARGET_USER_$(1)_CONST_OBJ): $$(TARGET_USER_$(1)_CONST_BIN)
+	@mkdir -p $$(dir $$@)
+	@echo "BINOBJ $$@"
+	@$$(LD) -r -b binary -o $$@ $$<
+	@$$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
+		--redefine-sym $$(TARGET_USER_$(1)_CONST_BIN_SYMBOL_BASE)_start=gExBuiltinProgram_$(1)_ConstBytesStart \
+		--redefine-sym $$(TARGET_USER_$(1)_CONST_BIN_SYMBOL_BASE)_end=gExBuiltinProgram_$(1)_ConstBytesEnd \
+		$$@
+endef
 
-$(TARGET_USER_COUNTER_CONST_BIN): $(TARGET_USER_COUNTER_ELF)
-	@mkdir -p $(dir $@)
-	@echo "USER OBJCOPY $@"
-	@$(OBJCOPY) -O binary --only-section=.rodata $< $@
-
-$(TARGET_USER_HELLO_CODE_OBJ): $(TARGET_USER_HELLO_CODE_BIN)
-	@mkdir -p $(dir $@)
-	@echo "BINOBJ $@"
-	@$(LD) -r -b binary -o $@ $<
-	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
-		--redefine-sym $(USER_HELLO_CODE_BIN_SYMBOL_BASE)_start=gKiUserHelloCodeBytesStart \
-		--redefine-sym $(USER_HELLO_CODE_BIN_SYMBOL_BASE)_end=gKiUserHelloCodeBytesEnd \
-		$@
-
-$(TARGET_USER_HELLO_CONST_OBJ): $(TARGET_USER_HELLO_CONST_BIN)
-	@mkdir -p $(dir $@)
-	@echo "BINOBJ $@"
-	@$(LD) -r -b binary -o $@ $<
-	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
-		--redefine-sym $(USER_HELLO_CONST_BIN_SYMBOL_BASE)_start=gKiUserHelloConstBytesStart \
-		--redefine-sym $(USER_HELLO_CONST_BIN_SYMBOL_BASE)_end=gKiUserHelloConstBytesEnd \
-		$@
-
-$(TARGET_USER_COUNTER_CODE_OBJ): $(TARGET_USER_COUNTER_CODE_BIN)
-	@mkdir -p $(dir $@)
-	@echo "BINOBJ $@"
-	@$(LD) -r -b binary -o $@ $<
-	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
-		--redefine-sym $(USER_COUNTER_CODE_BIN_SYMBOL_BASE)_start=gKiUserCounterCodeBytesStart \
-		--redefine-sym $(USER_COUNTER_CODE_BIN_SYMBOL_BASE)_end=gKiUserCounterCodeBytesEnd \
-		$@
-
-$(TARGET_USER_COUNTER_CONST_OBJ): $(TARGET_USER_COUNTER_CONST_BIN)
-	@mkdir -p $(dir $@)
-	@echo "BINOBJ $@"
-	@$(LD) -r -b binary -o $@ $<
-	@$(OBJCOPY) --rename-section .data=.rodata,alloc,load,readonly,data,contents \
-		--redefine-sym $(USER_COUNTER_CONST_BIN_SYMBOL_BASE)_start=gKiUserCounterConstBytesStart \
-		--redefine-sym $(USER_COUNTER_CONST_BIN_SYMBOL_BASE)_end=gKiUserCounterConstBytesEnd \
-		$@
+$(foreach program,$(USER_PROGRAMS),$(eval $(call USER_PROGRAM_RULES,$(program))))
 
 $(USR_OBJDIR)/%.o: src/%.c
 	@mkdir -p $(dir $@)
@@ -445,7 +474,9 @@ $(USR_OBJDIR)/%.o: src/%.S
 	@$(CC) $(USER_CFLAGS) -o $@ $<
 
 # ------------------------------------------------------------------------------
-# Runtime artifacts for QEMU (vvfat): always sync the current build flavor
+# Runtime artifacts for QEMU (vvfat): always sync the current build flavor.
+# Without explicit profile variables, run-like targets default to the
+# interactive demo_shell entry profile in a dedicated build flavor.
 # ------------------------------------------------------------------------------
 ESP_BOOT_EFI   := esp/EFI/BOOT/BOOTX64.efi
 ESP_KERNEL_BIN := esp/kernel.bin
@@ -469,13 +500,14 @@ run: copy
 		-net none \
 		-display $(QEMU_DISPLAY) \
 		-cpu $(QEMU_CPU_FLAGS) $(QEMU_ACCEL_ARGS) \
+		$(QEMU_MONITOR_ARG) \
 		-drive file=fat:rw:esp,index=0,format=vvfat \
 		-serial stdio
 
 test:
 ifeq ($(TEST_MODULE),list)
 	@echo "Available test modules:"
-	@echo "  schedule - scheduler demo suite (previous make run / make test all behavior)"
+	@echo "  schedule - scheduler/thread mechanism demo suite"
 	@echo "  guard_wait - panic demo: wait while holding a critical section"
 	@echo "  owned_exit - panic demo: exit while owning a mutex"
 	@echo "  irql_wait  - panic demo: zero-timeout wait while holding DISPATCH_LEVEL guard"
@@ -487,9 +519,12 @@ ifeq ($(TEST_MODULE),list)
 	@echo "  pf_fixmap   - page-fault demo: NX execute fault in active fixmap slot"
 	@echo "  pf_heap     - page-fault demo: NX execute fault in heap-backed KVA page"
 	@echo "  kthread_pool_race - regression suite for KTHREAD pool synchronization"
-	@echo "  user_hello  - compiled minimal userspace hello regression profile"
-	@echo "  user_caps   - staged bootstrap stdout capability pilot regression"
-	@echo "  user_dual   - launch compiled user_hello and user_counter together"
+	@echo "  user_hello  - formal ABI smoke profile"
+	@echo "  user_caps   - formal capability/wait regression"
+	@echo "  user_dual   - concurrent formal-ABI userspace runtime profile"
+	@echo "  user_input  - foreground handoff profile with input_probe and line_echo"
+	@echo "  demo_shell  - interactive Ex runtime vertical slice"
+	@echo "  user_fault  - demo-shell child fault regression profile"
 	@echo "Recommended explicit workflow:"
 	@echo "  make clean"
 	@echo "  # schedule"
@@ -507,21 +542,57 @@ ifeq ($(TEST_MODULE),list)
 	@echo "      QEMU_CAPTURE_MODE=host bash scripts/qemu_capture.sh 30 /tmp/himuos-user-dual-host.log"
 	@echo "  BUILD_FLAVOR=test-user_dual HO_DEMO_TEST_NAME=user_dual HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_DUAL \\"
 	@echo "      QEMU_CAPTURE_MODE=tcg bash scripts/qemu_capture.sh 30 /tmp/himuos-user-dual-tcg.log"
+	@echo "  # user_input (requires scripted PS/2 key injection on both host and tcg)"
+	@echo "  make clean"
+	@echo "  bear -- make all BUILD_FLAVOR=test-user_input HO_DEMO_TEST_NAME=user_input HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_INPUT"
+	@echo "  BUILD_FLAVOR=test-user_input HO_DEMO_TEST_NAME=user_input HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_INPUT \\"
+	@echo "      QEMU_CAPTURE_MODE=host QEMU_SENDKEY_PLAN=scripts/input_plans/user_input.plan \\"
+	@echo "      QEMU_CAPTURE_EXIT_ON='[INPUT] foreground owner=0' \\"
+	@echo "      bash scripts/qemu_capture.sh 20 /tmp/himuos-user-input-host.log"
+	@echo "  BUILD_FLAVOR=test-user_input HO_DEMO_TEST_NAME=user_input HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_INPUT \\"
+	@echo "      QEMU_CAPTURE_MODE=tcg QEMU_SENDKEY_PLAN=scripts/input_plans/user_input.plan \\"
+	@echo "      QEMU_CAPTURE_EXIT_ON='[INPUT] foreground owner=0' \\"
+	@echo "      bash scripts/qemu_capture.sh 20 /tmp/himuos-user-input-tcg.log"
+	@echo "  # demo_shell (interactive Ex runtime vertical slice: collect both host and tcg evidence)"
+	@echo "  make clean"
+	@echo "  bear -- make all BUILD_FLAVOR=test-demo_shell HO_DEMO_TEST_NAME=demo_shell HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_DEMO_SHELL"
+	@echo "  BUILD_FLAVOR=test-demo_shell HO_DEMO_TEST_NAME=demo_shell HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_DEMO_SHELL \\"
+	@echo "      QEMU_CAPTURE_MODE=host QEMU_SENDKEY_PLAN=scripts/input_plans/demo_shell.plan \\"
+	@echo "      QEMU_CAPTURE_EXIT_ON='[HSH] HSH exited' \\"
+	@echo "      bash scripts/qemu_capture.sh 25 /tmp/himuos-demo-shell-host.log"
+	@echo "  BUILD_FLAVOR=test-demo_shell HO_DEMO_TEST_NAME=demo_shell HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_DEMO_SHELL \\"
+	@echo "      QEMU_CAPTURE_MODE=tcg QEMU_SENDKEY_PLAN=scripts/input_plans/demo_shell.plan \\"
+	@echo "      QEMU_CAPTURE_EXIT_ON='[HSH] HSH exited' \\"
+	@echo "      bash scripts/qemu_capture.sh 25 /tmp/himuos-demo-shell-tcg.log"
+	@echo "  # user_fault (child #DE/#PF recovery: collect both host and tcg evidence)"
+	@echo "  make clean"
+	@echo "  bear -- make all BUILD_FLAVOR=test-user_fault HO_DEMO_TEST_NAME=user_fault HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_FAULT"
+	@echo "  BUILD_FLAVOR=test-user_fault HO_DEMO_TEST_NAME=user_fault HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_FAULT \\"
+	@echo "      QEMU_CAPTURE_MODE=host QEMU_SENDKEY_PLAN=scripts/input_plans/user_fault.plan \\"
+	@echo "      QEMU_CAPTURE_EXIT_ON='[HSH] HSH exited' \\"
+	@echo "      bash scripts/qemu_capture.sh 25 /tmp/himuos-user-fault-host.log"
+	@echo "  BUILD_FLAVOR=test-user_fault HO_DEMO_TEST_NAME=user_fault HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_FAULT \\"
+	@echo "      QEMU_CAPTURE_MODE=tcg QEMU_SENDKEY_PLAN=scripts/input_plans/user_fault.plan \\"
+	@echo "      QEMU_CAPTURE_EXIT_ON='[HSH] HSH exited' \\"
+	@echo "      bash scripts/qemu_capture.sh 25 /tmp/himuos-user-fault-tcg.log"
 	@echo "Usage:"
 	@echo "  make test schedule   # run the scheduler demo suite"
 	@echo "  make test irql_wait  # run a dispatch-guard misuse panic regression"
 	@echo "  make test pf_heap    # run heap-backed page-fault observability demo"
 	@echo "  make test kthread_pool_race # run the KTHREAD pool race regression suite"
-	@echo "  make test user_hello # select the compiled minimal userspace hello profile"
-	@echo "  make test user_caps  # select the staged bootstrap capability pilot profile"
-	@echo "  make test user_dual  # select the dual compiled-userspace bring-up profile (use qemu_capture host+tcg)"
+	@echo "  make test user_hello # select the formal ABI smoke profile"
+	@echo "  make test user_caps  # select the formal capability/wait profile"
+	@echo "  make test user_dual  # select the dual compiled-userspace runtime profile (use qemu_capture host+tcg)"
+	@echo "  make test user_input # select the foreground handoff profile (use qemu_capture host+tcg with sendkeys)"
+	@echo "  make test demo_shell # select the interactive Ex runtime profile (use qemu_capture host+tcg with sendkeys)"
+	@echo "  make test user_fault # select the demo-shell child fault profile (use qemu_capture host+tcg with sendkeys)"
 	@echo "  make test            # list available test modules"
 else
 	@echo "Starting test module: $(TEST_MODULE)"
 	@$(MAKE) run BUILD_FLAVOR=$(TEST_BUILD_FLAVOR) HO_DEMO_TEST_NAME=$(TEST_MODULE) HO_DEMO_TEST_DEFINE=$(TEST_DEFINE_$(TEST_MODULE))
 endif
 
-schedule user_hello user_caps user_dual list:
+schedule user_hello user_caps user_dual user_input demo_shell user_fault list:
 	@:
 		
 debug: copy
@@ -583,10 +654,13 @@ run_iso: $(ISO_NAME)
 		echo "Set it explicitly, e.g. make run_iso OVMF_CODE=/usr/share/edk2/x64/OVMF.4m.fd"; \
 		exit 1; \
 	fi
+	@echo "Starting ISO VM with EFI (mode=$(QEMU_ACCEL_MODE), cpu=$(QEMU_CPU_FLAGS))..."
 	qemu-system-x86_64 \
     -m 512M \
     -bios "$(OVMF_CODE)" \
     -net none \
+    -display $(QEMU_DISPLAY) \
+    -cpu $(QEMU_CPU_FLAGS) $(QEMU_ACCEL_ARGS) \
     -cdrom himu_os.iso \
     -serial stdio
 
@@ -604,6 +678,5 @@ USER_CFLAGS += -MMD -MP
 # Include auto-generated dependency files (if they exist)
 -include $(OBJS_EFI_C:.o=.d)
 -include $(OBJS_KERNEL_C:.o=.d)
--include $(OBJS_USER_HELLO_C:.o=.d)
--include $(OBJS_USER_COUNTER_C:.o=.d)
--include $(OBJS_USER_HELLO_S:.o=.d)
+-include $(OBJS_USER_ALL:.o=.d)
+QEMU_MONITOR_ARG := $(if $(strip $(QEMU_MONITOR_SOCKET)),-monitor unix:$(QEMU_MONITOR_SOCKET)$(comma)server$(comma)nowait)

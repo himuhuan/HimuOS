@@ -1,6 +1,6 @@
 # Himu Operating System (HimuOS)
 
-*A UEFI-based x86_64 Macro Kernel with a Dual-Process User-Mode MVP*
+*A UEFI-based x86_64 Macro Kernel with an Executive Lite user runtime*
 
 ## 概要
 本项目旨在从零开始设计并实现一个名为 "HimuOS" 的x86_64架构宏内核操作系统。
@@ -11,19 +11,19 @@
 
 在 Ke 层的具体实现中，本文采用设备—汇（Device-Sink）抽象模式，为控制台、时间源与时钟事件等子系统提供统一的硬件抽象接口，支持多种底层驱动实现（如时间戳计数器 TSC、高精度事件定时器 HPET、本地高级可编程中断控制器定时器 LAPIC Timer 等）的透明切换。系统建立了基于四级页表的虚拟内存管理机制，实现了内核态（Ring 0）与用户态（Ring 3）的特权级隔离，并通过共享 `int 0x80` trap entry + Ex-facing syscall contract 为用户态提供最小服务入口。
 
-当前 README 以本轮 **MVP 交付范围** 为准，而不再继续承诺完整用户子系统的最终形态。该 MVP 的目标是交付一个**正式成立、可论证、可演示的双/多进程用户态原型操作系统**。
+当前 README 描述的是已经落地的 **Executive Lite user runtime** 主线：内核启动后由 Ex 装载用户态程序，维护进程、线程、对象、句柄、系统调用、前台输入与 sysinfo 合同。默认交互入口是 `demo_shell` profile，它拉起用户态 `hsh`，并围绕 `sysinfo` / `memmap` / `ps` / `calc` / `tick1s` / `kill` / `exit` 完成一条可演示、可复述、可稳定回归的官方路径。
 
-本轮 MVP 以以下能力为交付目标：
+当前 runtime 具备以下能力：
 
 - 虚拟内存管理：建立并启用四级页表，为内核和每个用户进程提供隔离的地址空间。
 - 特权级分离：实现内核态（Ring 0）和用户态（Ring 3）的安全隔离。
-- 用户程序模型：以**编译型 C 用户程序**作为正式用户程序形态，并将其装载到每个 `ExProcess` 的私有地址空间中。
-- 系统调用与句柄：以 Ex-facing 的最小句柄化 syscall contract 作为用户态请求服务的正式方向，当前聚焦 stdout、wait、close、exit 等原型级能力。
-- 并发与调度：在单处理器（AP）上以抢占式时间片轮转（RR）为基线支撑双进程原型；若团队时间允许，再补入简化版优先级调度。
+- 用户程序模型：以**编译型 C 用户程序**作为正式用户程序形态，`hsh`、`calc`、`tick1s`、`fault_de`、`fault_pf`、`user_counter`、`user_hello`、`user_caps`、`input_probe` 与 `line_echo` 均通过嵌入内核的 Ex runtime 路径装载。
+- 系统调用与句柄：以 Ex-facing 的最小句柄化 syscall contract 作为用户态请求服务的正式方向，当前覆盖 stdout、readline、spawn、wait、kill、sysinfo、sleep、close 与 exit。
+- 并发与调度：在单处理器（AP）上以抢占式调度支撑这条 demo-shell 切片；当前调度器已经具备优先级感知 ready queue 与 RR 时间片语义，因此后续主线不再把“先补优先级调度”当作前置阶段。
 - 可观测性：以 GOP 文本输出和 COM1 串口输出作为主要演示与诊断界面。
 
 > [!IMPORTANT]
-> 本轮 MVP **不包含** 文件系统、多核（SMP）、键盘输入、Shell、通用 ELF Loader 与完整 Object Manager。
+> 当前 runtime **不包含** 文件系统、多核（SMP）、PATH 搜索、通用 ELF / runtime loader、内核态 shell、POSIX job control 与完整 Object Manager。`hsh` 是受限 demo shell，而不是通用 shell ABI。
 
 ## HimuOS 参数说明
 
@@ -37,15 +37,15 @@
 | 存储器    | 四级页表；页式虚拟存储器                              |
 | 物理内存   | 最低 32MB, 最高 128GB                         |
 | 特权级    | 支持内核态（Ring 0) 和用户态 (Ring 3)               |
-| 用户空间   | 每进程私有地址空间；当前以固定 bootstrap window 装载用户映像   |
+| 用户空间   | 每进程私有地址空间；当前以固定 user image window 装载用户映像   |
 | 系统调用   | 目标方向为 `int 0x80` + Ex-facing 最小句柄化 syscall contract |
-| 并发与同步  | 仅支持 单AP；当前下限为 RR，简化优先级调度为可选增强项            |
+| 并发与同步  | 仅支持 单AP；当前调度器为优先级感知的抢占式 RR / tickless 语义        |
 | 多线程    | 支持内核级线程调度                                 |
 | 动态内存分配 | 支持                                        |
 | 中断     | 支持中断                                      |
 | 文件系统   | 不支持                                       |
 | 显示器    | 支持 GOP 彩色文本界面与 COM1 串口输出                  |
-| 设备支持   | GOP / COM1 / MMIO 支持，键盘(PS/2)输入；|
+| 设备支持   | GOP / COM1 / PS/2 键盘 / MMIO 支持 |
 
 ## 回归 profile 与推荐执行流程
 
@@ -61,6 +61,12 @@ BUILD_FLAVOR=<flavor> HO_DEMO_TEST_NAME=<profile> HO_DEMO_TEST_DEFINE=<define> \
 
 其中 `scripts/qemu_capture.sh` 是主运行与串口捕获入口；不要把隐式 `make run` 或 `make test` 当作默认验证路径。脚本默认使用 `QEMU_CAPTURE_MODE=host`（host/KVM），也支持显式选择 `QEMU_CAPTURE_MODE=tcg` 或 `QEMU_CAPTURE_MODE=custom`。
 
+无参 `make run`、`make iso`、`make run_iso` 现在默认装配 `demo_shell` 作为交互入口，并使用独立的 `default-demo_shell` build flavor，避免与无 profile 的普通构建产物混用。该入口的键盘输入来自运行时 PS/2 键盘链路；手工交互时应把焦点切到 QEMU 的 GTK 窗口，而不是在承载 `-serial stdio` 的宿主终端里输入。
+
+为避免 GTK 交互期间被运行时日志持续刷屏，`make run`、`make iso`、`make run_iso` 在 `QEMU_DISPLAY=gtk` 下默认把内核最小日志等级提升到 `WARNING`；因此 `DBG` 和 `INF` 都不会进入 GTK 交互输出。无头 `qemu_capture.sh` 路径默认仍保留 `DBG`，以便继续做时序与故障诊断。
+
+如需把内核图形控制台切为白底黑字，可传入 `HO_ENABLE_CONSOLE_LIGHT_THEME=1`。该开关只影响内核接管 GOP 之后的图形控制台默认主题与首次清屏，不影响 UEFI 文本阶段，也不改变 COM1 串口捕获内容。例如：`make run HO_ENABLE_CONSOLE_LIGHT_THEME=1`，或 `HO_ENABLE_CONSOLE_LIGHT_THEME=1 bash scripts/qemu_capture.sh 30 /tmp/himuos-demo.log`。
+
 > [!IMPORTANT]
 > 对 `user_dual` 以及其他时序敏感 / 销毁敏感 profile，**单份 host/KVM 捕获不再视为充分证据**。回归结论必须同时给出 host 与 TCG 两份日志；若两条执行模型结果不一致，必须在缺陷记录中明确注明。
 
@@ -69,8 +75,12 @@ BUILD_FLAVOR=<flavor> HO_DEMO_TEST_NAME=<profile> HO_DEMO_TEST_DEFINE=<define> \
 | Profile | Build flavor | Define | Outcome class | Intent |
 | ------ | ------ | ------ | ------ | ------ |
 | `schedule` | `test-schedule` | `HO_DEMO_TEST_SCHEDULE` | clean pass with continued boot/idle | scheduler smoke coverage, thread/event/semaphore/mutex 基线路径 |
-| `user_hello` | `test-user_hello` | `HO_DEMO_TEST_USER_HELLO` | compiled minimal userspace bring-up | 由 `src/user/user_hello` 源码编译并接入 kernel 的最小 Ring 3 进入、来自 CPL3 的 P1 timer round-trip、P1 gate 之后的 rejected raw write probe / successful hello write / `SYS_RAW_EXIT`、P3 thread-terminated → finalizer teardown → idle/reaper reclaimed 证据链 |
-| `user_caps` | `test-user_caps` | `HO_DEMO_TEST_USER_CAPS` | bootstrap-only capability pilot | 版本化 capability seed block、stdout capability write、`SYS_CLOSE`、stale-handle rejection、`SYS_WAIT_ONE` 与 clean exit 证据链 |
+| `demo_shell` | `test-demo_shell` | `HO_DEMO_TEST_DEMO_SHELL` | official timing-sensitive contract | `hsh` interactive vertical slice, sysinfo/memmap/ps, foreground `calc`, background `tick1s`, kill, clean shell exit |
+| `user_input` | `test-user_input` | `HO_DEMO_TEST_USER_INPUT` | official timing-sensitive contract | `input_probe` → `line_echo` foreground handoff, readline ownership, teardown, foreground owner reset |
+| `user_dual` | `test-user_dual` | `HO_DEMO_TEST_USER_DUAL` | official timing-sensitive contract | concurrent formal-ABI `user_hello` / `user_counter`, process wait, teardown and reaper evidence |
+| `user_fault` | `test-user_fault` | `HO_DEMO_TEST_USER_FAULT` | official timing-sensitive contract | child `#DE` / `#PF` isolation, foreground restore, recovery to `hsh` |
+| `user_hello` | `test-user_hello` | `HO_DEMO_TEST_USER_HELLO` | formal ABI smoke profile | 由 `src/user/user_hello` 源码编译并接入 kernel 的最小 Ring 3 进入、formal `SYS_WRITE` guard-page rejection、stdout hello write、`SYS_EXIT`、thread-terminated → finalizer teardown → idle/reaper reclaimed 证据链 |
+| `user_caps` | `test-user_caps` | `HO_DEMO_TEST_USER_CAPS` | formal capability/wait regression | 版本化 capability seed block、stdout capability write、`SYS_CLOSE`、stale-handle rejection、`SYS_WAIT_ONE` 与 `SYS_EXIT` 证据链 |
 | `guard_wait` | `test-guard_wait` | `HO_DEMO_TEST_GUARD_WAIT` | diagnosable contract violation or panic | critical-section guard misuse |
 | `owned_exit` | `test-owned_exit` | `HO_DEMO_TEST_OWNED_EXIT` | diagnosable contract violation or panic | exit while owning a mutex |
 | `irql_wait` | `test-irql_wait` | `HO_DEMO_TEST_IRQL_WAIT` | diagnosable contract violation or panic | wait at `DISPATCH_LEVEL` |
@@ -82,9 +92,9 @@ BUILD_FLAVOR=<flavor> HO_DEMO_TEST_NAME=<profile> HO_DEMO_TEST_DEFINE=<define> \
 | `pf_fixmap` | `test-pf_fixmap` | `HO_DEMO_TEST_PF_FIXMAP` | intentional fatal page-fault halt with bounded diagnostics | active fixmap alias diagnosis |
 | `pf_heap` | `test-pf_heap` | `HO_DEMO_TEST_PF_HEAP` | intentional fatal page-fault halt with bounded diagnostics | heap-backed KVA diagnosis |
 
-当前用户态相关的稳定锚点主要是 `user_hello` 与 `user_caps`。前者已经固定为**由 `src/user/user_hello` 源码编译产生的用户程序**的最小 Ring 3 进入与 clean exit 证据链，后者固定 capability / handle 路径的最小合同。README 描述的 MVP 方向，是在这两条稳定锚点之上继续推进到**编译型、双进程、Ex-facing 的用户态原型**；因此，这两条 profile 应被视为当前主线的阶段性回归基础，而不是最终用户 ABI 的全部形态。
+当前用户态相关的官方安全网是 `demo_shell`、`user_input`、`user_dual` 与 `user_fault`，这四个 profile 涉及交互、前台输入、并发或 teardown，结论必须同时给出 host 与 TCG 捕获证据。`user_hello` 是最小 formal ABI smoke profile，固定 `src/user/libsys.h`、stdout write、invalid-buffer rejection 与 clean exit 证据链；`user_caps` 是 formal capability / handle 回归项，固定 capability seed、handle close、stale-handle rejection、wait timeout 与 clean exit 证据链。
 
-`user_dual` 则应被视为**双进程 bring-up 的时序敏感回归项**：当它涉及 teardown / preemption 相关结论时，必须同时检查 `QEMU_CAPTURE_MODE=host` 与 `QEMU_CAPTURE_MODE=tcg` 两条路径。
+`user_dual` 则应被视为**正式 ABI 双进程运行时的时序敏感回归项**：当它涉及 teardown / preemption 相关结论时，必须同时检查 `QEMU_CAPTURE_MODE=host` 与 `QEMU_CAPTURE_MODE=tcg` 两条路径。
 
 ### 例子
 
@@ -101,13 +111,13 @@ bear -- make all BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DE
 BUILD_FLAVOR=test-user_hello HO_DEMO_TEST_NAME=user_hello HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_HELLO \
     bash scripts/qemu_capture.sh 30 /tmp/himuos-user-hello.log
 
-# bootstrap capability pilot
+# formal capability/wait regression
 make clean
 bear -- make all BUILD_FLAVOR=test-user_caps HO_DEMO_TEST_NAME=user_caps HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_CAPS
 BUILD_FLAVOR=test-user_caps HO_DEMO_TEST_NAME=user_caps HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_CAPS \
     bash scripts/qemu_capture.sh 30 /tmp/himuos-user-caps.log
 
-# dual userspace bring-up (timing-sensitive: collect both execution models)
+# formal-ABI dual userspace runtime (timing-sensitive: collect both execution models)
 make clean
 bear -- make all BUILD_FLAVOR=test-user_dual HO_DEMO_TEST_NAME=user_dual HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_DUAL
 BUILD_FLAVOR=test-user_dual HO_DEMO_TEST_NAME=user_dual HO_DEMO_TEST_DEFINE=HO_DEMO_TEST_USER_DUAL \

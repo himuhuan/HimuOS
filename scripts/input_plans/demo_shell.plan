@@ -1,0 +1,66 @@
+# Drive the demo_shell profile through prompt/log anchors so the same plan
+# works on both host and tcg paths without fixed keyboard timing assumptions.
+wait_for hsh> 
+text sysinfo
+key ret
+
+wait_for HimuOS System Information
+wait_for CPU:
+wait_for Memory:
+wait_for Clock:
+wait_for Time:
+wait_for hsh> 
+
+text memmap
+key ret
+
+wait_for HimuOS Virtual Memory Map
+wait_for High Half
+wait_for Imported Regions
+wait_for Low Half (user image)
+wait_for hsh> 
+
+text & tick1s
+key ret
+
+capture tick_pid SYS_SPAWN_PROGRAM succeeded thread=\d+ name=tick1s flags=0 pid=(\d+)
+wait_for hsh> 
+text ps
+key ret
+
+wait_for PID  STATE
+wait_for hsh
+wait_for tick1s
+wait_for hsh> 
+text calc
+key ret
+
+wait_for calc> 
+text 3
+key ret
+
+wait_for [CALC] result=3
+text 4
+key ret
+
+wait_for [CALC] result=4
+text +
+key ret
+
+wait_for [CALC] result=7
+wait_for TICK!
+text q
+key ret
+
+wait_for hsh> 
+wait 0.3
+text kill {{tick_pid}}
+key ret
+
+wait_for [HSH] killed pid={{tick_pid}}
+wait_for hsh> 
+wait 0.2
+text exit
+key ret
+
+wait_for [HSH] HSH exited

@@ -1,0 +1,67 @@
+# Drive the dedicated user_fault profile through standalone fault payloads and
+# foreground calc crashes, proving hsh recovery from both child-fault paths.
+wait_for hsh>
+wait 0.2
+text fault_de
+key ret
+
+wait_for [FAULTDE] triggering #DE
+wait_for [USERFAULT] #DE thread=
+wait_for program=4
+wait_for [USERRT] runtime teardown complete
+wait_for [DEMOSHELL] foreground restored
+wait_for [DEMOSHELL] SYS_WAIT_PID succeeded
+wait_for hsh>
+
+text fault_pf
+key ret
+
+wait_for [FAULTPF] triggering #
+wait_for [USERFAULT] #PF thread=
+wait_for program=5
+wait_for [USERFAULT] CR2=
+wait_for [USERRT] runtime teardown complete
+wait_for [DEMOSHELL] foreground restored
+wait_for [DEMOSHELL] SYS_WAIT_PID succeeded
+wait_for hsh>
+
+text calc
+key ret
+
+wait_for calc>
+wait 0.2
+text fault-de
+key ret
+
+wait_for [CALC] triggering fault-de
+wait_for [USERFAULT] #DE
+wait_for [USERRT] runtime teardown complete
+wait_for [DEMOSHELL] foreground restored
+wait_for [DEMOSHELL] SYS_WAIT_PID succeeded
+wait_for hsh>
+
+text calc
+key ret
+
+wait_for calc>
+wait 0.2
+text fault-pf
+key ret
+
+wait_for [CALC] triggering fault-pf
+wait_for [USERFAULT] #PF
+wait_for [USERFAULT] CR2=
+wait_for [USERRT] runtime teardown complete
+wait_for [DEMOSHELL] foreground restored
+wait_for [DEMOSHELL] SYS_WAIT_PID succeeded
+wait_for hsh>
+
+text ps
+key ret
+
+wait_for PID  STATE
+wait_for hsh>
+text exit
+key ret
+
+wait_for [HSH] HSH exited
