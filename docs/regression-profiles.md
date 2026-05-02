@@ -163,6 +163,31 @@ For failures, keep the log path and record:
 - first failure or panic anchor
 - whether the failure appears host-only, TCG-only, or common
 
+## Phase G New-Era Clean Final Evidence 2026-05-02
+
+Final validation after Phases D-F:
+
+- `make clean && make all`: passed.
+- `make test list`: passed.
+- `rg "HoUserRaw|HoUserWaitForP1Gate|EX_USER_BRINGUP|PhaseOne|BringupMailbox" src`:
+  no matches.
+- `rg "HO_DEMO_TEST_" src/user`: no matches.
+- `rg "ExRuntime.*PrivateHandle|ExRuntimeInitializeObjectHeader|ExRuntimeRetainObject|ExRuntimeReleaseObject" src`:
+  no matches.
+
+Timing-sensitive evidence:
+
+| Profile | Mode | Log | Result |
+| --- | --- | --- | --- |
+| `demo_shell` | host | `/tmp/himuos-demo-shell-host.log` | Matched sysinfo, VM map, `SYS_QUERY_SYSINFO` class 6, process list, `[CALC] result=7`, kill, shell exit, and no panic/STOP/assert anchors. |
+| `demo_shell` | TCG | `/tmp/himuos-demo-shell-tcg.log` | Matched the same anchors as host; no panic/STOP/assert anchors. |
+| `user_input` | host | `/tmp/himuos-user-input-host.log` | Matched foreground handoff to `input_probe`, `[INPUTPROBE] hello`, `[INPUTPROBE] handoff`, foreground handoff to `line_echo`, `[LINEECHO] 3 4 +`, foreground reset, and no panic/STOP/assert anchors. |
+| `user_input` | TCG | `/tmp/himuos-user-input-tcg.log` | Matched the same anchors as host; no panic/STOP/assert anchors. |
+| `user_dual` | host | `/tmp/himuos-user-dual-host.log` | Matched `[USERHELLO] hello`, `user_counter` counts 0-2, `SYS_EXIT`, runtime teardown, reaper reclamation, and no retired raw/P1 or panic/STOP/assert anchors. |
+| `user_dual` | TCG | `/tmp/himuos-user-dual-tcg.log` | Matched the same anchors as host; no retired raw/P1 or panic/STOP/assert anchors. |
+| `user_fault` | host | `/tmp/himuos-user-fault-host.log` | Matched divide fault, page fault, `CR2`, `SYS_QUERY_SYSINFO` class 6, foreground restoration, shell exit, and no kernel panic/STOP/assert anchors. |
+| `user_fault` | TCG | `/tmp/himuos-user-fault-tcg.log` | Matched the same anchors as host; no kernel panic/STOP/assert anchors. |
+
 ## Phase D New-Era Clean Evidence 2026-05-02
 
 Build and capture sanity after removing profile-conditioned `hsh`/`calc`
