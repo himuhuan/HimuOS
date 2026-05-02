@@ -35,22 +35,6 @@ typedef enum EX_PROCESS_TERMINATION_REASON
     EX_PROCESS_TERMINATION_REASON_FAULT,
 } EX_PROCESS_TERMINATION_REASON;
 
-typedef EX_HANDLE EX_PRIVATE_HANDLE;
-typedef EX_HANDLE_RIGHTS EX_PRIVATE_HANDLE_RIGHTS;
-typedef EX_HANDLE_SLOT EX_PRIVATE_HANDLE_SLOT;
-typedef EX_HANDLE_TABLE EX_PRIVATE_HANDLE_TABLE;
-
-#define EX_PRIVATE_HANDLE_INVALID            EX_HANDLE_INVALID
-#define EX_PRIVATE_HANDLE_TABLE_CAPACITY     EX_MAX_HANDLES_PER_PROCESS
-
-#define EX_PRIVATE_HANDLE_RIGHT_NONE         EX_HANDLE_RIGHT_NONE
-#define EX_PRIVATE_HANDLE_RIGHT_QUERY        EX_HANDLE_RIGHT_QUERY
-#define EX_PRIVATE_HANDLE_RIGHT_CLOSE        EX_HANDLE_RIGHT_CLOSE
-#define EX_PRIVATE_HANDLE_RIGHT_PROCESS_SELF EX_HANDLE_RIGHT_PROCESS_SELF
-#define EX_PRIVATE_HANDLE_RIGHT_THREAD_SELF  EX_HANDLE_RIGHT_THREAD_SELF
-#define EX_PRIVATE_HANDLE_RIGHT_WRITE        EX_HANDLE_RIGHT_WRITE
-#define EX_PRIVATE_HANDLE_RIGHT_WAIT         EX_HANDLE_RIGHT_WAIT
-
 typedef struct EX_STDOUT_SERVICE
 {
     EX_OBJECT_HEADER Header;
@@ -93,32 +77,14 @@ struct EX_THREAD
     KEVENT CompletionEvent;
 };
 
-void ExRuntimeInitializeObjectHeader(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE type);
-HO_STATUS ExRuntimeRetainObject(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE expectedType);
-HO_STATUS ExRuntimeReleaseObject(EX_OBJECT_HEADER *header,
-                                   EX_OBJECT_TYPE expectedType,
-                                   uint32_t *remainingReferences);
 void ExRuntimeInitializeStdoutServiceObject(EX_PROCESS *process);
 HO_STATUS ExRuntimeReleaseStdoutServiceOwner(EX_PROCESS *process);
-void ExRuntimeInitializePrivateHandleTable(EX_PRIVATE_HANDLE_TABLE *table);
 void ExRuntimeInitializeProcessObject(EX_PROCESS *process);
 void ExRuntimeInitializeThreadObject(EX_THREAD *thread);
 HO_STATUS ExRuntimeTeardownProcessPayload(EX_PROCESS *process);
 EX_PROCESS *ExRuntimeRetainProcess(EX_PROCESS *process);
 HO_STATUS ExRuntimeReleaseProcess(EX_PROCESS *process);
 HO_STATUS ExRuntimeReleaseThread(EX_THREAD *thread);
-HO_STATUS ExRuntimeInsertPrivateHandle(EX_PROCESS *process,
-                                         EX_OBJECT_HEADER *objectHeader,
-                                         EX_PRIVATE_HANDLE_RIGHTS rights,
-                                         EX_PRIVATE_HANDLE *outHandle);
-HO_STATUS ExRuntimeResolvePrivateHandle(EX_PROCESS *process,
-                                          EX_PRIVATE_HANDLE handle,
-                                          EX_OBJECT_TYPE expectedType,
-                                          EX_PRIVATE_HANDLE_RIGHTS desiredRights,
-                                          EX_OBJECT_HEADER **outObjectHeader);
-HO_STATUS ExRuntimeReleaseResolvedObject(EX_OBJECT_HEADER *objectHeader);
-HO_STATUS ExRuntimeClosePrivateHandle(EX_PROCESS *process, EX_PRIVATE_HANDLE *handle);
-HO_STATUS ExRuntimeCloseAllPrivateHandles(EX_PROCESS *process);
 BOOL ExRuntimeIsPublishedObject(const EX_OBJECT_HEADER *objectHeader);
 BOOL ExRuntimeIsProcessPublished(const EX_PROCESS *process);
 HO_STATUS ExRuntimeCaptureThreadList(EX_SYSINFO_THREAD_LIST *outThreadList);
@@ -148,7 +114,7 @@ void ExRuntimeUnpublishThreadByKernelThread(const struct KTHREAD *thread,
                                             EX_PROCESS **outProcess);
 void ExRuntimeUnpublishByKernelThread(const struct KTHREAD *thread, EX_THREAD **outThread, EX_PROCESS **outProcess);
 HO_STATUS ExRuntimeBuildInitialConstBytes(const EX_RUNTIME_PROCESS_CREATE_PARAMS *params,
-                                            uint8_t **outConstBytes,
-                                            uint64_t *outConstLength);
+                                          uint8_t **outConstBytes,
+                                          uint64_t *outConstLength);
 HO_STATUS ExRuntimePatchCapabilitySeed(EX_PROCESS *process, EX_THREAD *thread);
 int64_t ExRuntimeHandleQuerySysinfo(EX_PROCESS *process, uint64_t infoClassRaw, uint64_t userBuffer, uint64_t length);

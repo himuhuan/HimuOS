@@ -70,24 +70,6 @@ ExObjectRelease(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE expectedType, uint32_t 
 }
 
 void
-ExRuntimeInitializeObjectHeader(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE type)
-{
-    ExObjectInitializeHeader(header, type, EX_OBJECT_FLAG_NONE, NULL);
-}
-
-HO_STATUS
-ExRuntimeRetainObject(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE expectedType)
-{
-    return ExObjectRetain(header, expectedType);
-}
-
-HO_STATUS
-ExRuntimeReleaseObject(EX_OBJECT_HEADER *header, EX_OBJECT_TYPE expectedType, uint32_t *remainingReferences)
-{
-    return ExObjectRelease(header, expectedType, remainingReferences);
-}
-
-void
 ExRuntimeInitializeStdoutServiceObject(EX_PROCESS *process)
 {
     if (process == NULL)
